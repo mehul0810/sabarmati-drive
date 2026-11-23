@@ -2,6 +2,8 @@
 #include "RiverfrontCrossings.h"
 
 #include "Components/TextRenderComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -67,10 +69,38 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
     };
 
     const bool bHasLeafMaterial = IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get());
-    const auto Tree = [this, bHasLeafMaterial](double X, double Y, double Size, FRandomStream& Random)
+    // All outer-bank and park trees share one spatially culled, three-LOD canopy batch.
+    MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
+    UHierarchicalInstancedStaticMeshComponent* Grove=nullptr;
+    if (MatureTree)
+    {
+        Grove=NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+        AddInstanceComponent(Grove); Grove->SetupAttachment(GetRootComponent());
+        Grove->SetMobility(EComponentMobility::Static); Grove->SetStaticMesh(MatureTree);
+        Grove->SetCollisionEnabled(ECollisionEnabled::NoCollision);Grove->SetCanEverAffectNavigation(false);
+        Grove->SetCullDistances(42000,66000);
+        const int32 Leaf=Grove->GetMaterialIndex(TEXT("jacaranda_tree_leaves"));
+        if (Leaf!=INDEX_NONE)
+        {
+            CanopyLeaves=UMaterialInstanceDynamic::Create(Grove->GetMaterial(Leaf),this);
+            Grove->SetMaterial(Leaf,CanopyLeaves);
+        }
+        Grove->bAutoRebuildTreeOnInstanceChanges=false;
+        Grove->RegisterComponent();
+    }
+    const auto Tree = [this, bHasLeafMaterial,Grove](double X, double Y, double Size, FRandomStream& Random)
     {
         const double Height = (295.0 + Random.FRandRange(0, 130)) * Size;
         const FVector Base(X, Y, 4);
+        if (Grove)
+        {
+            const FBoxSphereBounds Bounds=MatureTree->GetBounds();
+            const double Scale=Height*1.85/FMath::Max(1.,Bounds.BoxExtent.Z*2.);
+            const double Z=Base.Z-(Bounds.Origin.Z-Bounds.BoxExtent.Z)*Scale;
+            Grove->AddInstance(FTransform(FRotator(0,Random.FRandRange(-180,180),0),FVector(X,Y,Z),FVector(Scale)));
+            Shape(EShape::Cylinder,ETint::Bark,Base+FVector(0,0,Height*.28),FVector(22*Size,22*Size,Height*.56),true);
+            return;
+        }
         Shape(EShape::Cylinder, ETint::Bark, Base + FVector(0, 0, Height * .42),
             FVector(25 * Size, 26 * Size, Height * .86), true);
         const double Turn = Random.FRandRange(-PI, PI);
@@ -203,6 +233,11 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 const double Y = BankPosition(Bank, 5690 + Dress.FRandRange(-25, 165));
                 Tree(X, Y, Dress.FRandRange(.83, 1.2), Dress);
             }
+            for (double X=Start+1410.; X<End-900.; X+=1870.)
+            {
+                if (!BreakForRoad(X,690.))
+                    Tree(X,BankPosition(Bank,3423.),Dress.FRandRange(.78f,1.12f),Dress);
+            }
             for (double X = Start + 900; X < End - 600; X += 2600)
             {
                 const bool bParkOrMarket = (Bank > 0.0 && (FMath::Abs(X - FlowerX) < 4900 ||
@@ -211,6 +246,15 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 if (bParkOrMarket || BreakForRoad(X, 2200))
                 {
                     continue;
+                }
+                // Closer shop and apartment fronts leave a continuous public sidewalk and an accessible rear lane.
+                const int32 Parcel=FMath::FloorToInt((X-SouthEnd)/2600.);
+                if (Parcel%2==0 && FMath::Abs(X+14100.)>2000.)
+                {
+                    const int32 Style=(Parcel+(Bank<0?1:0))%5;
+                    const double Front=BankPosition(Bank,6300.+Style*67.);
+                    DetailFrontage(X,Front,Bank,1150.+(Parcel%4)*90.,1070.,2+Parcel%3,
+                        Style==0?ETint::Terracotta:Style==2?ETint::FacadeStone:ETint::Plaster,Style);
                 }
                 const double Width = Dress.FRandRange(1180, 1820);
                 const double Depth = Dress.FRandRange(1090, 1730);
@@ -385,7 +429,22 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
 
     // Flower Park: distinct planting rooms, soft beds and pedestrian aisles.
     Box(ETint::Paving, FVector(FlowerX, 8520, .5), FVector(7850, 5800, 3));
-    Sign(FlowerX, 1.0, 5475, TEXT("RIVERFRONT FLOWER PARK"), 540);
+    Sign(FlowerX-850., 1.0, 5475, TEXT("RIVERFRONT FLOWER PARK"), 540);
+    for (const double Side:{-1.,1.})
+    {
+        // Stone piers, a shaded timber screen and a clear five-metre public garden entrance.
+        for (int32 I=0;I<6;++I)
+        {
+            const double PX=FlowerX+Side*(295.+I*455.);
+            Box(ETint::FacadeStone,FVector(PX,5555.,105.),FVector(52.,53.,210.),true);
+            Box(ETint::Retaining,FVector(PX,5555.,216.),FVector(60.,60.,13.));
+            if (I==5) continue;
+            Box(ETint::Retaining,FVector(PX+Side*228.,5555.,23.),FVector(416.,32.,46.),true);
+            for (int32 Slat=0;Slat<12;++Slat)
+                Box(ETint::Timber,FVector(PX+Side*(41.+Slat*33.),5555.,103.),FVector(8.,17.,118.));
+            Box(ETint::Timber,FVector(PX+Side*228.,5555.,151.),FVector(416.,15.,7.));
+        }
+    }
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
         for (int32 Row = 0; Row < 3; ++Row)
@@ -480,6 +539,12 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
     Green(BJParkX, 8950, 7650, 5940);
     Sign(BJParkX, 1.0, 5520, TEXT("B.J. PARK"), 295);
 
+    if (Grove)
+    {
+        Grove->bAutoRebuildTreeOnInstanceChanges=true;
+        Grove->BuildTreeIfOutdated(false,true);
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati corridor: %d spatially culled scanned trees."),Grove->GetInstanceCount());
+    }
     UE_LOG(LogTemp, Display,
         TEXT("Sabarmati corridor: 1660 m on both banks; Sardar, Atal, Ellis, Flower Park, Ravivari, Event Grounds and B.J. Park."));
 }

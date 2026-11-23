@@ -36,6 +36,7 @@ private:
 
     FVector RouteStart = FVector::ZeroVector;
     FVector RouteEnd = FVector::ZeroVector;
+    double MeshYawToForward=90.;
     double TurnRadius = 0.0;
     double RouteLength = 0.0;
     double Distance = 0.0;

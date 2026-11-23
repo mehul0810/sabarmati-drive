@@ -1,4 +1,5 @@
 #include "RiverfrontPedestrian.h"
+#include "RiverfrontResidentOrientation.h"
 #include "EngineUtils.h"
 
 #include "Animation/AnimSequence.h"
@@ -240,7 +241,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
         {
             Person->Configure(I && SecondReady?Second:Model,I && SecondReady?SecondWalk:WalkAlt,A,B,1,0.,I?147.:132.,19+I);
             Person->bAtCrosswalk=true;
-            Person->SetActorLocationAndRotation(A,FRotator(0,(B-A).Rotation().Yaw+90.,0));
+            Person->SetActorLocationAndRotation(A,FRotator(0,(B-A).Rotation().Yaw+Person->MeshYawToForward,0));
             Person->SetMoving(false);
         }
     }
@@ -261,6 +262,7 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     Speed = SpeedCmPerSecond;
 
     Mesh->SetSkeletalMesh(Model);
+    MeshYawToForward=RiverfrontResident::YawToActorForward(*Model);
     const double HeightScale = .90 + ((Variant * 7) % 17) * .01;
     const double BuildScale = .88 + ((Variant * 13) % 23) * .01;
     SetActorScale3D(FVector(BuildScale, BuildScale, HeightScale));
@@ -314,7 +316,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
         const FVector To=Target-GetActorLocation();
         const FVector Direction=To.GetSafeNormal2D();
         const double Step=FMath::Min(To.Size2D(),Speed*DeltaSeconds);
-        SetActorLocationAndRotation(GetActorLocation()+Direction*Step,FRotator(0,Direction.Rotation().Yaw+90.,0));
+        SetActorLocationAndRotation(GetActorLocation()+Direction*Step,FRotator(0,Direction.Rotation().Yaw+MeshYawToForward,0));
         if (To.Size2D()<4.)
         {
             bReturning=!bReturning; bSteppingOff=false; ++Crossings; RestLeft=5.; SetMoving(false);
@@ -348,8 +350,7 @@ void ARiverfrontPedestrian::SetMoving(bool Moving)
 void ARiverfrontPedestrian::UpdateRouteTransform()
 {
     const FRouteSample Sample = SampleCircuit(RouteStart, RouteEnd, TurnRadius, Distance);
-    // The imported avatar faces -Y; add 90 degrees to align it to the route tangent.
-    const FRotator Facing(0, Sample.Forward.Rotation().Yaw + 90.0, 0);
+    const FRotator Facing(0,Sample.Forward.Rotation().Yaw+MeshYawToForward,0);
     SetActorLocationAndRotation(Sample.Position, Facing, false);
 }
 
@@ -383,7 +384,7 @@ void ARiverfrontPedestrian::TickErrand(float Delta)
     const FVector To=Errand[ErrandStep]-GetActorLocation();
     const FVector Facing=To.GetSafeNormal();
     const double Step=FMath::Min(To.Size(),Speed*Delta);
-    SetActorLocationAndRotation(GetActorLocation()+Facing*Step,FRotator(0,Facing.Rotation().Yaw+90.,0));
+    SetActorLocationAndRotation(GetActorLocation()+Facing*Step,FRotator(0,Facing.Rotation().Yaw+MeshYawToForward,0));
     if (To.Size()>4.) return;
     if (ErrandStep==Errand.Num()-1 || ErrandStep==0)
     {

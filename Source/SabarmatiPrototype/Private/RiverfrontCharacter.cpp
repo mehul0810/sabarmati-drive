@@ -1,4 +1,5 @@
 #include "RiverfrontCharacter.h"
+#include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -141,8 +142,7 @@ void ARiverfrontCharacter::BeginPlay()
     if (USkeletalMesh* ImportedMesh = LoadOptionalAvatarAsset<USkeletalMesh>(TEXT("SK_Sabarmati")))
     {
         GetMesh()->SetSkeletalMesh(ImportedMesh);
-        // This glTF's face points down Unreal -Y after Interchange conversion.
-        GetMesh()->SetRelativeRotation(FRotator(0.0, 90.0, 0.0));
+        GetMesh()->SetRelativeRotation(FRotator(0,RiverfrontResident::YawToActorForward(*ImportedMesh),0));
         GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
         PreviewRig->SetVisibility(false, true);
         PreviewRig->SetHiddenInGame(true, true);

@@ -2,6 +2,8 @@
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCar.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontWorld.h"
@@ -104,6 +106,14 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
                 State->Frames.Add((Now-State->Last)*1000.);State->Last=Now;
                 State->Walked=FVector::Dist2D(Who->GetActorLocation(),State->From)/100.;
                 if (State->Walked<8. || State->Frames.Num()<120) return true;
+                const USkeletalMeshComponent* Skin=Who->GetMesh();
+                if (Skin && Skin->GetSkeletalMeshAsset())
+                {
+                    const bool PublicRig=Skin->GetSkeletalMeshAsset()->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
+                    const FVector Face=Skin->GetComponentTransform().TransformVectorNoScale(FVector(0,PublicRig?1.:-1.,0));
+                    if (Face.Dot((Who->GetActorLocation()-State->From).GetSafeNormal2D())<.90)
+                        return Fail(TEXT("walking backwards relative to the visible face"));
+                }
                 Shot(Target->Id.ToString());
                 State->Frames.Sort();
                 const double P95=State->Frames[FMath::CeilToInt(.95*State->Frames.Num())-1];
