@@ -26,15 +26,26 @@ the same toolchain before changing gameplay code. Leave global developer setting
 and other projects untouched. See [Epic's macOS requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine)
 and [Apple's developer-directory documentation](https://developer.apple.com/documentation/xcode/configuring-command-line-tools-settings).
 
+### Unreal and macOS implementation choices
+
+Use the systems shipped with Unreal Engine 5.8.4 for gameplay and interface work. For Mac-specific integration, use Unreal’s platform layer where it covers the operation, then a documented public Apple API where the launcher or platform needs one. The M1 Max and the packaged arm64 build are the reference for feature support and performance.
+
+| Upcoming work | Engine or platform support to use |
+|---|---|
+| HUD, phone, wardrobe and shop screens | Build on the current Slate menus. Use UMG/Slate widgets for layout, keyboard focus, input and DPI scaling. |
+| Avatar, clothing and apartment | Use Unreal skeletal meshes, Animation Blueprints and Character Movement for dressing and locomotion. Use Sequencer for the first wake-up and hand control back to the player. |
+| Solo pedestrians and families | Use the Navigation System, AI path following and StateTree for routes and activities. Author the family’s destination, waiting and regrouping rules as gameplay. |
+| Purchases, wardrobe and offline progress | Use Unreal Data Assets for items and prices and the existing `USaveGame` slot for persistence. Game rules own the rupee balances, purchases, and migration of existing player progress. |
+| Mac rendering, windows and storage | Use Unreal’s Metal renderer and game window settings. The launcher uses AppKit’s `NSScreen` for the usable desktop and Foundation’s `FileManager` for the user’s Application Support directory. |
+
+Check each newly adopted module or plugin in a packaged offline build on the M1 Max, including keyboard focus, window fitting and existing saves where relevant. [Epic’s Mac feature matrix](https://dev.epicgames.com/documentation/en-us/unreal-engine/macos-development-requirements-for-unreal-engine?application_version=5.8) · [Apple’s Application Support directory](https://developer.apple.com/documentation/foundation/filemanager/searchpathdirectory/applicationsupportdirectory)
+
 ### Local riverfront art verification
 
-Use **Play Sabarmati Drive.command** for the riverfront in a resizable window. The **4K** launcher opens the city in a Retina window fitted to the desktop. Use **Quit Game** on the title screen or the **Esc** menu to close the standalone game. On the
-first run, choose a local display name to unlock Start. The profile is a
-local Unreal save on this installation; no email, password or server is used.
-Start opens the current map. Choose **Explore Ahmedabad** from the title or
-pause screen to load the offline city map, then press **Start**. The same local
-profile works in both maps. The city map's sources and fidelity limits are
-documented in [AHMEDABAD-CITY-SOURCES.md](SourceAssets/AHMEDABAD-CITY-SOURCES.md).
+Open **Play Sabarmati Drive.command** for a standard window or **Play Sabarmati Drive 4K.command** for a Retina window fitted to the desktop. After packaging, you can also double-click `Saved/MacPackage/SabarmatiPrototype.app` in Finder. All three open the same offline profile on your Mac.
+
+For a fresh profile, enter a display name and choose **Start**. You wake in Flat 2B at Kesar Apartments with ₹1,00,000 cash and ₹5,00,000 in the bank. Walk down the apartment stairs to **Sutra Cloth House**, then cross the street to the furnished interiors of **Kagaz Print House** and **Nadi Chai**. On a later launch, **Continue** restores your last saved checkpoint and keeps your balances and clothing. **Explore Ahmedabad** in the title or pause menu opens the wider city map. **Quit Game** closes the game from either menu. [First-morning play guide](Docs/First-morning.md) · [City map sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
+
 Mouse look starts at 30% of the old sensitivity. Change it in **Start** or **Esc**;
 the chosen value is saved when you enter or resume the game.
 
@@ -72,7 +83,9 @@ bash Scripts/run-mac.sh --package
 
 For the interactive preview of Ashram Road, CG Road and the SG Highway service road, launch `bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity -SabarmatiStreetPreview`. Select a street with **N** and travel with **V** on foot or in a stopped car. The Atal west approach is a return stop. The ordinary city starts in the original central area. [Mapped areas and data sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
 
-After packaging, run `bash Scripts/run-mac.sh --standalone` to open the cooked game in a fitted window. Normal source-game and standalone launches share `~/Library/Application Support/Sabarmati Drive/Saved/SaveGames/SabarmatiPlayerProfileV1.sav`. The first launch seeds that profile from the checkout if a previous save exists. The original checkout copy stays in place. Later launches retain progress in Application Support. It also accepts `--4k`. This launch mode uses the local app without an Unreal Editor installation. The standalone executable accepts the same review flags. Use `-UserDir=/absolute/path/to/test-folder` to put a packaged review's Saved directory in a separate location. Summarize a completed run with `python3 Scripts/report-district-endurance.py /path/to/Saved/SystemsReviews/RUN_ID --minutes 20`. [District and benchmark evidence](Docs/Riverfront-district.md)
+The shared profile lives at `~/Library/Application Support/Sabarmati Drive/Saved/SaveGames/SabarmatiPlayerProfileV1.sav`. When that file is absent, a shortcut can seed it from an existing checkout save. A direct Finder launch can migrate a valid older app save. Each keeps the original file. Later launches use the shared copy.
+
+Run `bash Scripts/run-mac.sh --standalone` for the cooked game in a fitted window, or add `--4k` for Retina. The packaged app runs without Unreal Editor. Use `-UserDir=/absolute/path/to/test-folder` to keep a packaged review’s saves separate. Summarize a completed run with `python3 Scripts/report-district-endurance.py /path/to/Saved/SystemsReviews/RUN_ID --minutes 20`. [District and benchmark evidence](Docs/Riverfront-district.md)
 
 For a sustained test through the normal fitted launcher, run `bash Scripts/benchmark-standalone-mac.sh 20`. The script records individual wall times, in-game focus and a separate macOS window-focus sample every 15 seconds. An optional final `--4k` selects the fitted Retina preset. Each run has a separate save and evidence directory under `Saved/StandaloneBenchmarks`.
 

@@ -1,5 +1,7 @@
 # Playing the riverfront district
 
+This report records the district milestone at game revision `7a55918`. [The first-morning release](First-morning.md) adds the apartment, clothing shop, wardrobe, visitors and paid work.
+
 The regular launcher opens a resizable window up to 1600×900. It measures the available desktop on each launch. Both **Play Sabarmati Drive.command** and the fitted Retina option leave room for the title bar and window controls. Click **Start**, walk inland to the parked hatch and press **E** beside a door. Use **Esc → Quit Game** or **Quit Game** on the title to close it. Use `bash Scripts/run-mac.sh --standalone` to open the cooked app with the same desktop fit and existing local player profile.
 
 | Milestone | Playable result |
