@@ -22,6 +22,8 @@ Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine
 
 After building, **Play Sabarmati Drive.command** opens the riverfront in a titled window. **Play Sabarmati Drive 4K.command** opens Ahmedabad City in a titled Retina window with 100% render scale, up to 3840×2160 backing pixels. Both presets fit the primary display’s available desktop and leave room for the window controls.
 
+If the local Mac app has been packaged, run `bash Scripts/run-mac.sh --standalone` to play with this checkout’s offline profile. The launcher fits the window to the desktop. **Quit Game** is available on the title screen and in the **Esc** menu. [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg) · [District and Mac playtest results](Docs/Riverfront-district.md)
+
 ## Riverfront lighting
 
 The regular window opens the riverfront at golden hour. Press **T** during free roam to cycle through night, daylight and golden hour. Streetlights cast pools on the footpaths and carriageways. Selected apartment windows light up, and the occupied car switches its dipped beams on at night.

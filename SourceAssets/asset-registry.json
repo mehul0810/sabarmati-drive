@@ -27,6 +27,18 @@
       "verification": "Fixed shopfront view and six-leg perimeter walks on both maps. The surrounding frontage also has original side and service elevations."
     },
     {
+      "id": "riverfront-service-elevations",
+      "category": "modular building exteriors",
+      "source": "Original deterministic geometry placed on the existing riverfront buildings. Scale and service details were interpreted from the documented regional references.",
+      "license": "Original project geometry. The brick, plaster and concrete inputs retain their ambientCG CC0 licences.",
+      "geometry": "Both side walls and the rear receive separate elevations. Projecting stone sunshades, open terracotta stair louvres, sills, service doors and rainwater pipes are placed in centimetres.",
+      "textures": "Uses the existing 1K material scans and the original world-space rising-damp treatment on vertical masonry.",
+      "collision": "The existing building shell supplies collision. The surface fittings share its footprint or shallow wall clearance. The surrounding public lane is walkable.",
+      "lod": "Instanced material batches. Secondary blocks use fewer bays and simpler trim. No authored building HLOD.",
+      "location": "Source/SabarmatiPrototype/Private/RiverfrontStreetscape.cpp",
+      "verification": "The native standalone character completed the 57.84 m four-sided circuit and stayed grounded. Fixed service-lane captures were checked at golden hour and night."
+    },
+    {
       "id": "road-asphalt",
       "category": "road material",
       "source": "ambientCG Asphalt 033 and Asphalt 019 plus project-authored wear, irregular service cuts and roadside dust.",
