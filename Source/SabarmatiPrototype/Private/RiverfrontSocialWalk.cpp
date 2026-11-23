@@ -112,6 +112,16 @@ USplineComponent* MakeFamilyRoute(ARiverfrontWorld& District, int32 Rank)
 bool ARiverfrontPedestrian::SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel,
     UAnimSequence& FirstWalk, USkeletalMesh& SecondModel, UAnimSequence& SecondWalk)
 {
+    auto* FittedKurta = LoadObject<USkeletalMesh>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Tailored/SK_FittedKurta.SK_FittedKurta"));
+    const bool bFitted = FittedKurta && FittedKurta->GetSkeleton() == SecondWalk.GetSkeleton();
+    auto* Cotton = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_ResidentCotton.M_ResidentCotton"));
+    auto* ShirtPanels = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverTailoredCloth.M_RiverTailoredCloth"));
+    USkeletalMesh* ElderMesh = bFitted ? FittedKurta : &SecondModel;
+    const FColor ShirtDyes[] = {FColor(143, 150, 100), FColor(139, 79, 64), FColor(151, 179, 192)};
+    const FColor TrouserDyes[] = {FColor(69, 72, 65), FColor(183, 174, 148), FColor(65, 73, 85)};
     TArray<USplineComponent*> Routes;
     TArray<ARiverfrontPedestrian*> Walkers;
     for (int32 Rank = 0; Rank < FamilySize; ++Rank)
@@ -124,8 +134,34 @@ bool ARiverfrontPedestrian::SpawnFamilyOuting(ARiverfrontWorld& District, USkele
         if (!Person) break;
         Walkers.Add(Person);
         const double Paces[] = {126., 118., 123.};
-        Person->Configure(Rank == 1 ? &SecondModel : &FirstModel, Rank == 1 ? &SecondWalk : &FirstWalk,
+        const bool bElder = Rank == 1;
+        Person->Configure(bElder ? ElderMesh : &FirstModel, bElder ? &SecondWalk : &FirstWalk,
             Start, Route->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World), 1., 0., Paces[Rank], 27 + Rank);
+        // The fitted kurta separates the hem, trouser and scarf geometry. The short shirts
+        // share a painted UV boundary across all three original body material sections.
+        int32 GarmentSlots = 0;
+        auto Garment = [&](FName Name, UMaterialInterface* Parent, FColor Dye)
+        {
+            const int32 Slot = Person->Mesh->GetMaterialIndex(Name);
+            if (Slot == INDEX_NONE || !Parent) return;
+            if (auto* Material = Person->Mesh->CreateDynamicMaterialInstance(Slot, Parent))
+            {
+                Material->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Dye));
+                if (Parent == ShirtPanels)
+                    Material->SetVectorParameterValue(TEXT("TrouserDye"), FLinearColor(TrouserDyes[Rank]));
+                ++GarmentSlots;
+            }
+        };
+        auto* Cloth = bElder ? Cotton : ShirtPanels;
+        Garment(TEXT("top_teal_woven"), Cloth, ShirtDyes[Rank]);
+        Garment(TEXT("top_seams"), Cloth, bElder ? FColor(107, 59, 49) : ShirtDyes[Rank]);
+        Garment(TEXT("bottom_denim"), Cloth, bElder ? TrouserDyes[Rank] : ShirtDyes[Rank]);
+        if (bElder)
+        {
+            Garment(TEXT("scarf"), Cotton, FColor(170, 144, 96));
+            UE_LOG(LogTemp, Display, TEXT("Sabarmati family elder: fitted=%d mesh=%s slots=%d walk=%s."),
+                bFitted, *GetNameSafe(ElderMesh), GarmentSlots, *SecondWalk.GetName());
+        }
         Person->SetActorLocation(Start);
         Person->FamilyRoute = Route;
         Person->Tags.Add(TEXT("RiverfrontFamily"));
