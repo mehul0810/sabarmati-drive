@@ -99,10 +99,18 @@ for argument in "$@"; do
     esac
 done
 if [[ "$explicit_data" == false && ( "$review" == false || "$mode" == standalone ) ]]; then
-    data_dir="$HOME/Library/Application Support/Sabarmati Drive"
+    data_dir="$(/usr/bin/osascript -l JavaScript <<'JXA'
+ObjC.import('Foundation');
+const directories = $.NSFileManager.defaultManager.URLsForDirectoryInDomains(
+    $.NSApplicationSupportDirectory, $.NSUserDomainMask);
+ObjC.unwrap(directories.firstObject.URLByAppendingPathComponent('Sabarmati Drive').path);
+JXA
+)"
     if [[ "$review" == false ]]; then
         profile_file="Saved/SaveGames/SabarmatiPlayerProfileV1.sav"
-        python3 "$root/Scripts/prepare-mac-profile.py" "$root/$profile_file" "$data_dir/$profile_file"
+        if [[ -f "$root/$profile_file" && ! -e "$data_dir/$profile_file" ]]; then
+            python3 "$root/Scripts/prepare-mac-profile.py" "$root/$profile_file" "$data_dir/$profile_file"
+        fi
     fi
     set -- "$@" "-UserDir=$data_dir"
 fi

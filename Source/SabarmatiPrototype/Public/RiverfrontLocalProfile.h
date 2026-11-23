@@ -11,7 +11,7 @@ class SABARMATIPROTOTYPE_API URiverfrontLocalProfile : public USaveGame
     GENERATED_BODY()
 
 public:
-    static constexpr int32 CurrentSchema = 1;
+    static constexpr int32 CurrentSchema = 2;
     static FString CleanDisplayName(const FString& Input);
 
     UPROPERTY(SaveGame)
@@ -20,6 +20,23 @@ public:
     UPROPERTY(SaveGame) TArray<FName> VisitedSites;
     UPROPERTY(SaveGame) float BestRiverRunSeconds=0.f;
 
+    UPROPERTY(SaveGame) int64 CashRupees = 0;
+    UPROPERTY(SaveGame) int64 BankRupees = 0;
+    UPROPERTY(SaveGame) TArray<FName> OwnedItems;
+    UPROPERTY(SaveGame) FName EquippedOutfit;
+    UPROPERTY(SaveGame) FName EquippedAccessory;
+    UPROPERTY(SaveGame) FName AppearanceTone;
+    UPROPERTY(SaveGame) bool bCroppedHair = false;
+    UPROPERTY(SaveGame) FString LastReceipt;
+    UPROPERTY(SaveGame) bool bFirstMorningSeen = false;
+    UPROPERTY(SaveGame) bool bHasLifeCheckpoint = false;
+    UPROPERTY(SaveGame) FName CheckpointDistrict;
+    UPROPERTY(SaveGame) FVector CheckpointLocation = FVector::ZeroVector;
+    UPROPERTY(SaveGame) float CheckpointYaw = 0.f;
+    UPROPERTY(SaveGame) bool bPrintDeliveryActive = false;
+    UPROPERTY(SaveGame) int32 CompletedPrintDeliveries = 0;
+
+    // A legacy save can omit fields equal to its original class defaults.
     UPROPERTY(SaveGame)
-    int32 Schema = CurrentSchema;
+    int32 Schema = 1;
 };

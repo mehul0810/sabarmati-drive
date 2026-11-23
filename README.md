@@ -20,13 +20,15 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine Entry map may look empty in the editor; the district appears when you press **Play**. Click the viewport once if needed to capture the pointer, then look around without mouse drag. Click **Stop** (or use the keyboard shortcut shown by Unreal) to release the editor viewport. After a successful build you can launch without compiling again with `bash Scripts/run-mac.sh --no-build`. The first C++ build and shader preparation can take time.
 
-After building, **Play Sabarmati Drive.command** opens the riverfront in a titled window. **Play Sabarmati Drive 4K.command** opens Ahmedabad City in a titled Retina window with 100% render scale, up to 3840×2160 backing pixels. Both presets fit the primary display’s available desktop and leave room for the window controls.
+Open **Play Sabarmati Drive.command** for the standard window or **Play Sabarmati Drive 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `Saved/MacPackage/SabarmatiPrototype.app` directly in Finder. **Finder and both shortcuts use the same offline profile** on your Mac, including your wallet, wardrobe and checkpoint.
 
-If the local Mac app has been packaged, run `bash Scripts/run-mac.sh --standalone` to play with your offline profile. On the first normal launch, the game launcher copies the existing checkout save to the Mac’s Application Support folder. Both normal launch modes use that shared copy. The launcher fits the window to the desktop. **Quit Game** is available on the title screen and in the **Esc** menu. [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg) · [District and Mac playtest results](Docs/Riverfront-district.md)
+On your first visit, create a local display name and choose **Start**. You wake at 07:15 in Flat 2B, Kesar Apartments, with ₹1,00,000 in cash and ₹5,00,000 in the bank. On later visits, **Continue** restores your last saved checkpoint. If you saved while driving, you resume on foot beside the last safe vehicle position. **Quit Game** is on the title screen and the **Esc** menu. [Play through the first morning](Docs/First-morning.md) · [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg)
+
+For a development playtest with an optional local avatar, run `bash Scripts/run-mac.sh --game --no-build`. To open the packaged game from Terminal, run `bash Scripts/run-mac.sh --standalone`.
 
 ## Riverfront lighting
 
-The regular window opens the riverfront at golden hour. Press **T** during free roam to cycle through night, daylight and golden hour. Streetlights cast pools on the footpaths and carriageways. Selected apartment windows light up, and the occupied car switches its dipped beams on at night.
+The riverfront title overlooks the district at golden hour. A player’s first morning starts at 07:15 in Kesar Apartments. Press **T** during free roam to cycle through night, daylight and golden hour. Streetlights cast pools on the footpaths and carriageways. Selected apartment windows light up, and the occupied car switches its dipped beams on at night.
 
 Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison and a 45 m drive under each lighting condition. Each run writes screenshots and raw frame timings under `Saved/RenderingBenchmarks`. [Technical audit and benchmark](Docs/Riverfront-rendering.md)
 
@@ -39,14 +41,15 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 | Drive, steer, brake or reverse | W, A/D, S. Space applies the handbrake. |
 | Change chase, cockpit and bonnet views | C |
 | Open the hatch's front doors, signal, use hazards, sound the horn | O, Z/X, B, H |
-| Order chai, collect a postcard or record a location on foot | E when the prompt appears |
+| Use the wardrobe, browse Sutra Cloth House, greet a pedestrian or interact at a shop | E when the prompt appears |
+| Open your wallet and most recent receipt | I |
 | Refuel and repair the stopped vehicle at River Motor Works | F |
 | Select a waypoint, toggle the map, start a driving challenge | N, M, G |
 | Change time, weather and automatic clock | T, P, Y |
 | Show controls, frame statistics or the pause menu | F1, F3, Esc |
 | Reset to the start | R |
 
-The hatch and crossover are parked inland from the starting promenade. Visit Nadi Chai and Kagaz Print House across the road. Their doors open onto furnished rooms. A public passage runs between the shops and around the back. Atal is the walking crossing. The road bridges connect the driving lanes on both banks. A local profile saves discoveries and the best four-gate time.
+You can walk from the wardrobe in Flat 2B down the apartment stairs to street level and enter three furnished shops. **Sutra Cloth House** is on the ground floor. Across the road, **Kagaz Print House** offers a delivery to the counter at **Nadi Chai**. A public passage runs behind these two shops. The hatch and crossover are parked by the Atal promenade. Cross Atal on foot or use the road bridges to drive between the banks.
 
 ## Optional local avatar import
 
@@ -61,7 +64,7 @@ The hatch and crossover are parked inland from the starting promenade. Visit Nad
 
 The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual Shadow Maps, hardware ray tracing and Lumen disabled. This configuration aims to run on an M1 Max while leaving room to tune the M2 Air. It is not a measured performance claim.
 
-- Build/launch on the **M1 Max** first. Check the map loads at the promenade; inspect lighting, river/banks, street silhouettes and HUD at 1600×900. Walk, orbit without drag, jog, jump, and reset. Cross the bridge on foot; check the sidewalks are continuous. If using the imported avatar, inspect the idle/walk/jog changes, shoe/foot alignment and foot contact from the side, not just standing still.
+- Build/launch on the **M1 Max** first. Check the first wake-up or saved checkpoint, then walk to the promenade and inspect lighting, river/banks, street silhouettes and HUD at 1600×900. Walk, orbit without drag, jog, jump, and reset. Cross the bridge on foot; check the sidewalks are continuous. If using the imported avatar, inspect the idle/walk/jog changes, shoe/foot alignment and foot contact from the side, not just standing still.
 - Drive onto the bridge and across, check low-speed and reverse steering, wheel spin, rail blocking, braking, exit from either side and refusal when moving or neither exit is clear. Confirm the avatar is visible after exiting and both R resets return to the start.
 - Run a **20-minute repeatable pass on the fanless M2 Air**, starting after shader compilation. Begin in a 1600×900 window (record the actual render/drawable resolution from the HUD and note power mode and any changed resolution scale). Repeat the same walk/drive/bridge loop. Compare cold and warm frame timing, not just a momentary average; aim for sustained 30 fps (~33.3 ms/frame) with no recurring long spikes. Reduce the window to 1280×720 and re-test if needed. Capture timings, device and settings rather than assuming the same M1 Max result.
 
@@ -90,7 +93,7 @@ These checks validate project metadata, runtime inputs, renderer flags, a world 
 
 ### Start and pause
 
-The native launcher opens a splash while the engine starts. The subsequent map loader shows six milestones as roads, buildings, lighting, vehicles and traffic become available. Click **Start** to enter free roam after creating or loading a local player profile.
+The native launcher opens a splash while the engine starts. The subsequent map loader shows six milestones as roads, buildings, lighting, vehicles and traffic become available. Click **Start** for the first morning in Flat 2B or **Continue** to resume from the last saved location. Both use the local offline player profile. [Playing the first morning](Docs/First-morning.md)
 
 The title uses generated environmental concept artwork as a backdrop; it is not a gameplay capture.
 

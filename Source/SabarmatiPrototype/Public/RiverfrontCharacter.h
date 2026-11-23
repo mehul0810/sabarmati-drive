@@ -24,6 +24,14 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     void SetInCar(bool bInCar);
+    void SetFittingPose(bool bFitting);
+    bool SupportsPublicHaircut() const;
+    void SetCroppedHair(bool bCropped);
+    void ApplyWardrobeLook(FName Outfit, FName Accessory, FName AppearanceTone = NAME_None);
+    FName GetWardrobeOutfit() const { return WardrobeOutfit; }
+    FName GetWardrobeAccessory() const { return WardrobeAccessory; }
+    bool GetWardrobeShirtColor(FLinearColor& Out) const;
+    bool HasWristwatchVisible() const;
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -57,6 +65,23 @@ private:
     int32 StepIndex=0;
     double GaitPhase = 0.0;
     bool bUsesImportedMesh = false;
+    bool bInFittingPose = false;
+    bool bOrientBeforeFitting = true;
+    UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;
+    UPROPERTY() TObjectPtr<USkeletalMesh> KurtaMesh;
+    UPROPERTY() TObjectPtr<UMaterialInterface> CottonMaterial;
+    UPROPERTY() TObjectPtr<UMaterialInterface> FaceMaterial;
+    UPROPERTY() TObjectPtr<UMaterialInterface> TailoredCloth;
+    UPROPERTY() TObjectPtr<UMaterialInterface> EyeMaterial;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Hair;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Wristwatch;
+    FName WardrobeOutfit = TEXT("cotton-sand");
+    FName WardrobeAccessory;
+    FName WardrobeTone;
+    void UseWardrobeMesh(USkeletalMesh* Model, bool bKurta);
+    void UpdateWatchAttachment();
+    bool bCroppedHair = false;
+    void UpdateHair();
 
     void MakePiece(const TCHAR* Name, USceneComponent* Parent, const FVector& Offset,
         const FVector& Size, FColor Tone);

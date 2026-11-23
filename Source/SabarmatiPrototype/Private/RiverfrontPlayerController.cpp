@@ -5,7 +5,7 @@
 #include "RiverfrontWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontCar.h"
-#include "RiverfrontLocalProfile.h"
+#include "RiverfrontLifeProfile.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -143,6 +143,7 @@ class SRiverfrontMenu : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SRiverfrontMenu) {}
+        SLATE_ARGUMENT(bool, HasCheckpoint)
         SLATE_ARGUMENT(bool, IsPause)
         SLATE_ARGUMENT(float, Sensitivity)
         SLATE_ARGUMENT(float, Volume)
@@ -242,7 +243,7 @@ public:
                                 .Text(bIsPause ? LOCTEXT("PausedHelp", "Pick up where you left off.")
                                     : bCityFailed ? LOCTEXT("CityUnavailable", "The offline city data could not be loaded. The riverfront is available.")
                                     : bIsCity ? LOCTEXT("CityHelp", "Drive Ahmedabad’s mapped roads. Scenery and terrain are simplified.")
-                                    : LOCTEXT("TitleHelp", "Walk Atal Bridge. Drive the riverfront roads."))
+                                    : LOCTEXT("TitleHelp", "Wake up at Kesar Apartments, walk down to Sutra Cloth House, or take your car along the riverfront."))
                             ]
                             + SVerticalBox::Slot().AutoHeight()
                             [
@@ -265,6 +266,7 @@ public:
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 9.f)
                                 [
                                     SAssignNew(ProfileNameInput, SEditableTextBox)
+                                    .Tag(TEXT("MorningName"))
                                     .IsEnabled(!bUnreadableProfile)
                                     .SelectAllTextWhenFocused(true)
                                     .Padding(FMargin(9.f, 7.f))
@@ -282,6 +284,7 @@ public:
                                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
                                 [
                                     SNew(SButton)
+                                    .Tag(TEXT("MorningCreateProfile"))
                                     .IsEnabled(!bUnreadableProfile)
                                     .ContentPadding(FMargin(22.f, 10.f))
                                     .ButtonColorAndOpacity(FLinearColor(.46f, .29f, .13f))
@@ -304,6 +307,7 @@ public:
                             + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
                             [
                                 SAssignNew(PrimaryButton, SButton)
+                                .Tag(TEXT("MorningStart"))
                                 .Visibility_Lambda([this]() { return NeedsProfile() ? EVisibility::Collapsed : EVisibility::Visible; })
                                 .ContentPadding(FMargin(32.f, 11.f))
                                 .HAlign(HAlign_Center)
@@ -314,7 +318,7 @@ public:
                                     SNew(STextBlock)
                                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 20))
                                     .ColorAndOpacity(Paper)
-                                    .Text(bIsPause ? LOCTEXT("Resume", "Resume") : LOCTEXT("Start", "Start"))
+                                    .Text(bIsPause ? LOCTEXT("Resume", "Resume") : Args._HasCheckpoint ? LOCTEXT("ContinueHome", "Continue") : LOCTEXT("Start", "Start"))
                                 ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 10.f, 0.f, 0.f)
@@ -342,6 +346,7 @@ public:
                                     SNew(SButton)
                                     .ContentPadding(FMargin(12.f, 7.f))
                                     .ClickMethod(EButtonClickMethod::MouseDown)
+                                    .Tag(TEXT("MorningQuit"))
                                     .OnClicked(Args._OnQuit)
                                     [
                                         SNew(STextBlock)
@@ -535,11 +540,15 @@ void ARiverfrontPlayerController::BeginPlay()
     {
 #if !UE_BUILD_SHIPPING
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
             FGuid TestId;
             const TCHAR* Existing = GetWorld()->URL.GetOption(TEXT("SabarmatiQAProfile="), TEXT(""));
+            FString MorningId;
+            if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")) &&
+                FParse::Value(FCommandLine::Get(), TEXT("SabarmatiMorningQAId="), MorningId)) Existing = *MorningId;
             if (!FGuid::ParseExact(Existing, EGuidFormats::Digits, TestId))
             {
                 TestId = FGuid::NewGuid();
@@ -560,6 +569,9 @@ void ARiverfrontPlayerController::BeginPlay()
 
 void ARiverfrontPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 {
+    if (bLifeActive && !bTravelling) SaveLifeCheckpoint();
+    GetWorldTimerManager().ClearTimer(WakeupTimer);
+    GetWorldTimerManager().ClearTimer(LifeSaveTimer);
     GetWorldTimerManager().ClearTimer(OpeningMenuTimer);
     RemoveOverlay();
     Super::EndPlay(Reason);
@@ -568,6 +580,7 @@ void ARiverfrontPlayerController::EndPlay(const EEndPlayReason::Type Reason)
 void ARiverfrontPlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
+    InputComponent->BindAction(TEXT("Wallet"), IE_Pressed, this, &ARiverfrontPlayerController::OpenWallet);
     InputComponent->BindAction(TEXT("PauseDrive"), IE_Pressed, this, &ARiverfrontPlayerController::TogglePauseMenu);
     InputComponent->BindAction(TEXT("DistrictTime"), IE_Pressed, this, &ARiverfrontPlayerController::CycleDistrictTime);
     InputComponent->BindAction(TEXT("DistrictWeather"),IE_Pressed,this,&ARiverfrontPlayerController::CycleDistrictWeather);
@@ -628,7 +641,17 @@ void ARiverfrontPlayerController::ShowTitle()
     {
         SetViewTarget(TitleCamera.Get());
     }
+    if (GetWorld()->URL.HasOption(TEXT("SabarmatiRestore")) && HasLocalProfile())
+    {
+        ResumeDrive();
+        return;
+    }
 #if !UE_BUILD_SHIPPING
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")))
+    {
+        RunMorningReview();
+        return;
+    }
     if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
     {
         if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Street Review")).IsEmpty())
@@ -1032,12 +1055,12 @@ void ARiverfrontPlayerController::LoadLocalProfile()
     Visited.Reset();
     BestTrial=0.f;
     bUnreadableProfile = false;
-    if (!UGameplayStatics::DoesSaveGameExist(ProfileSlot, 0))
+    if (!RiverfrontLife::Exists(ProfileSlot))
     {
         return;
     }
-    const auto* Saved = Cast<URiverfrontLocalProfile>(UGameplayStatics::LoadGameFromSlot(ProfileSlot, 0));
-    if (IsValid(Saved) && Saved->Schema == URiverfrontLocalProfile::CurrentSchema)
+    const auto* Saved = RiverfrontLife::Load(ProfileSlot);
+    if (IsValid(Saved))
     {
         LocalDisplayName = URiverfrontLocalProfile::CleanDisplayName(Saved->DisplayName);
         Visited=Saved->VisitedSites; BestTrial=Saved->BestRiverRunSeconds;
@@ -1047,7 +1070,7 @@ void ARiverfrontPlayerController::LoadLocalProfile()
 
 FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedName)
 {
-    if (bUnreadableProfile || HasLocalProfile() || UGameplayStatics::DoesSaveGameExist(ProfileSlot, 0))
+    if (bUnreadableProfile || HasLocalProfile() || RiverfrontLife::Exists(ProfileSlot))
     {
         return LOCTEXT("ProfileNotOverwritten", "A local profile already exists. No data was overwritten.");
     }
@@ -1056,9 +1079,7 @@ FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedNa
     {
         return LOCTEXT("ProfileInvalidName", "Enter a display name with 2 to 24 characters on one line.");
     }
-    URiverfrontLocalProfile* NewProfile = NewObject<URiverfrontLocalProfile>();
-    NewProfile->DisplayName = Clean;
-    if (!UGameplayStatics::SaveGameToSlot(NewProfile, ProfileSlot, 0))
+    if (!RiverfrontLife::Create(ProfileSlot, Clean))
     {
         return LOCTEXT("ProfileSaveFailed", "Could not save the profile on this Mac. Please try again.");
     }
@@ -1107,6 +1128,8 @@ void ARiverfrontPlayerController::TogglePauseMenu()
 {
     if (Screen == EScreen::Playing)
     {
+        if (bWaking) FinishWakeup();
+        SaveLifeCheckpoint();
         ShowMenu(EScreen::Paused);
     }
 }
@@ -1133,6 +1156,7 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
     const bool bCityFailed = Mode && Mode->CityFailed();
     TSharedRef<SRiverfrontMenu> Menu = SNew(SRiverfrontMenu)
         .IsPause(Target == EScreen::Paused)
+        .HasCheckpoint(Target == EScreen::Title && HasLocalProfile() && HasLifeCheckpoint())
         .PlayerName(LocalDisplayName)
         .IsCity(bCity)
         .CityAvailable(bCity || (!bCityFailed && ARiverfrontWorld::HasCityData()))
@@ -1218,6 +1242,7 @@ void ARiverfrontPlayerController::ResumeDrive()
     FInputModeGameOnly GameInput;
     GameInput.SetConsumeCaptureMouseDown(true);
     SetInputMode(GameInput);
+    if (bFromTitle) BeginLifeSession();
 }
 
 void ARiverfrontPlayerController::SaveLookPreference()
@@ -1232,6 +1257,7 @@ void ARiverfrontPlayerController::SaveLookPreference()
 
 FReply ARiverfrontPlayerController::QuitDrive()
 {
+    SaveLifeCheckpoint();
     SaveLookPreference();
     UE_LOG(LogTemp, Display, TEXT("Sabarmati menu: Quit Game from %s."),
         Screen == EScreen::Paused ? TEXT("pause") : TEXT("title"));
@@ -1251,6 +1277,7 @@ void ARiverfrontPlayerController::SwitchFreeRoamMap()
     {
         return;
     }
+    SaveLifeCheckpoint();
     bTravelling = true;
     SetPause(false);
     FString Options = bCity ? TEXT("SabarmatiRiverfront") : TEXT("SabarmatiCity");

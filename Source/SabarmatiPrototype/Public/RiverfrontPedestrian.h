@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "RiverfrontPedestrian.generated.h"
 
+class ARiverfrontWorld;
+class USplineComponent;
 class UAnimSequence;
 class USkeletalMesh;
 class USkeletalMeshComponent;
@@ -20,6 +22,10 @@ public:
     bool IsCrossingStreet() const { return bAtCrosswalk && bSteppingOff; }
     int32 ShopVisits() const {return CounterVisits;}
     int32 CrossingsCompleted() const { return Crossings; }
+    bool IsFamilyMember() const { return FamilyRoute != nullptr; }
+    bool IsInternationalVisitor() const { return bSightseeing || bVisitingPrintmaker; }
+    bool IsVisitingPrintmaker() const { return bVisitingPrintmaker; }
+    int32 FamilyKerbWaits() const { return KerbWaits; }
     static int32 SpawnRiverfrontCrowd(UWorld& World);
     static ARiverfrontPedestrian* SpawnStreetWalker(UWorld& World, const FVector& A, const FVector& B, int32 Variant);
 
@@ -48,6 +54,24 @@ private:
     UPROPERTY() TObjectPtr<UAnimSequence> IdlePose;
     TArray<FVector> Errand;
     int32 ErrandStep=0,ErrandDirection=1,CounterVisits=0;
+    static bool SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel, UAnimSequence& FirstWalk,
+        USkeletalMesh& SecondModel, UAnimSequence& SecondWalk);
+    void TickFamily(float Delta);
+    void DressCloseResident(FColor Complexion, FLinearColor FibreTint, bool bSweptHair);
+    void EquipVisitorCamera();
+    void EquipPrintPortfolio();
+    void LookTowards(const FVector& Point, float Delta);
     void TickErrand(float Delta);
+    UPROPERTY(Transient) TObjectPtr<USplineComponent> FamilyRoute;
+    TArray<TWeakObjectPtr<ARiverfrontPedestrian>> Family;
+    int32 FamilyFrom = 0;
+    int32 FamilyTo = 1;
+    int32 KerbWaits = 0;
+    double FamilyPosition = 0.0;
+    bool bFamilyDeparted = false;
+    bool bWaitedAtKerb = false;
+    bool bMoving = true;
+    bool bSightseeing = false;
+    bool bVisitingPrintmaker = false;
     void SetMoving(bool Moving);
 };

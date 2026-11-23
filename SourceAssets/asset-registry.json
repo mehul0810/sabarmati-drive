@@ -255,6 +255,30 @@
       "verification": "Imported by Unreal and placed beside the occupied benches."
     },
     {
+      "id": "first-morning-wardrobe",
+      "category": "player head, clothing and wearable accessory",
+      "source": "Original geometry and UV artwork from Scripts/make-morning-wardrobe.py, Scripts/make-resident-head.py and Scripts/tailor-riverfront-kurta.py. The fictional residents use the CC0 MakeHuman hm08 body. Scripts/import-morning-wardrobe.py uses Unreal Interchange.",
+      "license": "Project-authored haircut, watch and texture artwork. Public resident topology uses the CC0 MakeHuman body credited under district residents.",
+      "geometry": "The fitted, head-attached swept haircut has 5,451 triangles and 137 tapered edge locks. The alternative cropped style uses the original scalp. An independently skinned kurta stole and short placket follow the 18-bone resident skeleton; concealed trouser geometry ends inside the hem. The original 908-triangle unbranded watch has a 38 mm case, dial, twelve hour marks and strap.",
+      "textures": "Original 1024 px fictional face and tailoring maps, 512 px dark hair and iris maps, and 256 px cotton weave colour and tangent normals. Shirt construction includes collar edges, a pocket, back yoke, placket, buttons and a continuous hem. Measured public garment UVs give approximately 0.9–1.2 mm yarn spacing.",
+      "collision": "The hair and wristwatch attach to the animated head and hand bones and have collision disabled. The character capsule governs locomotion.",
+      "lod": "The player-only haircut and watch each use one geometric LOD. Texture mips filter the woven yarns, hair and eye artwork with distance.",
+      "location": "Content/Sabarmati/Riverfront/People/Wardrobe/SM_RiverWristwatch/StaticMeshes/SM_RiverWristwatch.uasset",
+      "verification": "The M1 Max packaged wardrobe and shop demonstrated the dark hairstyle, defined pupils, correct weave scale and visible shirt purchase. Following that inspection, the shoulders and hem were revised and a skinned kurta stole was imported on the original skeleton."
+    },
+    {
+      "id": "visitor-camera-and-print-portfolio",
+      "category": "character accessories",
+      "source": "Original unbadged camera, neck strap and A3 print portfolio assembled on the two visitors by RiverfrontSocialWalk.cpp.",
+      "license": "Original Sabarmati accessory designs and local fleet materials. Basic cube and cylinder meshes come from the installed Unreal Engine.",
+      "geometry": "Camera housing is 13 cm wide with two lens sections and twin strap segments. The 42.6 × 30.2 cm portfolio has two covers, paper edges, bound spine and webbing handle.",
+      "textures": "Existing rubber, iron, teal and cream materials supply the surface finishes.",
+      "collision": "Both props attach to reference-pose skeletal bones and animate with their owners. Decorative pieces have collision disabled.",
+      "lod": "Small accessories cull at 35 m.",
+      "location": "Source/SabarmatiPrototype/Private/RiverfrontSocialWalk.cpp",
+      "verification": "Compiled with the native Unreal 5.8.4 Mac toolchain. The first-morning review checks the visiting photographer and print-shop customer during their separate outings."
+    },
+    {
       "id": "street-ground",
       "category": "environment material",
       "source": "Earth and gravel pigment over the existing ambientCG Concrete 034 aggregate. Scripts/build-street-ground.py.",

@@ -1,10 +1,12 @@
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCar.h"
+#include "RiverfrontLifeMenu.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "RiverfrontWorld.h"
-#include "RiverfrontLocalProfile.h"
+#include "RiverfrontLifeProfile.h"
 #include "Dom/JsonObject.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -44,6 +46,8 @@ void ARiverfrontPlayerController::LoadSites()
             const FString Anchor=Where->AsString();
             if (Anchor==TEXT("tea")) Point=District->GetTeaCounter();
             else if (Anchor==TEXT("press")) Point=District->GetPressCounter();
+            else if (Anchor==TEXT("wardrobe")) Point=FRiverfrontFirstMorningWorld::WardrobePoint();
+            else if (Anchor==TEXT("cloth")) Point=FRiverfrontFirstMorningWorld::ShopPoint();
             else continue;
             if (Point.IsNearlyZero()) continue;
         }
@@ -53,7 +57,8 @@ void ARiverfrontPlayerController::LoadSites()
         }
         else continue;
         const auto Kind=Type==TEXT("Tea")?ERiverSiteKind::Tea:Type==TEXT("Print")?ERiverSiteKind::Print:
-            Type==TEXT("Service")?ERiverSiteKind::Service:ERiverSiteKind::Visit;
+            Type==TEXT("Service")?ERiverSiteKind::Service:Type==TEXT("Wardrobe")?ERiverSiteKind::Wardrobe:
+            Type==TEXT("ClothesShop")?ERiverSiteKind::ClothesShop:ERiverSiteKind::Visit;
         double Heading=0.;
         TOptional<double> Travel;
         if (bCitySites && O->TryGetNumberField(TEXT("street_heading"),Heading) && FMath::IsFinite(Heading))
@@ -83,7 +88,9 @@ int32 ARiverfrontPlayerController::NearbySite() const
 FString ARiverfrontPlayerController::PlacePrompt() const
 {
     const int32 I=NearbySite();
-    if (I==INDEX_NONE) return FString();
+    if (I==INDEX_NONE) return NearbyCompanion() ? FString(TEXT("E   Say hello")) : FString();
+    if (bParcelInHand && Sites[I].Kind==ERiverSiteKind::Tea) return TEXT("E   Deliver the print order");
+    if (bLifeActive && !bParcelInHand && !bParcelDelivered && Sites[I].Kind==ERiverSiteKind::Print) return TEXT("E   Pick up the print order");
     return FString(Cast<ARiverfrontCar>(GetPawn())?TEXT("F   "):TEXT("E   "))+Sites[I].Action;
 }
 void ARiverfrontPlayerController::Notice(const FString& Text)
@@ -93,17 +100,20 @@ void ARiverfrontPlayerController::Notice(const FString& Text)
 bool ARiverfrontPlayerController::SaveExploration()
 {
     if (!HasLocalProfile() || bUnreadableProfile) return false;
-    auto* Save=Cast<URiverfrontLocalProfile>(UGameplayStatics::LoadGameFromSlot(ProfileSlot,0));
-    if (!Save || Save->Schema!=URiverfrontLocalProfile::CurrentSchema || URiverfrontLocalProfile::CleanDisplayName(Save->DisplayName)!=LocalDisplayName) return false;
-    for (const FName Here:Visited) Save->VisitedSites.AddUnique(Here);
-    if (BestTrial>0 && (Save->BestRiverRunSeconds<=0 || BestTrial<Save->BestRiverRunSeconds)) Save->BestRiverRunSeconds=BestTrial;
-    return UGameplayStatics::SaveGameToSlot(Save,ProfileSlot,0);
+    return RiverfrontLife::MergeExploration(ProfileSlot, LocalDisplayName, Visited, BestTrial);
 }
 void ARiverfrontPlayerController::InteractWithPlace()
 {
     if (IsShowingMenu()) return;
-    const int32 I=NearbySite(); if (I==INDEX_NONE) return;
+    const int32 I=NearbySite();
+    if (I==INDEX_NONE)
+    {
+        if (auto* Person=NearbyCompanion()) GreetCompanion(*Person);
+        return;
+    }
     const FRiverSite& Site=Sites[I];
+    if (Site.Kind==ERiverSiteKind::Wardrobe) { OpenLifeMenu(ERiverfrontLifeMenu::Wardrobe); return; }
+    if (Site.Kind==ERiverSiteKind::ClothesShop) { OpenLifeMenu(ERiverfrontLifeMenu::Shop); return; }
     auto* Car=Cast<ARiverfrontCar>(GetPawn());
     if (Site.Kind==ERiverSiteKind::Service)
     {
@@ -119,6 +129,7 @@ void ARiverfrontPlayerController::InteractWithPlace()
     if (New) Visited.Add(Site.Id);
     const bool Saved=!New || SaveExploration();
     if (!Saved) Visited.Remove(Site.Id);
+    if (Saved && UpdatePrintDelivery(Site.Kind)) return;
     Notice(Saved?Site.Discovery:TEXT("This visit could not be saved to the local profile."));
 }
 void ARiverfrontPlayerController::CycleDestination()

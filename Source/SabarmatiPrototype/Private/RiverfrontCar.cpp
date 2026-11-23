@@ -454,19 +454,9 @@ void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     UE_LOG(LogTemp, Display, TEXT("Sabarmati Drive: entered parked %s."), GetVehicleLabel());
 }
 
-void ARiverfrontCar::Exit()
+bool ARiverfrontCar::FindDriverExit(FVector& Point, int32& Side) const
 {
-    APlayerController* Player = Cast<APlayerController>(Controller);
-    if (!Player || !IsValid(Driver))
-    {
-        return;
-    }
-    if (FMath::Abs(Speed) > ParkThreshold)
-    {
-        SetHint(TEXT("Brake to a stop before getting out."));
-        return;
-    }
-
+    if (!IsValid(Driver)) return false;
     UCapsuleComponent* Capsule = Driver->GetCapsuleComponent();
     const FCollisionShape Shape = FCollisionShape::MakeCapsule(
         Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
@@ -489,25 +479,49 @@ void ARiverfrontCar::Exit()
         {
             continue;
         }
-        if (DoorHinges.Num()==2) { OpenSide(Offset.Y<0?-1:1); DoorHold=1.1f; }
-        ARiverfrontCharacter* Walker = Driver.Get();
-        Walker->SetActorLocationAndRotation(Candidate, FRotator(0, GetActorRotation().Yaw, 0),
-            false, nullptr, ETeleportType::TeleportPhysics);
-        Walker->SetInCar(false);
-        Player->Possess(Walker);
-        Player->SetControlRotation(FRotator(-7, GetActorRotation().Yaw, 0));
-        Driver = nullptr;
-        if (MotorLoop && TyreLoop) { MotorLoop->FadeOut(.28f,.0f); TyreLoop->FadeOut(.15f,0.f); }
-        ViewMode=Signal=0;
-        bBraking=false;
-        Throttle=0;
-        UpdateSignalLenses(0);
-        UpdateDrivingLights();
-        Speed = Throttle = Steering = 0;
-        bBraking = false;
+        Point = Candidate;
+        Side = Offset.Y < 0 ? -1 : 1;
+        return true;
+    }
+    return false;
+}
+
+void ARiverfrontCar::Exit()
+{
+    APlayerController* Player = Cast<APlayerController>(Controller);
+    if (!Player || !IsValid(Driver))
+    {
         return;
     }
-    SetHint(TEXT("No clear spot to get out. Move a little and try again."));
+    if (FMath::Abs(Speed) > ParkThreshold)
+    {
+        SetHint(TEXT("Brake to a stop before getting out."));
+        return;
+    }
+
+    FVector Candidate;
+    int32 Side;
+    if (!FindDriverExit(Candidate, Side))
+    {
+        SetHint(TEXT("No clear spot to get out. Move a little and try again."));
+        return;
+    }
+    if (DoorHinges.Num()==2) { OpenSide(Side); DoorHold=1.1f; }
+    ARiverfrontCharacter* Walker = Driver.Get();
+    Walker->SetActorLocationAndRotation(Candidate, FRotator(0, GetActorRotation().Yaw, 0),
+        false, nullptr, ETeleportType::TeleportPhysics);
+    Walker->SetInCar(false);
+    Player->Possess(Walker);
+    Player->SetControlRotation(FRotator(-7, GetActorRotation().Yaw, 0));
+    Driver = nullptr;
+    if (MotorLoop && TyreLoop) { MotorLoop->FadeOut(.28f,.0f); TyreLoop->FadeOut(.15f,0.f); }
+    ViewMode=Signal=0;
+    bBraking=false;
+    Throttle=0;
+    UpdateSignalLenses(0);
+    UpdateDrivingLights();
+    Speed = Throttle = Steering = 0;
+    bBraking = false;
 }
 
 void ARiverfrontCar::Tick(float DeltaSeconds)

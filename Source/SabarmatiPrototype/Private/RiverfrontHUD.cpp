@@ -45,10 +45,18 @@ void ARiverfrontHUD::DrawHUD()
 
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool bCity = Mode && Mode->IsCityMode();
-    Box(Dark, Margin, Margin, 230.f, 42.f);
-    Box(Amber, Margin, Margin, 3.f, 42.f);
-    Text(bCity ? TEXT("AHMEDABAD / FREE ROAM") : TEXT("SABARMATI RIVERFRONT"),
-        Paper, Margin + 13.f, Margin + 13.f, Font, 1.f);
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (WelcomeUntil < 0.f) WelcomeUntil = Now + 8.f;
+    if (!Driver->ControlsVisible() && Now < WelcomeUntil)
+    {
+        const float Opacity = FMath::Clamp(WelcomeUntil - Now, 0.f, 1.f);
+        Box(Dark.CopyWithNewOpacity(.84f * Opacity), Margin, Margin, 248.f, 55.f);
+        Box(Amber.CopyWithNewOpacity(Opacity), Margin, Margin, 3.f, 55.f);
+        Text(bCity ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
+            Paper.CopyWithNewOpacity(Opacity), Margin+13, Margin+7, Headline, 1.05f);
+        Text(TEXT("F1  controls     I  wallet     Esc  pause"),
+            Amber.CopyWithNewOpacity(Opacity), Margin+13, Margin+33, Font, .86f);
+    }
 
     const APawn* Pawn = PlayerOwner->GetPawn();
     const ARiverfrontCar* Car = Cast<ARiverfrontCar>(Pawn);
@@ -116,33 +124,34 @@ void ARiverfrontHUD::DrawHUD()
     }
     if (Driver->ControlsVisible())
     {
-        const float Y=82;
-        const TCHAR* Lines[]={TEXT("WASD  move or drive     /     E  interact or exit"),TEXT("O  front door     /     C  chase, cockpit, bonnet"),
-            TEXT("Z / X  indicators     /     B  hazards     /     H  horn"),bCity?TEXT("N  destination     /     V  street travel     /     M  map"):TEXT("N  destination     /     M  map     /     G  river run"),
-            TEXT("T  time     /     P  weather     /     Y  clock"),TEXT("F  service or visit     /     F3  timing     /     F1  close")};
-        Box(Dark,Margin,Y,364.f,144.f);
-        for (int32 I=0;I<UE_ARRAY_COUNT(Lines);++I) Text(Lines[I],I%2?Amber:Paper,Margin+10.f,Y+10.f+I*21.f,Font,.87f);
+        const TCHAR* Lines[] = {
+            TEXT("WASD  move or drive     /     Shift  jog"),
+            TEXT("E  interact or exit     /     I  wallet"),
+            TEXT("Space  jump or brake     /     O  car door"),
+            TEXT("C  camera     /     Z, X  indicators     /     H  horn"),
+            bCity ? TEXT("N  destination     /     V  street travel     /     M  map") :
+                    TEXT("N  destination     /     G  river run     /     M  map"),
+            TEXT("T  time     /     P  weather     /     Y  clock"),
+            TEXT("B  hazards     /     F  service     /     F3  timing")
+        };
+        Box(Dark,Margin,Margin,348.f,216.f);
+        Box(Amber,Margin,Margin,3.f,216.f);
+        Text(TEXT("Controls"),Paper,Margin+13,Margin+9,Headline,1.1f);
+        Text(TEXT("F1 to close"),Amber,Margin+255,Margin+12,Font,.8f);
+        for (int32 I=0; I<UE_ARRAY_COUNT(Lines); ++I)
+            Text(Lines[I],Paper,Margin+13,Margin+43+I*23,Font,.88f);
     }
     const float Base = Height - 76.f;
-    const bool bCompact = Width < 760.f;
-    Box(Dark, Margin, Base, bCompact ? 247.f : 373.f, 49.f);
-    Text(bInCar ? TEXT("WASD  drive   /   Space  brake   /   E  exit")
-        : TEXT("WASD  move   /   Shift  jog   /   Space  jump"),
-        Paper, Margin + 12.f, Base + 7.f, Font, bCompact ? .83f : .96f);
-    Text(bCity ? TEXT("Mouse  look   /   R  reset   /   Esc  pause")
-        : TEXT("F1 controls   /   N waypoint   /   Esc pause"),
-        Amber, Margin + 12.f, Base + 27.f, Font, bCompact ? .81f : .88f);
-
     if (bInCar)
     {
-        const float SpeedX = Width - Margin - 153.f;
-        Box(Dark, SpeedX, Base - 13.f, 153.f, 62.f);
-        Text(FString::Printf(TEXT("%d"), FMath::RoundToInt(Car->GetSpeedKph())),
-            Paper, SpeedX + 13.f, Base - 6.f, Headline, 1.58f);
-        Text(TEXT("km/h"), Amber, SpeedX + 96.f, Base + 11.f, Font, .92f);
-        Text(FString::Printf(TEXT("%s  ·  %s  ·  %.0f%% fuel"),Car->GetVehicleLabel(),
-            Car->GetGear()<0?TEXT("R"):*FString::FromInt(Car->GetGear()),Car->GetFuel()*100),
-            Paper,SpeedX+10.f,Base+29.f,Font,.74f);
+        const float SpeedX = Width - Margin - 150.f;
+        Box(Dark, SpeedX, Base - 15.f, 150.f, 65.f);
+        const FString Gear = Car->GetGear() < 0 ? TEXT("R") : FString::FromInt(Car->GetGear());
+        Text(FString::FromInt(FMath::RoundToInt(Car->GetSpeedKph())), Paper,
+            SpeedX + 12.f, Base - 9.f, Headline, 1.68f);
+        Text(TEXT("km/h"), Amber, SpeedX + 91.f, Base + 10.f, Font, .93f);
+        Text(FString::Printf(TEXT("Gear %s    ·    Fuel %.0f%%"), *Gear, Car->GetFuel()*100.f),
+            Paper, SpeedX + 12.f, Base + 29.f, Font, .87f);
     }
     if (bCity)
     {
@@ -151,27 +160,24 @@ void ARiverfrontHUD::DrawHUD()
         Text(TEXT("© OpenStreetMap contributors"), Paper, CreditX + 7.f, Height - 21.f, Font, .77f);
     }
 
-    const FString Notice=Driver->ActivityText();
-    if (!Notice.IsEmpty())
+    const auto Message = [&](const FString& Value, float Y, bool bAction)
     {
-        const float W=FMath::Min(Width-2*Margin,440.f);
-        Box(Dark,(Width-W)*.5f,Base-92,W,27);
-        Text(Notice,Paper,(Width-W)*.5f+9,Base-86,Font,.83f);
-    }
-    const FString Place=Driver->PlacePrompt();
-    const FString Hint = !Place.IsEmpty()?Place:bInCar ? Car->GetHint() : Car
-        ? FString::Printf(TEXT("Open door  ·  %s"), Car->GetVehicleLabel()) : FString();
-    if (!Hint.IsEmpty())
-    {
-        constexpr float HintWidth = 298.f;
-        const float HintX = (Width - HintWidth) * .5f;
-        const float HintY = Base - 56.f;
-        Box(Dark, HintX, HintY, HintWidth, 36.f);
-        if (!bInCar && Place.IsEmpty())
-        {
-            Box(Amber, HintX + 7.f, HintY + 7.f, 25.f, 22.f);
-            Text(TEXT("E"), Dark.CopyWithNewOpacity(1.f), HintX + 15.f, HintY + 9.f, Font, .89f);
-        }
-        Text(Hint, Paper, HintX + (bInCar || !Place.IsEmpty() ? 10.f : 43.f), HintY + 9.f, Font, .92f);
-    }
+        if (Value.IsEmpty()) return;
+        float W = 0, H = 0;
+        GetTextSize(Value,W,H,Font,1.f);
+        const float MaxWidth = FMath::Max(20.f,Width-2*Margin-28.f);
+        const float Size = FMath::Min(.98f, MaxWidth / FMath::Max(1.f,W));
+        const float MessageWidth = FMath::Min(MaxWidth,W*Size)+28.f;
+        const float X = (Width-MessageWidth)*.5f;
+        Box(Dark,X,Y,MessageWidth,36.f);
+        if (bAction) Box(Amber,X,Y,3.f,36.f);
+        Text(Value,bAction ? Paper : Amber,X+14.f,Y+9.f,Font,Size);
+    };
+
+    const FString Place = Driver->PlacePrompt();
+    const FString Hint = !Place.IsEmpty() ? Place : bInCar ? Car->GetHint() : Car
+        ? FString::Printf(TEXT("E   Open door  ·  %s"),Car->GetVehicleLabel()) : FString();
+    const float HintY = bInCar ? Base-58.f : Height-Margin-40.f;
+    Message(Driver->ActivityText(),Hint.IsEmpty() ? HintY : HintY-40.f,false);
+    Message(Hint,HintY,true);
 }

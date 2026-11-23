@@ -1,4 +1,5 @@
 #include "RiverfrontWorld.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "DistrictLoadProgress.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
@@ -393,7 +394,11 @@ void ARiverfrontWorld::BuildFrontage()
             const int32 Floors = City.RandRange(2, 4) + (Style == 3 ? 1 : 0);
             const ETint Wall = Style == 0 ? ETint::Terracotta
                 : Style == 2 ? ETint::FacadeStone : ETint::Plaster;
-            if (Bank < 0 || Index < 2 || Index > 4)
+            if (Bank > 0 && Index == 5)
+            {
+                FRiverfrontFirstMorningWorld::Build(*this);
+            }
+            else if (Bank < 0 || Index < 2 || Index > 4)
             {
                 DetailFrontage(X, FrontY, Bank, Width, Depth, Floors, Wall, Style);
             }

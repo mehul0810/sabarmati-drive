@@ -7,9 +7,12 @@
 class SWidget;
 class FReply;
 class ACameraActor;
+class ALevelSequenceActor;
+enum class ERiverfrontLifeMenu : uint8;
 class ARiverfrontWorld;
+class ARiverfrontPedestrian;
 
-enum class ERiverSiteKind : uint8 { Visit, Tea, Print, Service };
+enum class ERiverSiteKind : uint8 { Visit, Tea, Print, Service, Wardrobe, ClothesShop };
 struct FRiverSite
 {
     FName Id;
@@ -51,7 +54,7 @@ protected:
     void SetupInputComponent() override;
 
 private:
-    enum class EScreen : uint8 { Title, Playing, Paused };
+    enum class EScreen : uint8 { Title, Playing, Paused, Life };
 
     EScreen Screen = EScreen::Title;
     TSharedPtr<SWidget> Overlay;
@@ -75,6 +78,33 @@ private:
     float BestTrial=0.f;
     double TrialStart=0., MessageUntil=0.;
     FString InteractionMessage;
+    void BeginLifeSession();
+    void FinishWakeup();
+    void PlayWakeup();
+    void SaveLifeCheckpoint();
+    void OpenWallet();
+    void OpenLifeMenu(ERiverfrontLifeMenu Page);
+    void CloseLifeMenu();
+    void RefreshLifeAppearance();
+    void PrepareFittingCamera();
+    bool UpdatePrintDelivery(ERiverSiteKind Kind);
+    void PointToChai();
+    ARiverfrontPedestrian* NearbyCompanion() const;
+    void GreetCompanion(ARiverfrontPedestrian& Person);
+    TArray<TWeakObjectPtr<ARiverfrontPedestrian>> Neighbours;
+    bool HasLifeCheckpoint() const;
+    bool bLifeActive = false;
+    bool bParcelInHand = false;
+    bool bParcelDelivered = false;
+    bool bWaking = false;
+    bool bHasExperiencedWake = false;
+    bool bHaveLastCheckpoint = false;
+    FVector LastLifeLocation = FVector::ZeroVector;
+    float LastLifeYaw = 0.f;
+    FRotator BeforeFittingRotation = FRotator::ZeroRotator;
+    FTimerHandle WakeupTimer, LifeSaveTimer;
+    TWeakObjectPtr<ACameraActor> LifeCamera;
+    TWeakObjectPtr<ALevelSequenceActor> WakeupSequence;
     void LoadSites();
     void CycleDestination();
     void TravelToDestination();
@@ -91,6 +121,7 @@ private:
 
     void ShowTitle();
 #if !UE_BUILD_SHIPPING
+    void RunMorningReview();
     void RunRenderingBenchmark();
     void RunDistrictReview();
     void RunSystemsReview();

@@ -11,6 +11,33 @@ profiles = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(profiles)
 
 
+class MacGameLauncherTests(unittest.TestCase):
+    def test_size_presets_start_the_same_game(self):
+        import shutil
+        import subprocess
+
+        project = SCRIPT.parents[1]
+        launchers = ("Play Sabarmati Drive.command", "Play Sabarmati Drive 4K.command")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "Scripts"
+            scripts.mkdir()
+            (scripts / "run-mac.sh").write_text('printf "%s\\n" "$@"\n')
+            for name in launchers:
+                shutil.copyfile(project / name, root / name)
+
+            def arguments(name):
+                return subprocess.check_output(["bash", str(root / name)], text=True).splitlines()
+
+            self.assertEqual(arguments(launchers[0]), ["--game", "--no-build", "--", "-SabarmatiPublicAvatar"])
+            self.assertEqual(arguments(launchers[1]), ["--game", "--no-build", "--4k", "--", "-SabarmatiPublicAvatar"])
+            binary = root / "Saved/MacPackage/SabarmatiPrototype.app/Contents/MacOS/SabarmatiPrototype"
+            binary.parent.mkdir(parents=True)
+            binary.touch(mode=0o755)
+            self.assertEqual(arguments(launchers[0]), ["--standalone"])
+            self.assertEqual(arguments(launchers[1]), ["--standalone", "--4k"])
+
+
 class MacOfflineProfileTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()

@@ -9,4 +9,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontHUD : public AHUD
     GENERATED_BODY()
 public:
     virtual void DrawHUD() override;
+
+private:
+    float WelcomeUntil = -1.f;
 };
