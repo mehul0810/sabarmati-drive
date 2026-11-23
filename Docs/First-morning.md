@@ -32,6 +32,23 @@ The indigo shirt cost ₹1,250. A separate process continued at the counter with
 
 All three relatives waited at the kerb, crossed and visited the shop. The observed family displacement was 34.31 m. Both individual visitors moved, and the visiting printmaker reached the counter. The native Unreal tests `Sabarmati.FirstMorning.OfflineProfile` and `Sabarmati.FirstMorning.FinderProfile` passed, along with 29 project checks.
 
+## Rendering and sustained performance
+
+The two short night drives used the same compiled riverfront game and M1 Max. The only difference in recorded settings was the drawable size. Both used TAA, 100% primary and secondary scale, fixed resolution, frame smoothing on, and VSync and frame cap off. The game checked the road beneath the car on each chase frame.
+
+| Windowed night drive | Chase frames | Sample and distance | Median | p95 | p99 |
+|---|---:|---|---:|---:|---:|
+| Standard, 1600×900 | 334 | 5.376 s, 45.01 m | 16.12 ms | 16.67 ms | 16.77 ms |
+| Fitted Retina, 3280×1845 | 155 | 5.428 s, 45.44 m | 35.27 ms | 45.31 ms | 47.11 ms |
+
+The standard and Retina runs recorded road support on 334/334 and 155/155 chase frames. Their raw measurements and PNGs are under `Saved/RenderingBenchmarks/20261123-171737-EC65A2CE` and `Saved/RenderingBenchmarks/20261123-171841-858F2E39`. The Retina run used the Mac’s available desktop area. Sustained 3840×2160 remains unmeasured.
+
+The cooked app then completed **1,200.016 seconds at 1568×882** on the M1 Max. macOS reported AC power before and after the run. Across 28 loops the player walked 1,766.47 m and drove 5,426.52 m. The 72,171 wall-frame samples had a median of 16.15 ms, p95 of 16.74 ms and p99 of 34.95 ms. There were 743 frames over 33.33 ms and eight over 100 ms. The worst took 315.48 ms. First- and last-minute p95 were 16.90 and 16.36 ms.
+
+A normal 1280×720 game window was open on the same Mac. Unreal measured 4,446 focused frames at p95 16.89 ms and 67,725 background frames at p95 16.60 ms. This run establishes mixed-focus endurance. The earlier attempt was interrupted by a pause and resume during a driving loop and failed its reset check. Only the completed repeat was counted. See `Saved/StandaloneBenchmarks/C28B570E-D3A5-44F7-A3FA-8E01BA22EA20` for the raw data, frame-time report, power readings and window observations. Only the M1 Max was available for testing.
+
+The local arm64 Development ZIP is `Saved/MacPackage/Sabarmati-Drive-Mac-arm64.zip`, 444,639,833 bytes with SHA-256 `3836fd475571276b4e5f13340cd6c6249a4b0fc5b0095fc6027159d8ac4a8c9c`.
+
 ## Art and world scope
 
 Kesar Apartments and Sutra Cloth House are original buildings. The riverfront team used satellite imagery to study the west bank’s block spacing, roofs and service lanes, then used credited stone and asphalt scans for the close surfaces. Atal Bridge, the crossing and the rear lanes are useful places to inspect the result from street level. [Map and satellite references](../SourceAssets/AHMEDABAD-CITY-SOURCES.md) · [Surface and model sources](../SourceAssets/RIVERFRONT-SOURCES.md)
