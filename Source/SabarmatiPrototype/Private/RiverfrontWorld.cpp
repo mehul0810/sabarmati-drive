@@ -1,4 +1,5 @@
 #include "RiverfrontWorld.h"
+#include "DistrictLoadProgress.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -22,7 +23,8 @@ constexpr double StairHalfWidth = 156.0;
 constexpr double ChannelWidth = 26300.0;
 constexpr double NearWaterEdge = 2190.0;
 constexpr double ChannelCenter = NearWaterEdge - ChannelWidth * .5;
-constexpr double BridgeHalfLength = NearWaterEdge + 2750.0 - ChannelCenter;
+// The riverfront roads start at the 35.8 m inner kerb on both banks.
+constexpr double BridgeHalfLength = 3580.0 - ChannelCenter;
 constexpr double BankY(double Bank, double Distance)
 {
     return Bank * Distance + (Bank < 0.0 ? 2.0 * ChannelCenter : 0.0);
@@ -66,13 +68,18 @@ void ARiverfrontWorld::Build()
 
     LoadSurfaceMaterials();
 
+    DistrictLoadProgress::Reached(1);
     BuildBanks();
     BuildBridge();
     BuildAtalBridge();
     BuildRiverfrontCorridor();
+    DistrictLoadProgress::Reached(2);
     BuildFrontage();
     BuildStreetFurniture();
     BuildWestBankGarden();
+    DressStreetSurface();
+    DressMarketUtilities();
+    DistrictLoadProgress::Reached(3);
     BuildLighting();
     BuildWeather();
 }
@@ -88,7 +95,7 @@ void ARiverfrontWorld::LoadSurfaceMaterials()
         {ETint::Stone, TEXT("M_Concrete")}, {ETint::Water, TEXT("M_River")},
         {ETint::Retaining, TEXT("M_Retaining")}, {ETint::Plaster, TEXT("M_FacadePlaster")},
         {ETint::FacadeStone, TEXT("M_FacadeSandstone")}, {ETint::Terracotta, TEXT("M_FacadeTerracotta")},
-        {ETint::Glass, TEXT("M_FacadeGlazing")}, {ETint::Rail, TEXT("M_CoatedIron")},
+        {ETint::Glass, TEXT("M_DistrictWindow")}, {ETint::Rail, TEXT("M_CoatedIron")},
         {ETint::Leaf, TEXT("Foliage/M_LeafSprig")}, {ETint::RoadPaint, TEXT("M_RoadStripe")},
         {ETint::ClearGlass, TEXT("M_DistrictGlass")}, {ETint::Brass, TEXT("M_DistrictBrass")},
         {ETint::Timber, TEXT("M_DistrictTimber")}, {ETint::Canvas, TEXT("M_DistrictCanvas")},
@@ -404,10 +411,25 @@ void ARiverfrontWorld::BuildFrontage()
             Box(ETint::Retaining, FVector(X, Y, Height * .97 + 16), FVector(Width + 7, Depth + 7, 32));
             Box(ETint::FacadeStone, FVector(X + Width * .2, Y + Bank * Depth * .15, Height * .97 + 61),
                 FVector(Width * .35, Depth * .34, 123));
-            for (double Z = 330; Z < Height * .95; Z += 230)
+            const double Face = Y - Bank * Depth * .5;
+            for (double Z = 235.; Z < Height * .94; Z += 293.)
             {
-                Box(ETint::Shadow, FVector(X, Y - Bank * (Depth * .5 + 1), Z),
-                    FVector(Width * .77, 4, 76));
+                const int32 Bays = Index % 3 + 3;
+                for (int32 I = 0; I < Bays; ++I)
+                {
+                    const double BayWidth = Width * .85 / Bays;
+                    const double WindowX = X + (I - (Bays - 1) * .5) * BayWidth;
+                    Box(ETint::Glass, FVector(WindowX, Face - Bank * 4., Z), FVector(BayWidth * .69, 8., 131.));
+                    Box(ETint::FacadeStone, FVector(WindowX, Face - Bank * 16., Z + 71.), FVector(BayWidth * .80, 33., 10.));
+                    Box(ETint::Rail, FVector(WindowX, Face - Bank * 10., Z), FVector(4., 7., 131.));
+                }
+                if (Index % 3 == 0)
+                {
+                    Box(ETint::Retaining, FVector(X, Face - Bank * 35., Z - 65.), FVector(Width * .63, 77., 11.));
+                    Box(ETint::Rail, FVector(X, Face - Bank * 72., Z - 2.), FVector(Width * .63, 5., 5.));
+                    for (int32 Post = -2; Post <= 2; ++Post)
+                        Box(ETint::Rail, FVector(X + Width * .147 * Post, Face - Bank * 72., Z - 32.), FVector(4., 4., 60.));
+                }
             }
         }
     }
@@ -437,6 +459,7 @@ void ARiverfrontWorld::DetailFrontage(double X, double FrontY, double Bank, doub
         Box(ETint::Plaster, FVector(X + Side * (Width * .5 - 8), FrontY + Bank * Depth * .5, Height + 54),
             FVector(16, Depth, 90));
     }
+    DressFacade(X, FrontY, Bank, Width, Height, Style);
     const double RoofSide = Style % 2 == 0 ? 1.0 : -1.0;
     Box(Wall, FVector(X + RoofSide * Width * .23, FrontY + Bank * Depth * .65, Height + 83),
         FVector(Width * .27, Depth * .32, 165));
@@ -521,20 +544,34 @@ UStaticMesh* ARiverfrontWorld::StreetTreeMesh()
 int32 ARiverfrontWorld::PlaceStreetTree(UStaticMesh& Mesh, const FVector& Base, double Height,
     FRandomStream& AppearanceRandom)
 {
+    const bool Mature=FMath::Fmod(FMath::Abs(Base.X*.31+Base.Y*.17),10.)<6.5;
+    if (Mature && !MatureTree)
+        MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
+    UStaticMesh* Use=Mature && MatureTree?MatureTree.Get():&Mesh;
     UStaticMeshComponent* Tree = NewObject<UStaticMeshComponent>(this);
     AddInstanceComponent(Tree);
     Tree->SetupAttachment(GetRootComponent());
     Tree->SetMobility(EComponentMobility::Static);
-    Tree->SetStaticMesh(&Mesh);
+    Tree->SetStaticMesh(Use);
+    if (Use==MatureTree && MatureTree)
+    {
+        const int32 Leaf=Tree->GetMaterialIndex(TEXT("jacaranda_tree_leaves"));
+        if (Leaf!=INDEX_NONE)
+        {
+            if (!CanopyLeaves) CanopyLeaves=UMaterialInstanceDynamic::Create(Tree->GetMaterial(Leaf),this);
+            if (CanopyLeaves) Tree->SetMaterial(Leaf,CanopyLeaves);
+        }
+    }
     Tree->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Tree->SetGenerateOverlapEvents(false);
     Tree->SetCanEverAffectNavigation(false);
-    const FBoxSphereBounds Bounds = Mesh.GetBounds();
-    const double Scale = Height / FMath::Max(1.0, 2.0 * Bounds.BoxExtent.Z);
+    const FBoxSphereBounds Bounds = Use->GetBounds();
+    const double Scale = Height*(Use==MatureTree?1.55:1.) / FMath::Max(1.0, 2.0 * Bounds.BoxExtent.Z);
     const double Ground = Base.Z - (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
     const FRotator Turn(0.0, AppearanceRandom.FRandRange(-180.f, 180.f), 0.0);
     Tree->SetRelativeTransform(FTransform(Turn, FVector(Base.X, Base.Y, Ground), FVector(Scale)));
     Tree->RegisterComponent();
+    if (Use==MatureTree && MatureTree) return 0;
     if (IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get()))
     {
         // Masked scans in a bounded volume fill out branch sprays without billboard-facing motion.

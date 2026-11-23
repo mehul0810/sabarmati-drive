@@ -50,6 +50,11 @@ class BenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incomplete samples"):
             report.inspect_run(self.run_dir)
 
+    def test_rejects_a_project_shader_fallback(self):
+        (self.run_dir / "engine.log").write_text("LogMaterial: Failed to compile Material /Game/Sabarmati/Riverfront/Test for SF_METAL_SM5")
+        with self.assertRaisesRegex(ValueError, "shader fell back"):
+            report.inspect_run(self.run_dir)
+
     def test_registry_paths_and_rights(self):
         entries = json.loads((ROOT / "SourceAssets/asset-registry.json").read_text())["assets"]
         self.assertEqual(len(entries), len({asset["id"] for asset in entries}))

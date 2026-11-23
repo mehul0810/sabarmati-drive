@@ -90,6 +90,17 @@ void ARiverfrontWorld::BuildWeather()
                 UGameplayStatics::SpawnSoundAtLocation(this,River,Shore,FRotator::ZeroRotator,.34f,1.f, FMath::Abs(Shore.X)*.0003);
         }
     }
+    if (!IsCityMode())
+    {
+        if (auto* Voices=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_MarketVoices.S_MarketVoices")))
+        {
+            for (const FVector& P:{GetTeaCounter()+FVector(150,60,50),FVector(43400,-28700,145),FVector(-5350,2640,145)})
+                UGameplayStatics::SpawnSoundAtLocation(this,Voices,P,FRotator::ZeroRotator,.16f,.94f+FMath::Frac(FMath::Abs(P.X)*.007f)*.12f,2.f);
+        }
+        if (auto* Bed=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_DistantTraffic.S_DistantTraffic")))
+            for (const FVector& P:{FVector(3150,4090,95),FVector(-8120,4090,95),FVector(3000,-26010,95)})
+                UGameplayStatics::SpawnSoundAtLocation(this,Bed,P,FRotator::ZeroRotator,.23f,1.f,1.3f);
+    }
     SetActorTickEnabled(true);
 }
 
@@ -134,6 +145,8 @@ void ARiverfrontWorld::UpdateWeather(float Dt)
     const float Prior=RainAmount, OldWet=SurfaceWetness;
     RainAmount=FMath::FInterpConstantTo(RainAmount,Weather==2?1.f:0.f,Dt,.30f);
     SurfaceWetness=FMath::FInterpConstantTo(SurfaceWetness,Weather==2?1.f:0.f,Dt,Weather==2?.12f:.035f);
+    if (CanopyLeaves && !FMath::IsNearlyEqual(Prior,RainAmount))
+        CanopyLeaves->SetScalarParameterValue(TEXT("WindCm"),2.8f+RainAmount*7.5f);
     if (RoadWeather && !FMath::IsNearlyEqual(OldWet,SurfaceWetness))
     {
         RoadWeather->SetScalarParameterValue(TEXT("Wetness"),SurfaceWetness);

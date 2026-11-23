@@ -141,6 +141,62 @@
         80
       ],
       "reach_cm": 600
+    },
+    {
+      "id": "ashram",
+      "name": "Ashram Road",
+      "action": "Record this street",
+      "note": "Ashram Road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        324395,
+        54925,
+        90
+      ],
+      "reach_cm": 650,
+      "street_heading": -7.98
+    },
+    {
+      "id": "cg",
+      "name": "CG Road",
+      "action": "Record this street",
+      "note": "CG Road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        217098,
+        147812,
+        90
+      ],
+      "reach_cm": 650,
+      "street_heading": 163.56
+    },
+    {
+      "id": "sg-service",
+      "name": "SG Highway service road",
+      "action": "Record this street",
+      "note": "SG Highway service road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        227928,
+        654628,
+        90
+      ],
+      "reach_cm": 650,
+      "street_heading": 156.01
+    },
+    {
+      "id": "city-landing",
+      "name": "Atal west approach",
+      "action": "Record the riverfront approach",
+      "note": "Atal west approach added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        376,
+        25263,
+        68
+      ],
+      "reach_cm": 500,
+      "street_heading": 1.0302
     }
   ]
 }

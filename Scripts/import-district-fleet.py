@@ -45,9 +45,9 @@ for file in sorted(src.glob("SM_Traffic*.glb")):
         if key not in surfaces: raise RuntimeError(f"{file.stem}: unknown surface {key}")
         mesh.set_material(i,surfaces[key])
     sub=ue.get_editor_subsystem(ue.StaticMeshEditorSubsystem)
-    if sub:
-        spec=ue.StaticMeshReductionOptions(auto_compute_lod_screen_size=False,reduction_settings=[
-            ue.StaticMeshReductionSettings(percent_triangles=f,screen_size=s) for f,s in ((1.,1.),(.65,.16),(.35,.055))])
-        if sub.set_lods(mesh,spec)!=3:raise RuntimeError("LOD "+file.stem)
+    if not sub:raise RuntimeError("Use the full Unreal Editor with -ExecutePythonScript for mesh LODs.")
+    spec=ue.StaticMeshReductionOptions(auto_compute_lod_screen_size=False,reduction_settings=[
+        ue.StaticMeshReductionSettings(percent_triangles=f,screen_size=s) for f,s in ((1.,1.),(.65,.16),(.35,.055))])
+    if sub.set_lods(mesh,spec)!=3:raise RuntimeError("LOD "+file.stem)
     if not assets.save_loaded_asset(mesh,False):raise RuntimeError(path)
 ue.log("SABARMATI FLEET SAVED")

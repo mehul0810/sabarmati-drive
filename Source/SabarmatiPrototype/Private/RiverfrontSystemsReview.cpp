@@ -128,17 +128,66 @@ public:
             PC.SetControlRotation(FRotator(0,90,0));break;
         case 19:
         {
-            int32 Crossed=0;
-            for (TActorIterator<ARiverfrontPedestrian> P(PC.GetWorld());P;++P) Crossed+=P->CrossingsCompleted();
+            int32 Crossed=0,Shopped=0;
+            for (TActorIterator<ARiverfrontPedestrian> P(PC.GetWorld());P;++P)
+            { Crossed+=P->CrossingsCompleted(); Shopped+=P->ShopVisits(); }
+            if (!Shopped) return Fail(TEXT("no customer reached either counter"));
             if (!Crossed && Age<58) return true;
             if (!Crossed || Traffic->GetTravelMetres()<100. || !Traffic->GetStops() || !Traffic->GetTurns()) return Fail(TEXT("traffic stops, turns, or completed pedestrian crossing"));
             Shot(TEXT("crossing"));
-            const FString Result=FString::Printf(TEXT("doors=1\ncockpit=1\nbonnet=1\nhazards=1\nfour_wheels=1\nbrake=1\nreverse=1\nwet_roads=1\nshop=1\nvisits=%d\ntraffic=%d\nstops=%d\nturn_samples=%d\ntraffic_metres=%.1f\ncrossings=%d\n"),
-                PC.Discovered(),Traffic->ActiveCount(),Traffic->GetStops(),Traffic->GetTurns(),Traffic->GetTravelMetres(),Crossed);
+            const FString Result=FString::Printf(TEXT("doors=1\ncockpit=1\nbonnet=1\nhazards=1\nfour_wheels=1\nbrake=1\nreverse=1\nwet_roads=1\nshop=1\nvisits=%d\ntraffic=%d\nstops=%d\nturn_samples=%d\ntraffic_metres=%.1f\ncrossings=%d\nshopper_visits=%d\n"),
+                PC.Discovered(),Traffic->ActiveCount(),Traffic->GetStops(),Traffic->GetTurns(),Traffic->GetTravelMetres(),Crossed,Shopped);
             if (!Write(TEXT("systems.txt"),Result)) return Fail(TEXT("write review evidence"));
             break;
         }
         case 20:
+        {
+            const FVector Door=Car->GetActorTransform().TransformPosition(FVector(12,-174,37));
+            if (!Walker->TeleportTo(Door,Car->GetActorRotation())) return Fail(TEXT("return to parked hatch"));
+            Tap(EKeys::E); break;
+        }
+        case 21:
+            if (PC.GetPawn()!=Car.Get()) return Fail(TEXT("challenge driver"));
+            Tap(EKeys::G); break;
+        case 22:
+            if (!PC.NavigationText().Contains(TEXT("Gate"))) return Fail(TEXT("first trial gate"));
+            Key(EKeys::W,IE_Pressed); break;
+        case 23:
+        {
+            const double Remaining=19400.-Car->GetActorLocation().X;
+            const double Velocity=Car->GetSpeedKph()/.036;
+            if (Remaining>100.+Velocity*Velocity/(2.*720.))
+            {
+                if (Age>65.) return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f; %s"),
+                    Car->GetActorLocation().X,Car->GetActorLocation().Y,*PC.NavigationText()));
+                return true;
+            }
+            Key(EKeys::W,IE_Released); Key(EKeys::SpaceBar,IE_Pressed); break;
+        }
+        case 24:
+            if (Car->GetSpeedKph()>.5f) return true;
+            if (!PC.ActivityText().Contains(TEXT("finished"))) return Fail(*FString::Printf(TEXT("finish line X %.0f; %s"),
+                Car->GetActorLocation().X,*PC.NavigationText()));
+            Key(EKeys::SpaceBar,IE_Released);
+            Shot(TEXT("finish-line")); break;
+        case 25:
+            if (!Car->TeleportTo(FVector(-14100,5380,72),FRotator::ZeroRotator)) return Fail(TEXT("forecourt access"));
+            break;
+        case 26:
+            if (!PC.PlacePrompt().Contains(TEXT("Refuel")) || Car->GetFuel()>=1.f) return Fail(TEXT("fuel consumed and service pump available"));
+            Tap(EKeys::F); break;
+        case 27:
+        {
+            float Record=0.f;
+            if (Car->GetFuel()<.99999f || Car->GetCondition()<.99999f || !PC.VerifyReviewProfile(Record))
+                return Fail(TEXT("fuel, repair and reload local river run record"));
+            if (!Write(TEXT("exploration.txt"),FString::Printf(TEXT("gates=4\nriver_run_seconds=%.2f\nrefuelled=1\nrepaired=1\nreloaded_visits=2\n"),Record)))
+                return Fail(TEXT("write exploration results"));
+            Tap(EKeys::R); break;
+        }
+        case 28: Tap(EKeys::E);break;
+        case 29:
+            if (PC.GetPawn()!=Walker.Get()) return Fail(TEXT("release service vehicle"));
             if (!Minutes) return Finish();
             Stage=99; EnduranceStart=LastFrame=Now;LapStart=0.;Leg=-1;
             if (!Write(TEXT("endurance.csv"),TEXT("elapsed_s,minute,leg,wall_ms,game_ms,render_ms,gpu_ms\n"))) return Fail(TEXT("open endurance file"));

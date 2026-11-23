@@ -11,6 +11,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -312,6 +313,7 @@ void ARiverfrontCharacter::ResetWalk()
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const FVector Spawn = Mode ? Mode->GetWalkSpawn() : ARiverfrontWorld::SpawnPoint;
     const double Yaw = Mode ? Mode->GetSpawnYaw() : ARiverfrontWorld::SpawnYaw;
+    for (TActorIterator<ARiverfrontWorld> It(GetWorld()); It; ++It) It->PrepareCityTravel(Spawn);
     if (TeleportTo(Spawn, FRotator(0, Yaw, 0)))
     {
         if (Controller)

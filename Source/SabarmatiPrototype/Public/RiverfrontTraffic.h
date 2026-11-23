@@ -4,6 +4,8 @@
 #include "RiverfrontTraffic.generated.h"
 
 class UBoxComponent;
+class USpotLightComponent;
+class ARiverfrontWorld;
 class USplineComponent;
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
@@ -17,12 +19,17 @@ public:
     ARiverfrontRoadAgent();
     bool Assemble(int32 Style, int32 Variant);
     bool MoveOnRoad(const FVector& Position, const FRotator& Heading, double Travel, bool Near);
+    void UpdateLights(bool Night, bool Stopping, bool Project);
     double HalfLength=200., HalfWidth=85., TyreRadius=32.;
     bool IsEmergency=false;
 private:
     UPROPERTY() TObjectPtr<UBoxComponent> Bounds;
     UPROPERTY() TArray<TObjectPtr<USceneComponent>> Wheels;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Beacons;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> HeadLens;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
+    UPROPERTY() TObjectPtr<USpotLightComponent> DippedBeam;
+    int32 LightState=-1;
     float Spin=0;
 };
 
@@ -60,6 +67,7 @@ private:
     float Elapsed=0;
     double TravelCm=0;
     int32 Stops=0, Turns=0, LastPhase=-1;
+    TWeakObjectPtr<ARiverfrontWorld> District;
     bool bCity=false;
     void Lane(const TArray<FVector>& Nodes, bool Reverse);
     void SetUpSignals();

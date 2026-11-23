@@ -1,4 +1,5 @@
 #include "RiverfrontPedestrian.h"
+#include "EngineUtils.h"
 
 #include "Animation/AnimSequence.h"
 #include "CollisionQueryParams.h"
@@ -171,8 +172,8 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
     const FPedestrianRoute Routes[] = {
         {{-6850, 3504, 2}, {-4650, 3504, 2}, 38, .71, 131},
         {{-4100, 3060, 2}, {-980, 3060, 2}, 75, .25, 123},
-        {{-640, 3180, 2}, {2120, 3180, 2}, 85, .20, 143},
-        {{4200, 3110, 2}, {6700, 3110, 2}, 82, .62, 117},
+        {{-640, 3050, 2}, {2120, 3050, 2}, 42, .20, 143},
+        {{4200, 3005, 2}, {6700, 3005, 2}, 38, .62, 117},
         {{-7130, 2360, -84}, {-6070, 2360, -84}, 63, .34, 121},
         {{-6800, -25424, 2}, {-4560, -25424, 2}, 38, .52, 119},
         {{-4110, -24980, 2}, {-130, -24980, 2}, 85, .27, 137},
@@ -214,6 +215,22 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
         }
     }
 
+    // Shop customers use the very same physical doorways and counter aisles as the player.
+    if (TActorIterator<ARiverfrontWorld> District(&World); District)
+    {
+        for (const bool Tea:{true,false})
+        {
+            const auto& Path=District->GetShopVisit(Tea);
+            if (Path.Num()<3) continue;
+            if (auto* Customer=World.SpawnActor<ARiverfrontPedestrian>(Path[0],FRotator::ZeroRotator))
+            {
+                const bool Alternate=Tea && SecondReady;
+                Customer->Configure(Alternate?Second:Model,Alternate?SecondWalk:Walk,Path[0],Path.Last(),1.,0.,Tea?102.:116.,Tea?12:7);
+                Customer->Errand=Path; Customer->ErrandStep=1;
+                Customer->SetActorLocation(Path[0]); Customer->RestLeft=Tea?1.8:7.2; Customer->SetMoving(false);
+            }
+        }
+    }
     // Staggered walkers start on opposite kerbs. They enter only on the walk phase.
     for (int32 I=0;I<2;++I)
     {
@@ -261,6 +278,10 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     ApplyClothingColor(*Mesh, TEXT("top_seams"), FColor(Shirt.R * 83 / 100, Shirt.G * 83 / 100, Shirt.B * 83 / 100));
     ApplyClothingColor(*Mesh, TEXT("bottom_denim"), Trousers[(Variant / 3) % UE_ARRAY_COUNT(Trousers)]);
 
+    Gait=Walk;
+    const FString IdlePath=FPackageName::GetLongPackagePath(Walk->GetOutermost()->GetName())+TEXT("/A_Idle.A_Idle");
+    IdlePose=LoadObject<UAnimSequence>(nullptr,*IdlePath);
+    if (IdlePose && IdlePose->GetSkeleton()!=Walk->GetSkeleton()) IdlePose=nullptr;
     Mesh->PlayAnimation(Walk, true);
     Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
     Mesh->SetPlayRate(FMath::Clamp(static_cast<float>(Speed / (132.0 * BuildScale)), .75f, 1.25f));
@@ -276,6 +297,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
     const APawn* Player=PC?PC->GetPawn():nullptr;
     const bool Far=Player && FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(12500.);
     SetActorTickInterval(Far?.22f:.035f);
+    if (!Errand.IsEmpty()) {TickErrand(DeltaSeconds);return;}
     if (bAtCrosswalk)
     {
         const auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
@@ -318,7 +340,9 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
 
 void ARiverfrontPedestrian::SetMoving(bool Moving)
 {
-    Mesh->SetPlayRate(Moving?FMath::Clamp(float(Speed/132.),.76f,1.26f):0.f);
+    UAnimSequence* Clip=Moving || !IdlePose?Gait.Get():IdlePose.Get();
+    if (Clip) Mesh->PlayAnimation(Clip,true);
+    Mesh->SetPlayRate(Moving?FMath::Clamp(float(Speed/132.),.76f,1.26f):(IdlePose?.87f:0.f));
 }
 
 void ARiverfrontPedestrian::UpdateRouteTransform()
@@ -327,4 +351,46 @@ void ARiverfrontPedestrian::UpdateRouteTransform()
     // The imported avatar faces -Y; add 90 degrees to align it to the route tangent.
     const FRotator Facing(0, Sample.Forward.Rotation().Yaw + 90.0, 0);
     SetActorLocationAndRotation(Sample.Position, Facing, false);
+}
+
+ARiverfrontPedestrian* ARiverfrontPedestrian::SpawnStreetWalker(UWorld& World,const FVector& A,const FVector& B,int32 Variant)
+{
+    const FPedestrianRoute Route{A,B,19.,FMath::Frac(.137*(Variant+1)),111.+(Variant%39)};
+    double Ground=0.;
+    if (!ValidateCircuit(World,Route,Ground,Variant)) return nullptr;
+    const bool Kurta=Variant%3==0;
+    auto* Model=LoadObject<USkeletalMesh>(nullptr,Kurta?
+        TEXT("/Game/Sabarmati/Riverfront/People/Kurta/SK_RiverResidentKurta.SK_RiverResidentKurta"):
+        TEXT("/Game/Sabarmati/Riverfront/People/SK_RiverResident.SK_RiverResident"));
+    auto* Clip=LoadObject<UAnimSequence>(nullptr,Kurta?
+        TEXT("/Game/Sabarmati/Riverfront/People/Kurta/A_WalkAlt.A_WalkAlt"):
+        TEXT("/Game/Sabarmati/Riverfront/People/A_Walk.A_Walk"));
+    if (!Model || !Clip || Clip->GetSkeleton()!=Model->GetSkeleton()) return nullptr;
+    const FVector Start(A.X,A.Y,Ground),End(B.X,B.Y,Ground);
+    auto* Walker=World.SpawnActor<ARiverfrontPedestrian>(Start,(B-A).Rotation());
+    if (Walker) Walker->Configure(Model,Clip,Start,End,Route.Radius,Route.StartFraction,Route.Speed,Variant);
+    return Walker;
+}
+
+void ARiverfrontPedestrian::TickErrand(float Delta)
+{
+    if (RestLeft>0.)
+    {
+        RestLeft-=Delta;
+        if (RestLeft<=0.) SetMoving(true);
+        return;
+    }
+    const FVector To=Errand[ErrandStep]-GetActorLocation();
+    const FVector Facing=To.GetSafeNormal();
+    const double Step=FMath::Min(To.Size(),Speed*Delta);
+    SetActorLocationAndRotation(GetActorLocation()+Facing*Step,FRotator(0,Facing.Rotation().Yaw+90.,0));
+    if (To.Size()>4.) return;
+    if (ErrandStep==Errand.Num()-1 || ErrandStep==0)
+    {
+        if (ErrandStep) ++CounterVisits;
+        ErrandDirection=-ErrandDirection;
+        RestLeft=ErrandStep?6.+FMath::Fmod(Speed,4.):11.+FMath::Fmod(Speed,7.);
+        SetMoving(false);
+    }
+    ErrandStep+=ErrandDirection;
 }

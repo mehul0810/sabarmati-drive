@@ -118,7 +118,7 @@ void ARiverfrontHUD::DrawHUD()
     {
         const float Y=82;
         const TCHAR* Lines[]={TEXT("WASD  move or drive     /     E  interact or exit"),TEXT("O  front door     /     C  chase, cockpit, bonnet"),
-            TEXT("Z / X  indicators     /     B  hazards     /     H  horn"),TEXT("N  destination     /     M  map     /     G  river run"),
+            TEXT("Z / X  indicators     /     B  hazards     /     H  horn"),bCity?TEXT("N  destination     /     V  street travel     /     M  map"):TEXT("N  destination     /     M  map     /     G  river run"),
             TEXT("T  time     /     P  weather     /     Y  clock"),TEXT("F  service or visit     /     F3  timing     /     F1  close")};
         Box(Dark,Margin,Y,364.f,144.f);
         for (int32 I=0;I<UE_ARRAY_COUNT(Lines);++I) Text(Lines[I],I%2?Amber:Paper,Margin+10.f,Y+10.f+I*21.f,Font,.87f);

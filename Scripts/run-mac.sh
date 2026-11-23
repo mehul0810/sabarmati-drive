@@ -8,7 +8,7 @@ Usage: bash Scripts/run-mac.sh [--editor|--game|--package] [--no-build] [--4k] [
 Both game presets open a resizable window. The default targets 1600x900; --4k
 uses Retina backing pixels up to 3840x2160. Both fit the desktop work area.
 --editor opens the source for Play and import.
---package cooks a local Development .app under Saved/MacPackage (no upload or signing).
+--package cooks a local Development .app under Saved/MacPackage (local ad-hoc signature).
 USAGE
 }
 
@@ -65,9 +65,7 @@ if [[ "$mode" == package ]]; then
         printf 'Unreal Automation Tool was not found in "%s".\n' "$engine" >&2
         exit 1
     fi
-    exec bash "$uat" BuildCookRun "-project=$project" -platform=Mac -architecture=arm64 \
-        -clientconfig=Development -build -cook -map=/Engine/Maps/Entry -stage -package -archive \
-        "-archivedirectory=$root/Saved/MacPackage" "$@"
+    exec bash "$root/Scripts/package-local-mac.sh" "$@"
 fi
 
 if [[ "$skip_build" == false ]]; then

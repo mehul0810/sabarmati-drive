@@ -3,7 +3,9 @@
 #include "RiverfrontCar.h"
 #include "RiverfrontPedestrian.h"
 #include "RiverfrontCrossings.h"
+#include "RiverfrontWorld.h"
 #include "Components/BoxComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Dom/JsonObject.h"
@@ -57,6 +59,31 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         const FLinearColor Colors[]={FLinearColor(.08,.15,.14),FLinearColor(.18,.27,.30),FLinearColor(.35,.16,.082),FLinearColor(.37,.36,.29)};
         auto* Instance=Shell->CreateDynamicMaterialInstance(Paint);
         if (Instance) Instance->SetVectorParameterValue(TEXT("Tint"),Colors[Variant%4]);
+    }
+    if (auto* Lens=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
+    {
+        const auto Fit=[&](const TCHAR* Slot,const FLinearColor& Tint)
+        {
+            auto* Material=UMaterialInstanceDynamic::Create(Lens,this);
+            Material->SetVectorParameterValue(TEXT("LensTint"),Tint);
+            const int32 Index=Shell->GetMaterialIndex(Slot);
+            if (Index!=INDEX_NONE) Shell->SetMaterial(Index,Material);
+            return Material;
+        };
+        HeadLens=Fit(TEXT("lamp"),FLinearColor(.79,.75,.61));
+        TailLens=Fit(TEXT("red"),FLinearColor(.69,.027,.012));
+        UpdateLights(false,false,false);
+    }
+    if (auto* Person=MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident")))
+    {
+        const bool Open=S.WheelCount<4;
+        const double DriverX=Open?(S.WheelCount==3?41.:2.):(S.Length>600?S.Length*.35:S.Length*.035);
+        const double SeatZ=Open?(S.WheelCount==3?-2.:6.):(S.Length>600?44.:0.);
+        const double Side=Open?0.:S.Width*.21;
+        Visual(Person,Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
+        if (Style%12==3)
+            for (int32 Row=0;Row<3;++Row)
+                Visual(Person,Bounds,FVector(75-Row*104.,-56.,38.-S.Wheel),FRotator(0,-90,0),FVector(.9));
     }
     const int32 Count=S.WheelCount;
     for (int32 I=0; I<Count;++I)
@@ -139,6 +166,7 @@ void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse)
 void ARiverfrontTraffic::Start(bool Mapped)
 {
     bCity=Mapped;
+    if (TActorIterator<ARiverfrontWorld> It(GetWorld()); It) District=*It;
     if (!bCity)
     {
         const double W=4090., E=-26010.;
@@ -157,11 +185,14 @@ void ARiverfrontTraffic::Start(bool Mapped)
             !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json),Doc) || !Doc.IsValid()) return;
         const TArray<TSharedPtr<FJsonValue>>* Data=nullptr;
         if (!Doc->TryGetArrayField(TEXT("routes"),Data) || Data->Num()>32) return;
+        TActorIterator<ARiverfrontWorld> City(GetWorld());
         for (const auto& V:*Data)
         {
             TArray<FVector> Nodes;
             const auto O=V->AsObject();
             const TArray<TSharedPtr<FJsonValue>>* Points=nullptr;
+            FString Area;
+            if (O && O->TryGetStringField(TEXT("area"),Area) && Area!=TEXT("riverfront") && (!City || !City->HasStreetDistricts())) continue;
             if (!O || !O->TryGetArrayField(TEXT("points"),Points) || Points->Num()<3 || Points->Num()>1500) continue;
             for (const auto& Pt:*Points)
             {
@@ -188,7 +219,8 @@ void ARiverfrontTraffic::Start(bool Mapped)
     }
     SetUpSignals();
     for (TActorIterator<ARiverfrontCar> It(GetWorld());It;++It) Parked.Add(*It);
-    for (int32 I=0;I<(bCity?16:23);++I)
+    const int32 Population=bCity?(Routes.Num()>12?48:16):23;
+    for (int32 I=0;I<Population;++I)
     {
         const int32 R=I%Routes.Num(); auto* S=Routes[R].Get();
         const double F=FMath::Frac(.19+I*.38196601125);
@@ -295,6 +327,18 @@ void ARiverfrontTraffic::Tick(float Dt)
     }
     auto* PC=GetWorld()->GetFirstPlayerController(); if (!PC || !PC->GetPawn()) return;
     const FVector Eye=PC->GetPawn()->GetActorLocation();
+    const bool Night=District.IsValid() && District->IsNight();
+    TArray<TPair<double,int32>,TInlineAllocator<16>> NearLamps;
+    if (Night)
+    {
+        for (int32 I=0; I<Agents.Num(); ++I)
+        {
+            const double D=FVector::DistSquared2D(Agents[I]->GetActorLocation(),Eye);
+            if (D<FMath::Square(8300.)) NearLamps.Emplace(D,I);
+        }
+        NearLamps.Sort([](const auto& A,const auto& B){return A.Key<B.Key;});
+        if (NearLamps.Num()>4) NearLamps.SetNum(4,EAllowShrinking::No);
+    }
     for (int32 I=0;I<Agents.Num();++I)
     {
         auto* A=Agents[I].Get(); auto& L=Drivers[I]; auto* R=Routes[L.Route].Get();
@@ -321,7 +365,9 @@ void ARiverfrontTraffic::Tick(float Dt)
         }
         L.Offset=FMath::FInterpConstantTo(L.Offset,Yielding?-115.:(Passing?225.:0.),Dt,105.);
         const double Want=FMath::Min(L.Cruise*(Yielding?.45:(A->IsEmergency?1.18:1.)),FMath::Sqrt(2.*440.*FMath::Max(0.f,Gap)));
+        const bool Brake=Want<L.Speed-27. || Want<25.;
         L.Speed=FMath::FInterpConstantTo(L.Speed,Want,Dt,Want>L.Speed?170.:580.);
+        A->UpdateLights(Night,Brake,NearLamps.ContainsByPredicate([I](const auto& Lamp){return Lamp.Value==I;}));
         if (Want<15 && !L.WasStopped) { ++Stops; L.WasStopped=true; }
         if (Want>110) L.WasStopped=false;
         const double Advance=L.Speed*Dt;
@@ -346,4 +392,25 @@ void ARiverfrontTraffic::Tick(float Dt)
         else L.Speed=0;
         A->SetActorHiddenInGame(!Near && FVector::DistSquared2D(P,Eye)>FMath::Square(51000.));
     }
+}
+
+void ARiverfrontRoadAgent::UpdateLights(bool Night,bool Stopping,bool Project)
+{
+    const int32 State=int32(Night)+2*int32(Stopping)+4*int32(Project);
+    if (State==LightState) return;
+    LightState=State;
+    if (HeadLens) HeadLens->SetScalarParameterValue(TEXT("Glow"),Night?4.f:.06f);
+    if (TailLens) TailLens->SetScalarParameterValue(TEXT("Glow"),Stopping?4.7f:(Night?1.55f:.12f));
+    if (Project && !DippedBeam)
+    {
+        DippedBeam=NewObject<USpotLightComponent>(this);
+        AddInstanceComponent(DippedBeam); DippedBeam->SetupAttachment(Bounds);
+        DippedBeam->SetMobility(EComponentMobility::Movable);
+        DippedBeam->SetRelativeLocationAndRotation(FVector(HalfLength-4.,0,33.),FRotator(-8,0,0));
+        DippedBeam->SetIntensityUnits(ELightUnits::Lumens);
+        DippedBeam->SetIntensity(800.);DippedBeam->SetTemperature(4350.);DippedBeam->SetUseTemperature(true);
+        DippedBeam->SetAttenuationRadius(2650.);DippedBeam->SetInnerConeAngle(13.);DippedBeam->SetOuterConeAngle(31.);
+        DippedBeam->SetCastShadows(false);DippedBeam->RegisterComponent();
+    }
+    if (DippedBeam) DippedBeam->SetVisibility(Project);
 }

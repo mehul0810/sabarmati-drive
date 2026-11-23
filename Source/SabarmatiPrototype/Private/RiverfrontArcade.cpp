@@ -116,13 +116,21 @@ void ARiverfrontWorld::BuildArcadeBlock(const FVector& Plot, double Yaw, double 
             }
             const double Center = X + Bay * .5;
             const bool Entry = I == Bays / 2;
-#if !UE_BUILD_SHIPPING
-            if (Entry && Side>0.)
+            if (Entry)
             {
-                ShopPath={WorldPoint(Center,ShopFace-247,101),WorldPoint(Center,ShopFace+104,101),
-                    WorldPoint(Center,ShopFace+Room-230,101),FVector(TeaCounter.X,TeaCounter.Y,Plot.Z+101)};
-            }
+                const bool Tea=Side>0.;
+                auto& Visit=Tea?TeaVisit:PrintVisit;
+                const FVector Counter=Tea?TeaCounter:PressCounter;
+                Visit={WorldPoint(Center,ShopFace-247,6),WorldPoint(Center,ShopFace+104,8.6),
+                    WorldPoint(Center,ShopFace+Room-230,8.6),FVector(Counter.X,Counter.Y,Plot.Z+8.6)};
+#if !UE_BUILD_SHIPPING
+                if (Tea)
+                {
+                    ShopPath=Visit;
+                    for (FVector& P:ShopPath) P.Z=Plot.Z+101.;
+                }
 #endif
+            }
             // Each glazed bay looks through into a real room. The central door opens
             // onto the sidewalk with at least a full standing-capsule width.
             Part(ETint::Timber, X + 7, ShopFace, 120, 14, 13, 240, true);

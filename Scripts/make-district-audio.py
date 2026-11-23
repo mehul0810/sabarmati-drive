@@ -10,8 +10,8 @@ from pathlib import Path
 RATE=24000
 TAU=2*math.pi
 DURATIONS={"Engine":2.0,"Tyres":3.0,"Horn":.53,"Shift":.19,"FootStone":.24,
-           "FootGrit":.26,"Rain":7.0,"River":9.0,"Wind":8.0,"TeaBell":.83,"Contact":.34}
-LOOPS={"Engine","Tyres","Rain","River","Wind"}
+           "FootGrit":.26,"Rain":7.0,"River":9.0,"Wind":8.0,"TeaBell":.83,"Contact":.34,"MarketVoices":11.4,"DistantTraffic":13.2}
+LOOPS={"Engine","Tyres","Rain","River","Wind","MarketVoices","DistantTraffic"}
 
 def sound(name, index, seconds):
     rng=random.Random(4613+index)
@@ -29,6 +29,23 @@ def sound(name, index, seconds):
             phase=TAU*30*t
             v=sum(math.sin(phase*h+.13*math.sin(phase*.5)) / (h**1.10) for h in range(1,12))*.23
             v+=.07*math.sin(TAU*15*t)+mid*.10*(.45+.55*abs(math.sin(phase)))
+        elif name=="MarketVoices":
+            # Four unidentifiable formant voices with independent phrase and syllable envelopes.
+            v=.042*mid
+            for speaker,(f0,f1,f2) in enumerate(((112,510,1150),(186,660,1370),(143,565,1100),(207,790,1510))):
+                beat=t*(2.87+speaker*.29)+speaker*.63
+                syllable=(.5-.5*math.cos(TAU*beat))**.78
+                breath=max(0.,math.sin(TAU*(t/(2.9+speaker*.37)+.19*speaker)))**.52
+                phase=TAU*(f0*t+.21*math.sin(TAU*(1.6+speaker*.18)*t))
+                vowel=.50*math.sin(phase)+.20*math.sin(phase*2)+.20*math.sin(phase*round(f1/f0))+.08*math.sin(phase*round(f2/f0))
+                v+=.22*breath*syllable*(vowel+.07*mid)
+        elif name=="DistantTraffic":
+            engine=0.
+            for lane in range(3):
+                passby=(t/(6.9+lane*.78)+lane*.363)%1.
+                env=math.exp(-((passby-.46)/.18)**2)
+                engine+=env*(.065*math.sin(TAU*((53+lane*22)*t+1.8*math.sin(TAU*passby)))+.38*mid)
+            v=engine+.22*slow
         elif name=="Tyres":
             v=(.37*mid+.13*noise+.36*slow)*(.84+.16*math.sin(TAU*t/seconds))
         elif name=="Horn":

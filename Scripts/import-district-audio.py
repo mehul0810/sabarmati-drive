@@ -18,8 +18,8 @@ def attenuation(name,inner,outer):
     return asset
 near=attenuation("ATT_Near",125,2200)
 far=attenuation("ATT_Street",420,8800)
-loops={"Engine","Tyres","Rain","River","Wind"}
-for name in ("Engine","Tyres","Horn","Shift","FootStone","FootGrit","Rain","River","Wind","TeaBell","Contact"):
+loops={"Engine","Tyres","Rain","River","Wind","MarketVoices","DistantTraffic"}
+for name in ("Engine","Tyres","Horn","Shift","FootStone","FootGrit","Rain","River","Wind","TeaBell","Contact","MarketVoices","DistantTraffic"):
     key="S_"+name
     file=src/(key+".wav")
     if not file.is_file(): raise RuntimeError(str(file))

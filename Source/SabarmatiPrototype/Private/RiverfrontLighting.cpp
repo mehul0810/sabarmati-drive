@@ -94,12 +94,7 @@ void ARiverfrontWorld::BuildLighting()
         Haze = Actor->GetComponent();
         Haze->SetFogHeightFalloff(.24f);
     }
-    if (IsCityMode())
-    {
-        ApplyTimeOfDay(ERiverfrontTime::Day);
-        return;
-    }
-    NightWindows = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Sabarmati/Riverfront/M_OccupiedWindow.M_OccupiedWindow"));
+    NightWindows = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Sabarmati/Riverfront/MI_DistrictWindowNight.MI_DistrictWindowNight"));
 #if !UE_BUILD_SHIPPING
     // A/B control: the previous lighting on the exact same geometry, render settings and camera route.
     if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark"))
@@ -141,18 +136,15 @@ void ARiverfrontWorld::BuildLighting()
     }
     FString Requested;
     FParse::Value(FCommandLine::Get(), TEXT("SabarmatiTime="), Requested);
-    ApplyTimeOfDay(Requested == TEXT("day") ? ERiverfrontTime::Day
+    ApplyTimeOfDay(Requested == TEXT("day") || (Requested.IsEmpty() && IsCityMode()) ? ERiverfrontTime::Day
         : Requested == TEXT("night") ? ERiverfrontTime::Night : ERiverfrontTime::Golden);
 }
 
 void ARiverfrontWorld::CycleTimeOfDay()
 {
-    if (!IsCityMode())
-    {
-        bClock=false;
-        ApplyTimeOfDay(TimeOfDay == ERiverfrontTime::Golden ? ERiverfrontTime::Night
-            : TimeOfDay == ERiverfrontTime::Night ? ERiverfrontTime::Day : ERiverfrontTime::Golden);
-    }
+    bClock=false;
+    ApplyTimeOfDay(TimeOfDay == ERiverfrontTime::Golden ? ERiverfrontTime::Night
+        : TimeOfDay == ERiverfrontTime::Night ? ERiverfrontTime::Day : ERiverfrontTime::Golden);
 }
 
 void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
@@ -187,6 +179,11 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
         : SurfaceMaterials.FindRef(static_cast<int32>(ETint::Glass)).Get();
     if (Glazing)
     {
+        if (IsCityMode())
+        {
+            for (UActorComponent* Component:GetComponentsByTag(UInstancedStaticMeshComponent::StaticClass(),TEXT("AhmedabadGlazing")))
+                CastChecked<UInstancedStaticMeshComponent>(Component)->SetMaterial(0,Glazing);
+        }
         for (const auto& Pair : Batches)
         {
             if (Pair.Key % static_cast<int32>(ETint::Count) == static_cast<int32>(ETint::Glass))

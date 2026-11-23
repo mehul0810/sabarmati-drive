@@ -47,4 +47,41 @@ return W*(.34+.66*smoothstep(.44,.73,n+.06*sin(P.x*.021+P.y*.009)));
     mat.set_editor_property("used_with_instanced_static_meshes",True)
     lib.layout_material_expressions(mat); lib.recompile_material(mat)
     if not assets.save_loaded_asset(mat,False): raise RuntimeError(dest)
+# Tar-filled transverse cuts, eroded edges and small aggregate variation survive close ground-level views.
+# The pattern is filtered as it recedes. It follows world scale across adjacent road sections.
+expressions=lib.get_material_expressions(mat)
+if not any(isinstance(n,ue.MaterialExpressionScalarParameter) and str(n.get_editor_property("parameter_name"))=="RepairContrast" for n in expressions):
+    position=lib.create_material_expression(mat,ue.MaterialExpressionWorldPosition,0,0)
+    strength=lib.create_material_expression(mat,ue.MaterialExpressionScalarParameter,0,0)
+    strength.set_editor_property("parameter_name","RepairContrast");strength.set_editor_property("default_value",.92)
+    finish=lib.create_material_expression(mat,ue.MaterialExpressionCustom,0,0)
+    finish.set_editor_property("output_type",ue.CustomMaterialOutputType.CMOT_FLOAT3)
+    finish.set_editor_property("code","""
+float2 a=P.xy;float2 cell=floor((a+float2(210.,73.))/float2(1640.,870.));
+float2 u=frac((a+float2(210.,73.))/float2(1640.,870.));
+float4 rand=frac(sin(dot(cell,float2(45.37,27.92))+float4(1.,7.1,9.3,16.6))*13758.5);
+float jag=sin(a.y*.062+rand.x*21.)*1.4+sin(a.y*.012+a.x*.005)*5.;
+float dx=abs((u.x-(.32+.39*rand.y))*1640.+jag)-(.7+rand.y*1.7);
+float dy=abs((u.y-(.18+.34*rand.z))*870.+sin(a.x*.034)*1.5)-1.4;
+float aa=clamp(max(length(ddx(a)),length(ddy(a))),.48,6.);
+float cut=(1.-smoothstep(-aa,aa,dx))*smoothstep(.12,.18,u.y)*(1.-smoothstep(.49,.57,u.y));
+float branch=(1.-smoothstep(-aa,aa,dy))*smoothstep(.29,.33,u.x)*(1.-smoothstep(.54,.62,u.x));
+float seam=saturate(cut+branch*.65)*smoothstep(.23,.42,rand.x)*K;
+float2 c=(u-float2(.53,.63))*float2(1640.,870.);
+float patch=max(abs(c.x)-79.-rand.y*63.,abs(c.y)-34.-rand.z*28.)+sin(a.x*.065+a.y*.08)*1.8;
+float inside=(1.-smoothstep(-aa,aa,patch))*step(.68,rand.w);
+float border=(1.-smoothstep(.3,2.8+aa,abs(patch)))*step(.68,rand.w);
+return lerp(Base*(1.-inside*.16)+float3(.004,.003,.001)*inside,Base*.41+float3(.002,.001,.001),saturate(seam+border*.46));
+""")
+    ports=[]
+    for name in ("Base","P","K"):
+        pin=ue.CustomInput();pin.set_editor_property("input_name",name);ports.append(pin)
+    finish.set_editor_property("inputs",ports)
+    prop=ue.MaterialProperty.MP_BASE_COLOR;old=lib.get_material_property_input_node(mat,prop)
+    output=lib.get_material_property_input_node_output_name(mat,prop)
+    for n,channel,key in ((old,output,"Base"),(position,"","P"),(strength,"","K")):
+        if not lib.connect_material_expressions(n,channel,finish,key):raise RuntimeError(key)
+    if not lib.connect_material_property(finish,"",prop):raise RuntimeError("road repair output")
+    lib.layout_material_expressions(mat);lib.recompile_material(mat)
+    if not assets.save_loaded_asset(mat,False):raise RuntimeError(dest)
 ue.log("SABARMATI RAIN ROAD SAVED")

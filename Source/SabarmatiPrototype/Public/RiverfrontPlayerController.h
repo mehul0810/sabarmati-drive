@@ -17,6 +17,7 @@ struct FRiverSite
     FVector Point;
     ERiverSiteKind Kind;
     float Reach;
+    TOptional<double> StreetHeading;
 };
 
 UCLASS()
@@ -37,6 +38,9 @@ public:
     bool ControlsVisible() const { return bControls; }
     int32 Discovered() const { return Visited.Num(); }
     virtual void PlayerTick(float DeltaSeconds) override;
+#if !UE_BUILD_SHIPPING
+    bool VerifyReviewProfile(float& RecordedTime) const;
+#endif
 
     void AddYawInput(float Value) override;
     void AddPitchInput(float Value) override;
@@ -73,6 +77,7 @@ private:
     FString InteractionMessage;
     void LoadSites();
     void CycleDestination();
+    void TravelToDestination();
     void ToggleMap() { bMiniMap=!bMiniMap; }
     void ToggleControls() { bControls=!bControls; }
     void ToggleChallenge();
@@ -89,6 +94,7 @@ private:
     void RunRenderingBenchmark();
     void RunDistrictReview();
     void RunSystemsReview();
+    void RunNeighbourhoodReview();
 #endif
     void TogglePauseMenu();
     void CycleDistrictTime();

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Standalone, no-engine check of the packaged offline Ahmedabad map data."""
+from collections import Counter, defaultdict
 import hashlib
 import json
 import math
@@ -86,6 +87,61 @@ class AhmedabadCityDataTests(unittest.TestCase):
             self.assertIn((x//60000, y//60000), self.items)
             self.assertTrue(125 <= w and 125 <= d and 150 <= h <= 3200)
             self.assertTrue(abs(r) <= 18000 and 0 <= palette <= 2)
+
+    def test_named_street_routes_follow_connected_road_geometry(self):
+        paths = json.loads(DATA.with_name("AhmedabadRoutes.json").read_text())
+        self.assertEqual(paths["source_sha256"], self.summary["sha256"])
+        self.assertEqual(paths["licence"], "ODbL 1.0")
+        roads = defaultdict(set)
+        for entries, _ in self.items.values():
+            for ax, ay, bx, by, width, _, _ in entries:
+                if width >= 500:
+                    roads[tuple(sorted(((ax, ay), (bx, by))))].add(width)
+        counts = Counter(route["area"] for route in paths["routes"])
+        self.assertEqual(counts, {"riverfront": 6, "ashram": 2, "cg": 2, "sg-service": 2})
+        for route in paths["routes"]:
+            pts = route["points"]
+            self.assertGreaterEqual(len(pts), 6)
+            distance = 0.
+            for start, end in zip(pts, pts[1:] + pts[:1]):
+                a, b = tuple(start[:2]), tuple(end[:2])
+                self.assertIn(start[2], roads[tuple(sorted((a, b)))])
+                distance += math.dist(a, b)
+            self.assertAlmostEqual(route["length_cm"], distance, delta=0.51)
+
+    def test_preview_buildings_and_travel_stops(self):
+        preview = DATA.with_name("AhmedabadDistrictBuildings.bin")
+        manifest = json.loads(preview.with_suffix(".json").read_text())
+        raw = preview.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), manifest["sha256"])
+        self.assertEqual(raw[:8], b"SABBLD1\0")
+        rows = list(struct.iter_unpack("<iiHHHhB", raw[12:]))
+        self.assertEqual(len(rows), struct.unpack_from("<I", raw, 8)[0])
+        self.assertEqual(len(rows), manifest["exterior_shells"])
+        self.assertEqual(sum(a["exterior_shells"] for a in manifest["areas"]), len(rows))
+        self.assertEqual(manifest["licence"], "ODbL 1.0")
+        self.assertIn("OpenStreetMap", manifest["attribution"])
+        central = DATA.with_name("AhmedabadBuildings.bin").read_bytes()
+        centres = {(x, y) for x,y,*_ in struct.iter_unpack("<iiHHHhB", central[12:])}
+        for x, y, width, depth, height, yaw, palette in rows:
+            self.assertNotIn((x,y), centres)
+            centres.add((x,y))
+            self.assertIn((x//60000,y//60000), self.items)
+            self.assertTrue(min(width,depth) >= 125 and 150 <= height <= 3200)
+            self.assertTrue(abs(yaw) <= 18000 and 0 <= palette <= 2)
+        stops = {s["id"]: s for s in json.loads(DATA.with_name("ExplorationSites.json").read_text())["city"]}
+        offset = 0
+        for area in manifest["areas"]:
+            n = area["exterior_shells"]
+            self.assertLessEqual(n, area["input"])
+            stop = stops[area["id"]]
+            x, y = stop["location"][:2]
+            self.assertTrue(math.isfinite(stop["street_heading"]))
+            self.assertGreaterEqual(sum(math.hypot(rx-x,ry-y)<15000 for rx,ry,*_ in rows[offset:offset+n]), 4)
+            nearby = [r for i in (-1,0,1) for j in (-1,0,1)
+                      for r in self.items.get((x//60000+i, y//60000+j), ([],[]))[0]]
+            self.assertTrue(any(not r[5] and distance_to_strip_squared(x,y,r) <= (r[4]/2)**2 for r in nearby))
+            offset += n
 
     def test_bridge_data_spans_mapped_water(self):
         crossing = []

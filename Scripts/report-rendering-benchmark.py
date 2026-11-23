@@ -8,6 +8,12 @@ from pathlib import Path
 
 
 def inspect_run(folder):
+    log = folder / "engine.log"
+    if log.is_file():
+        failed = next((line for line in log.read_text(errors="replace").splitlines()
+                       if "Failed to compile Material /Game/Sabarmati/" in line), None)
+        if failed:
+            raise ValueError("A project shader fell back to the default material: " + failed)
     settings = dict(row.split("=", 1) for row in (folder / "settings.txt").read_text().splitlines())
     width, height = map(int, settings["viewport"].split("x"))
     drive = dict(row.split("=", 1) for row in (folder / "drive.txt").read_text().splitlines())

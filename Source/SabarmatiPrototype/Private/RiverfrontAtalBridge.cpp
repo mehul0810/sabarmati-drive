@@ -8,8 +8,9 @@ namespace
 // SRFDCL and Gujarat Tourism references: 300 m pedestrian bridge, 10-14 m wide.
 // The surrounding prototype is not surveyed. This is original game geometry.
 constexpr double MidY = -10960.0;
-constexpr double HalfLength = 15000.0;
-constexpr double WalkHalfLength = 14250.0;
+// The reference bridge is nominally 300 m. The two promenade abutments in this
+// straightened district are 285 m apart. Every visible structural member ends there.
+constexpr double HalfLength = 14250.0;
 constexpr int32 BayCount = 44;
 constexpr double DeckZ = 23.0;
 
@@ -47,7 +48,7 @@ struct FCanopySection
 void ARiverfrontWorld::BuildAtalBridge()
 {
     Box(ETint::Retaining, FVector(AtalX, MidY, -47), FVector(1010, 2 * HalfLength, 72));
-    Box(ETint::Paving, FVector(AtalX, MidY, DeckZ - 12), FVector(1000, 2 * WalkHalfLength, 24), true);
+    Box(ETint::Paving, FVector(AtalX, MidY, DeckZ - 12), FVector(1000, 2 * HalfLength, 24), true);
     for (const double SupportY : {MidY - 5000, MidY + 5000})
     {
         Shape(EShape::Cylinder, ETint::Retaining, FVector(AtalX, SupportY, -128), FVector(500, 280, 200));
@@ -106,7 +107,7 @@ void ARiverfrontWorld::BuildAtalBridge()
             Tube(Bay % 2 == 0 ? Outer : NextOuter, Bay % 2 == 0 ? NextCrest : Crest, 21.0);
             Tube(RailSide == Side ? Crest : NextCrest, (Outer + NextOuter) * .5, 16.0);
 
-            if (FMath::Abs(Y - MidY) < WalkHalfLength - 30)
+            if (FMath::Abs(Y - MidY) < HalfLength)
             {
                 // The widening deck shoulders lie beside the continuous central collision slab.
                 const double Width = HalfWidthAt((Y - MidY + HalfLength) / (2.0 * HalfLength));
@@ -147,14 +148,15 @@ void ARiverfrontWorld::BuildAtalBridge()
             constexpr ETint BoardColors[] = {ETint::DeckWood, ETint::WoodLight, ETint::WoodDark};
             for (int32 Board = 0; Board < 13; ++Board)
             {
-                const double BoardY = Y + (Board - 6) * 51.9;
+                const double BoardPitch = 2.0 * HalfLength / (BayCount * 13.0);
+                const double BoardY = Y + (Board - 6) * BoardPitch;
                 const double SeamX = AtalX + ((Board + Bay) % 3 - 1) * 93;
                 const double LeftLength = SeamX - (AtalX - 301);
                 const double RightLength = AtalX + 301 - SeamX;
                 Box(BoardColors[(Board * 13 + Bay * 7) % 3],
-                    FVector(SeamX - LeftLength * .5, BoardY, DeckZ + .5), FVector(LeftLength - 1, 50.7, 1));
+                    FVector(SeamX - LeftLength * .5, BoardY, DeckZ + .5), FVector(LeftLength - 1, BoardPitch - 1.2, 1));
                 Box(BoardColors[(Board * 7 + Bay * 13 + 1) % 3],
-                    FVector(SeamX + RightLength * .5, BoardY, DeckZ + .5), FVector(RightLength - 1, 50.7, 1));
+                    FVector(SeamX + RightLength * .5, BoardY, DeckZ + .5), FVector(RightLength - 1, BoardPitch - 1.2, 1));
             }
             if (Bay % 7 == 4)
             {
@@ -184,7 +186,7 @@ void ARiverfrontWorld::BuildAtalBridge()
     {
         for (const double End : {-1.0, 1.0})
         {
-            const double LandingY = MidY + End * WalkHalfLength;
+            const double LandingY = MidY + End * HalfLength;
             // Two shallow risers meet each landing; pedestrian bollards keep cars on the road.
             Box(ETint::Paving, FVector(AtalX, LandingY + End * 52, 3.5), FVector(1000, 110, 17), true);
             Box(ETint::Paving, FVector(AtalX + Side * 394, LandingY + End * 128, 2.5), FVector(87, 156, 4));

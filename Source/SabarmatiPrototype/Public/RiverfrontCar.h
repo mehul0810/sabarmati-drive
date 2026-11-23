@@ -39,6 +39,7 @@ public:
     float GetEngineRpm() const { return EngineRpm; }
     bool HasFourContacts() const { return ContactCount == 4; }
     int32 GetSignal() const { return Signal; }
+    bool TravelToStreet(const FVector& Position, double Heading);
     void ServiceVehicle() { Fuel=1.f; Condition=1.f; }
     float GetFuel() const { return Fuel; }
     float GetCondition() const { return Condition; }
@@ -79,6 +80,8 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
     bool bNightDriving = false;
     void UpdateDrivingLights();
+    void FitInstruments();
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> Instruments;
     void CycleCamera();
     void CockpitDoor();
     void UpdateDoors(float Delta);

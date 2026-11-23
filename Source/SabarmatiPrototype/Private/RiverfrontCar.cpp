@@ -1,4 +1,5 @@
 #include "RiverfrontCar.h"
+#include "ProceduralMeshComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "EngineUtils.h"
 #include "RiverfrontWorld.h"
@@ -211,6 +212,9 @@ bool ARiverfrontCar::InstallDetailedVisuals()
     DetailedBody=PlaceMesh(Hinged?Articulated:Chassis,Body,FVector(0,0,ModelGroundOffset),-90.);
     if (Hinged)
     {
+        if (auto* Trim=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchTrim.SM_HatchTrim")))
+            PlaceMesh(Trim,Body,FVector(0,0,ModelGroundOffset),-90.);
+        FitInstruments();
         for (const int32 Side : {-1,1})
         {
             auto* Hinge=NewObject<USceneComponent>(this);
@@ -629,6 +633,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
 
 void ARiverfrontCar::ResetCar()
 {
+    for (TActorIterator<ARiverfrontWorld> It(GetWorld()); It; ++It) It->PrepareCityTravel(Home.GetLocation());
     if (TeleportTo(Home.GetLocation(), Home.Rotator(), false, false))
     {
         Speed = Throttle = Steering = 0;
@@ -689,7 +694,7 @@ void ARiverfrontCar::CalcCamera(float Dt,FMinimalViewInfo& View)
     {
         const FRotator Look=Controller->GetControlRotation(), Facing=GetActorRotation();
         View.Location=GetActorTransform().TransformPosition(ViewMode==1?
-            FVector(-33,37,bCrossover?61:53):FVector(115,0,bCrossover?37:29));
+            FVector(-33,37,bCrossover?61:55):FVector(115,0,bCrossover?37:29));
         const double Relative=FMath::FindDeltaAngleDegrees(Facing.Yaw,Look.Yaw);
         View.Rotation=FRotator(FMath::Clamp(Look.Pitch>180?Look.Pitch-360:Look.Pitch,-42.,38.)+Facing.Pitch,
             Facing.Yaw+FMath::Clamp(Relative,-105.,105.),Facing.Roll*.42);
@@ -715,6 +720,12 @@ void ARiverfrontCar::UpdateSignalLenses(float Dt)
         const int32 Side=I<3?-1:1;
         const bool Active=I%3==2?Speed<-18.f:((Signal==2 || Signal==Side) && BlinkTime<.41f);
         SignalLenses[I]->SetVisibility(IsValid(Driver) && Active);
+    }
+    if (Instruments)
+    {
+        Instruments->SetScalarParameterValue(TEXT("Speed"),GetSpeedKph());
+        Instruments->SetScalarParameterValue(TEXT("RPM"),EngineRpm);
+        Instruments->SetScalarParameterValue(TEXT("Gear"),GetGear());
     }
     const bool Stopping=IsValid(Driver) && (bBraking || Throttle*Speed<-10.f);
     if (Stopping!=bStopLamps)
@@ -772,4 +783,37 @@ void ARiverfrontCar::UpdateDoors(float Dt)
         const int32 Side=I==0?-1:1;
         DoorHinges[I]->SetRelativeRotation(FRotator(0,Side==DoorSide?-Side*DoorAngle:0,0));
     }
+}
+
+void ARiverfrontCar::FitInstruments()
+{
+    auto* Mat=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/M_RiverInstruments.M_RiverInstruments"));
+    if (!Mat) return;
+    auto* Cluster=NewObject<UProceduralMeshComponent>(this);
+    AddInstanceComponent(Cluster);Cluster->SetupAttachment(Body);Cluster->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Cluster->SetCastShadow(false);Cluster->SetCanEverAffectNavigation(false);
+    auto* Housing=NewObject<UStaticMeshComponent>(this);
+    AddInstanceComponent(Housing); Housing->SetupAttachment(Body);
+    Housing->SetStaticMesh(BoxMesh);
+    Housing->SetRelativeLocation(FVector(31.4,5.,32.5));
+    Housing->SetRelativeScale3D(FVector(.09,.305,.231));
+    if (auto* Rubber=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Fleet/MI_Fleet_rubber.MI_Fleet_rubber")))
+        Housing->SetMaterial(0,Rubber);
+    Housing->SetCollisionEnabled(ECollisionEnabled::NoCollision); Housing->RegisterComponent();
+    const TArray<FVector> Points={{24.,19.,33.},{24.,-9.,33.},{28.,-9.,43.},{28.,19.,43.}};
+    const TArray<FVector2D> Tex={{1,1},{0,1},{0,0},{1,0}};
+    Cluster->CreateMeshSection_LinearColor(0,Points,{0,1,2,0,2,3},{FVector(-1,0,.35),FVector(-1,0,.35),FVector(-1,0,.35),FVector(-1,0,.35)},Tex,{},{},false);
+    Instruments=UMaterialInstanceDynamic::Create(Mat,this);Cluster->SetMaterial(0,Instruments);Cluster->RegisterComponent();
+}
+
+bool ARiverfrontCar::TravelToStreet(const FVector& Position, double Heading)
+{
+    if (!Driver || GetSpeedKph()>1.f) return false;
+    double Wheels[4];
+    if (!SampleWheels(Position,Heading,Wheels)) return false;
+    const FVector Arrival(Position.X,Position.Y,(Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25+68.);
+    if (!TeleportTo(Arrival,FRotator(0,Heading,0))) return false;
+    Speed=Throttle=Steering=TurnAngle=BodyRoll=0.f;
+    Gear=1; TravelYaw=Heading; HasCameraSample=false;
+    return true;
 }

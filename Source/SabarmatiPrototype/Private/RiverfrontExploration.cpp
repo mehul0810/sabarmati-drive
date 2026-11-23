@@ -1,5 +1,8 @@
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCar.h"
+#include "RiverfrontCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontLocalProfile.h"
 #include "Dom/JsonObject.h"
@@ -51,7 +54,14 @@ void ARiverfrontPlayerController::LoadSites()
         else continue;
         const auto Kind=Type==TEXT("Tea")?ERiverSiteKind::Tea:Type==TEXT("Print")?ERiverSiteKind::Print:
             Type==TEXT("Service")?ERiverSiteKind::Service:ERiverSiteKind::Visit;
-        Sites.Add({FName(*Id),Name,Action,Discovery,Point,Kind,float(FMath::Clamp(Reach,50.,800.))});
+        double Heading=0.;
+        TOptional<double> Travel;
+        if (bCitySites && O->TryGetNumberField(TEXT("street_heading"),Heading) && FMath::IsFinite(Heading))
+        {
+            if (!District->HasStreetDistricts()) continue;
+            Travel=Heading;
+        }
+        Sites.Add({FName(*Id),Name,Action,Discovery,Point,Kind,float(FMath::Clamp(Reach,50.,800.)),Travel});
     }
 }
 int32 ARiverfrontPlayerController::NearbySite() const
@@ -115,7 +125,8 @@ void ARiverfrontPlayerController::CycleDestination()
 {
     if (IsShowingMenu() || Sites.IsEmpty()) return;
     SelectedSite=(SelectedSite+2)%(Sites.Num()+1)-1;
-    Notice(SelectedSite==INDEX_NONE?TEXT("Waypoint cleared."):Sites[SelectedSite].Name);
+    Notice(SelectedSite==INDEX_NONE?FString(TEXT("Waypoint cleared.")):Sites[SelectedSite].Name+
+        (Sites[SelectedSite].StreetHeading.IsSet()?TEXT("    V  travel"):TEXT("")));
 }
 const FRiverSite* ARiverfrontPlayerController::Destination() const
 {
@@ -182,4 +193,45 @@ void ARiverfrontPlayerController::PlayerTick(float DeltaSeconds)
     if (BestTrial<=0 || Time<BestTrial) BestTrial=Time;
     if (!SaveExploration()) { BestTrial=Prior; Notice(TEXT("Run finished. The local record could not be saved.")); return; }
     Notice(FString::Printf(TEXT("River run finished in %.1f s. Personal best %.1f s."),Time,BestTrial));
+}
+
+#if !UE_BUILD_SHIPPING
+bool ARiverfrontPlayerController::VerifyReviewProfile(float& RecordedTime) const
+{
+    if (!ProfileSlot.StartsWith(TEXT("SabarmatiQA-"))) return false;
+    const auto* Saved=Cast<URiverfrontLocalProfile>(UGameplayStatics::LoadGameFromSlot(ProfileSlot,0));
+    if (!Saved || !Saved->VisitedSites.Contains(TEXT("tea")) || !Saved->VisitedSites.Contains(TEXT("service"))) return false;
+    RecordedTime=Saved->BestRiverRunSeconds;
+    return RecordedTime>0.f && FMath::IsNearlyEqual(RecordedTime,BestTrial);
+}
+#endif
+
+void ARiverfrontPlayerController::TravelToDestination()
+{
+    const auto* Stop=Destination();
+    if (IsShowingMenu() || !Stop || !Stop->StreetHeading.IsSet() || !GetPawn()) return;
+    auto* Car=Cast<ARiverfrontCar>(GetPawn());
+    auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
+    if (Car && Car->GetSpeedKph()>1.f) { Notice(TEXT("Stop before travelling to a city street.")); return; }
+    TActorIterator<ARiverfrontWorld> World(GetWorld());
+    const FVector Before=GetPawn()->GetActorLocation();
+    if (!World || !World->PrepareCityTravel(Stop->Point)) return;
+    const double Yaw=Stop->StreetHeading.GetValue();
+    const FRotator Heading(0,Yaw,0);
+    bool Moved=false;
+    if (Car) Moved=Car->TravelToStreet(Stop->Point,Yaw);
+    else if (Walker)
+    {
+        FHitResult Floor;
+        const FVector Kerb=Stop->Point+Heading.RotateVector(FVector(0,-210,0));
+        if (GetWorld()->LineTraceSingleByObjectType(Floor,Kerb+FVector(0,0,160),Kerb-FVector(0,0,180),FCollisionObjectQueryParams(ECC_WorldStatic)))
+        {
+            const FVector Feet=Floor.ImpactPoint+FVector(0,0,Walker->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+2.);
+            Moved=Walker->TeleportTo(Feet,Heading);
+            if (Moved) Walker->GetCharacterMovement()->StopMovementImmediately();
+        }
+    }
+    if (!Moved) { World->PrepareCityTravel(Before); Notice(TEXT("The arrival point is occupied.")); return; }
+    SetControlRotation(FRotator(-6,Yaw,0));
+    Notice(Stop->Name);
 }

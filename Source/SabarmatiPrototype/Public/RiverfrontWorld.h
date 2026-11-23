@@ -34,11 +34,15 @@ public:
     bool IsNight() const { return TimeOfDay == ERiverfrontTime::Night; }
     bool BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw);
     static bool HasCityData();
+    const TArray<FVector>& GetShopVisit(bool Tea) const { return Tea?TeaVisit:PrintVisit; }
     const FVector& GetTeaCounter() const { return TeaCounter; }
     const FVector& GetPressCounter() const { return PressCounter; }
+    bool PrepareCityTravel(const FVector& Focus);
+    bool HasStreetDistricts() const { return bStreetDistricts; }
     bool IsCityMode() const { return CityState.IsValid(); }
     virtual void Tick(float DeltaSeconds) override;
 #if !UE_BUILD_SHIPPING
+    int32 CityBuildingsNear(const FVector& At, double Radius) const;
     const TArray<FVector>& GetShopPath() const { return ShopPath; }
     void ReviewArcadeWalk(ARiverfrontPlayerController& Driver);
 #endif
@@ -79,22 +83,27 @@ private:
         bool bSolid = false, FRotator Rot = FRotator::ZeroRotator);
     void Beam(ETint Tint, const FVector& From, const FVector& To, double Width);
     TSharedPtr<FAhmedabadCityState> CityState;
+    bool bStreetDistricts=false;
 #if !UE_BUILD_SHIPPING
     TArray<FVector> ArcadeReviewRoute;
     TArray<FVector> ShopPath;
 #endif
     void LoadSurfaceMaterials();
-    void UpdateCityTiles(const FVector& Focus);
+    void UpdateCityTiles(const FVector& Focus, bool Immediate=false);
     void BuildBanks();
     void BuildBridge();
     void BuildAtalBridge();
     void BuildRiverfrontCorridor();
     void BuildFrontage();
+    void DressStreetSurface();
+    void DressMarketUtilities();
+    void DressFacade(double X, double Front, double Bank, double Width, double Height, int32 Style);
     void DetailFrontage(double X, double FrontY, double Bank, double Width, double Depth,
         int32 Floors, ETint Wall, int32 Style);
     void BuildArcadeBlock(const FVector& Plot, double Yaw, double PlotWidth, double PlotDepth, double Height);
     void FitShop(const FVector& Opening, const FRotator& Facing, double Width, double Depth, double Ceiling, bool IsTea);
     void BuildWestBankGarden();
+    TArray<FVector> TeaVisit, PrintVisit;
     FVector PressCounter=FVector::ZeroVector;
     FVector TeaCounter = FVector::ZeroVector;
     static UStaticMesh* StreetTreeMesh();
@@ -116,6 +125,8 @@ private:
     float ClockSeconds=0, SurfaceWetness=0, RainAmount=0;
     UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> RainStreaks;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> RoadWeather;
+    UPROPERTY() TObjectPtr<UStaticMesh> MatureTree;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CanopyLeaves;
     UPROPERTY() TObjectPtr<UAudioComponent> RainAudio;
     UPROPERTY() TObjectPtr<UAudioComponent> WindAudio;
     TArray<FVector> RainOffsets;

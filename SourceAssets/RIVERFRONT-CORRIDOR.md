@@ -1,8 +1,7 @@
 # Two-bank reference corridor
 
 The playable riverfront now runs from game X = -820 m to +840 m on both
-banks. The local origin and detailed Atal model are unchanged; north is +X,
-west is +Y. The longitudinal spacing was checked against the published
+banks. The local origin is beside Atal. North is +X and west is +Y. The modeled canopy, railings and deck run 285 m between the two promenade abutments. The longitudinal spacing was checked against the published
 coordinate points for the [Sardar](https://www.wikidata.org/wiki/Q29707714),
 [Atal](https://www.wikidata.org/wiki/Q113334583) and
 [Ellis](https://www.wikidata.org/wiki/Q1744317) crossings (CC0 Wikidata

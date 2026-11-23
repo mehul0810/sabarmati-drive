@@ -535,7 +535,7 @@ void ARiverfrontPlayerController::BeginPlay()
     {
 #if !UE_BUILD_SHIPPING
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
-            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
             FGuid TestId;
@@ -571,6 +571,7 @@ void ARiverfrontPlayerController::SetupInputComponent()
     InputComponent->BindAction(TEXT("PauseDrive"), IE_Pressed, this, &ARiverfrontPlayerController::TogglePauseMenu);
     InputComponent->BindAction(TEXT("DistrictTime"), IE_Pressed, this, &ARiverfrontPlayerController::CycleDistrictTime);
     InputComponent->BindAction(TEXT("DistrictWeather"),IE_Pressed,this,&ARiverfrontPlayerController::CycleDistrictWeather);
+    InputComponent->BindAction(TEXT("StreetTravel"),IE_Pressed,this,&ARiverfrontPlayerController::TravelToDestination);
     InputComponent->BindAction(TEXT("NextDestination"),IE_Pressed,this,&ARiverfrontPlayerController::CycleDestination);
     InputComponent->BindAction(TEXT("MiniMap"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleMap);
     InputComponent->BindAction(TEXT("ShowControls"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleControls);
@@ -628,6 +629,12 @@ void ARiverfrontPlayerController::ShowTitle()
         SetViewTarget(TitleCamera.Get());
     }
 #if !UE_BUILD_SHIPPING
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
+    {
+        if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Street Review")).IsEmpty())
+        { FPlatformMisc::RequestExitWithStatus(false,1); return; }
+        ResumeDrive(); RunNeighbourhoodReview(); return;
+    }
     if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")))
     {
         if ((!HasLocalProfile() && !CreateLocalProfile(TEXT("Systems Review")).IsEmpty()) || !CheckCorridorRoutes(*GetWorld()))
@@ -1022,6 +1029,8 @@ void ARiverfrontPlayerController::AddPitchInput(float Value)
 void ARiverfrontPlayerController::LoadLocalProfile()
 {
     LocalDisplayName.Reset();
+    Visited.Reset();
+    BestTrial=0.f;
     bUnreadableProfile = false;
     if (!UGameplayStatics::DoesSaveGameExist(ProfileSlot, 0))
     {
