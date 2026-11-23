@@ -15,6 +15,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "InputKeyEventArgs.h"
+#include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -46,7 +47,8 @@ public:
         auto* Window=PC.GetWorld()->GetGameViewport()->Viewport;
         FString Config=FString::Printf(TEXT("gpu=%s\nviewport=%dx%d\nwindowed=%d\n"),*FPlatformMisc::GetPrimaryGPUBrand(),
             Window->GetSizeXY().X,Window->GetSizeXY().Y,Window->GetWindowMode()==EWindowMode::Windowed);
-        for (const TCHAR* Key:{TEXT("r.ScreenPercentage"),TEXT("r.SecondaryScreenPercentage.GameViewport"),TEXT("r.AntiAliasingMethod"),TEXT("r.VSync"),TEXT("r.DynamicRes.OperationMode"),TEXT("t.MaxFPS")})
+        Config += FString::Printf(TEXT("frame_smoothing=%d\n"), GEngine && GEngine->IsAllowedFramerateSmoothing());
+        for (const TCHAR* Key:{TEXT("r.ScreenPercentage"),TEXT("r.SecondaryScreenPercentage.GameViewport"),TEXT("r.AntiAliasingMethod"),TEXT("r.VSync"),TEXT("r.DynamicRes.OperationMode"),TEXT("t.MaxFPS"),TEXT("t.IdleWhenNotForeground")})
             if (auto* C=Console.FindConsoleVariable(Key)) Config+=FString::Printf(TEXT("%s=%s\n"),Key,*C->GetString());
         if (!Write(TEXT("settings.txt"),Config)) return Fail(TEXT("settings file"));
         StartTime=StageTime=FPlatformTime::Seconds();UE_LOG(LogTemp,Display,TEXT("Sabarmati systems review: %s"),*Folder);
@@ -190,7 +192,7 @@ public:
             if (PC.GetPawn()!=Walker.Get()) return Fail(TEXT("release service vehicle"));
             if (!Minutes) return Finish();
             Stage=99; EnduranceStart=LastFrame=Now;LapStart=0.;Leg=-1;
-            if (!Write(TEXT("endurance.csv"),TEXT("elapsed_s,minute,leg,wall_ms,game_ms,render_ms,gpu_ms\n"))) return Fail(TEXT("open endurance file"));
+            if (!Write(TEXT("endurance.csv"),TEXT("elapsed_s,minute,leg,wall_ms,game_ms,render_ms,gpu_ms,focused\n"))) return Fail(TEXT("open endurance file"));
             return true;
         default: return Fail(TEXT("unknown review stage"));
         }
@@ -227,8 +229,8 @@ private:
             return Finish();
         }
         const double Wall=(Now-LastFrame)*1000.;LastFrame=Now;
-        Buffer.Appendf(TEXT("%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f\n"),Age,int32(Age/60),Leg,Wall,
-            FPlatformTime::ToMilliseconds(GGameThreadTime),FPlatformTime::ToMilliseconds(GRenderThreadTime),FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
+        Buffer.Appendf(TEXT("%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%d\n"),Age,int32(Age/60),Leg,Wall,
+            FPlatformTime::ToMilliseconds(GGameThreadTime),FPlatformTime::ToMilliseconds(GRenderThreadTime),FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()), FApp::HasFocus());
         if (++Count%450==0 && !Flush()) return Fail(TEXT("flush endurance frames"));
         if (Leg<0)
         {

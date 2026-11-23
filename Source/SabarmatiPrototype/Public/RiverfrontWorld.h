@@ -45,6 +45,7 @@ public:
 #if !UE_BUILD_SHIPPING
     int32 CityBuildingsNear(const FVector& At, double Radius) const;
     const TArray<FVector>& GetShopPath() const { return ShopPath; }
+    const TArray<FVector>& GetServiceLaneCircuit() const { return ServiceLaneCircuit; }
     void ReviewArcadeWalk(ARiverfrontPlayerController& Driver);
 #endif
 
@@ -88,6 +89,7 @@ private:
 #if !UE_BUILD_SHIPPING
     TArray<FVector> ArcadeReviewRoute;
     TArray<FVector> ShopPath;
+    TArray<FVector> ServiceLaneCircuit;
 #endif
     void LoadSurfaceMaterials();
     void UpdateCityTiles(const FVector& Focus, bool Immediate=false);
@@ -98,6 +100,8 @@ private:
     void BuildFrontage();
     void DressStreetSurface();
     void DressMarketUtilities();
+    void DressServiceElevations(double X, double Front, double Bank, double Width, double Depth,
+        double Height, int32 Style, bool bStreet);
     void DressFacade(double X, double Front, double Bank, double Width, double Height, int32 Style);
     void DetailFrontage(double X, double FrontY, double Bank, double Width, double Depth,
         int32 Floors, ETint Wall, int32 Style);

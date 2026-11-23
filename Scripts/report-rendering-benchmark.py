@@ -32,8 +32,13 @@ def inspect_run(folder):
                 raise ValueError(f"Invalid frame in {row['view']}")
             samples.append(timings)
     expected = {"atal-landing", "shopfront", "parked-hatch", "driving"}
-    if settings.get("format") == "2":
+    version = settings.get("format", "1")
+    if version not in {"1", "2", "3"}:
+        raise ValueError("Unknown benchmark format")
+    if version in {"2", "3"}:
         expected.update(("tea-room", "garden-walk"))
+    if version == "3":
+        expected.update(("service-lane", "road-surface"))
     if set(groups) != expected:
         raise ValueError("Missing or unexpected camera view")
     for name, rows in groups.items():
@@ -46,7 +51,7 @@ def inspect_run(folder):
     wall_seconds = sum(row[0] for row in groups["driving"]) / 1000
     if wall_seconds < 2.5:
         raise ValueError("Insufficient chase duration")
-    if settings.get("format") == "2" and (int(drive.get("contact_samples", 0)) != len(groups["driving"])
+    if version in {"2", "3"} and (int(drive.get("contact_samples", 0)) != len(groups["driving"])
             or abs(float(drive.get("duration_s", 0)) - wall_seconds) > .05):
         raise ValueError("Chase contact count or duration mismatch")
     return settings, drive, groups

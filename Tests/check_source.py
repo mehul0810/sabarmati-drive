@@ -126,7 +126,9 @@ class SourceTests(unittest.TestCase):
 
     def test_game_launchers_use_a_fitted_window(self):
         launch = (ROOT / "Scripts" / "run-mac.sh").read_text()
-        self.assertIn("-game -windowed", launch)
+        self.assertIn('launcher=("$editor" "$project" -game)', launch)
+        self.assertIn('launcher=(/usr/bin/open -n "$bundle" --args)', launch)
+        self.assertIn('exec "${launcher[@]}" -windowed "-ResX=$width" "-ResY=$height"', launch)
         self.assertNotIn("-fullscreen", launch)
         self.assertIn("screen.visibleFrame", launch)
         self.assertIn("screen.backingScaleFactor", launch)

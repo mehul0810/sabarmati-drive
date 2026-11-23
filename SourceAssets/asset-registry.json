@@ -24,12 +24,12 @@
       "collision": "Separate solid wings and columns; open alley and perimeter walk.",
       "lod": "World mesh instances, no authored building HLOD.",
       "location": "Source/SabarmatiPrototype/Private/RiverfrontArcade.cpp",
-      "verification": "Fixed shopfront view and previous six-leg walking test on each map."
+      "verification": "Fixed shopfront view and six-leg perimeter walks on both maps. The surrounding frontage also has original side and service elevations."
     },
     {
       "id": "road-asphalt",
       "category": "road material",
-      "source": "ambientCG Asphalt 033, Asphalt 019 and project-authored aggregate and wear blending.",
+      "source": "ambientCG Asphalt 033 and Asphalt 019 plus project-authored wear, irregular service cuts and roadside dust.",
       "license": "CC0 1.0 scans; original project shader.",
       "geometry": "Applied to existing driveable road surfaces.",
       "textures": "1K color, DirectX tangent normal and roughness maps. Asphalt 033 sampled at 2.5 m.",

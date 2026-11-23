@@ -14,7 +14,7 @@ void ARiverfrontWorld::DressStreetSurface()
             const FRotator R(0,Turn,0);
             auto At=[&](double A,double B,double Z){return FVector(X,Y,Z)+R.RotateVector(FVector(A,B,0));};
             // A 600 mm recessed access cover with its cast frame, diamond tread and lifting slots.
-            Shape(EShape::Cylinder,ETint::Retaining,At(0,0,.65),FVector(70,70,1.1));
+            Shape(EShape::Cylinder,ETint::Rail,At(0,0,.65),FVector(70,70,1.1));
             Shape(EShape::Cylinder,ETint::Rail,At(0,0,1.27),FVector(63.8,63.8,.65));
             Shape(EShape::Cylinder,ETint::Shadow,At(0,0,1.62),FVector(58.5,58.5,.24));
             for (int32 Row=-2;Row<=2;++Row) for (int32 Col=-2;Col<=2;++Col)

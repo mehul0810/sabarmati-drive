@@ -50,6 +50,24 @@ class BenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incomplete samples"):
             report.inspect_run(self.run_dir)
 
+    def test_current_format_requires_both_street_level_views(self):
+        settings = self.run_dir / "settings.txt"
+        settings.write_text(settings.read_text() + "format=3\n")
+        with self.assertRaisesRegex(ValueError, "camera view"):
+            report.inspect_run(self.run_dir)
+        frames = self.run_dir / "frames.csv"
+        fixed = [line for line in frames.read_text().splitlines() if line.startswith("shopfront,")]
+        for view in ("tea-room", "garden-walk", "service-lane", "road-surface"):
+            (self.run_dir / (view + ".png")).write_bytes((self.run_dir / "shopfront.png").read_bytes())
+            with frames.open("a") as output:
+                for line in fixed:
+                    output.write(line.replace("shopfront,", view + ",", 1) + "\n")
+        drive = self.run_dir / "drive.txt"
+        drive.write_text(drive.read_text() + "contact_samples=180\nduration_s=3.006\n")
+        _, _, groups = report.inspect_run(self.run_dir)
+        self.assertEqual(len(groups["service-lane"]), 180)
+        self.assertEqual(len(groups["road-surface"]), 180)
+
     def test_rejects_a_project_shader_fallback(self):
         (self.run_dir / "engine.log").write_text("LogMaterial: Failed to compile Material /Game/Sabarmati/Riverfront/Test for SF_METAL_SM5")
         with self.assertRaisesRegex(ValueError, "shader fell back"):

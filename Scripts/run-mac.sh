@@ -3,11 +3,12 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: bash Scripts/run-mac.sh [--editor|--game|--package] [--no-build] [--4k] [-- extra UE args]
+Usage: bash Scripts/run-mac.sh [--editor|--game|--standalone|--package] [--no-build] [--4k] [-- extra UE args]
        UE_ROOT="/path/to/UE_5.8" bash Scripts/run-mac.sh
 Both game presets open a resizable window. The default targets 1600x900; --4k
 uses Retina backing pixels up to 3840x2160. Both fit the desktop work area.
 --editor opens the source for Play and import.
+--standalone starts the cooked offline app with the same window fit and local player profile.
 --package cooks a local Development .app under Saved/MacPackage (local ad-hoc signature).
 USAGE
 }
@@ -20,6 +21,7 @@ while [[ $# -gt 0 ]]; do
         --editor) mode=editor; shift ;;
         --game) mode=game; shift ;;
         --package) mode=package; shift ;;
+        --standalone) mode=standalone; shift ;;
         --no-build) skip_build=true; shift ;;
         --4k) uhd=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -44,12 +46,12 @@ fi
 mac_build="$engine/Engine/Build/BatchFiles/Mac/Build.sh"
 uat="$engine/Engine/Build/BatchFiles/RunUAT.sh"
 editor="$engine/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor"
-if [[ ! -x "$editor" || ! -f "$mac_build" ]]; then
+if [[ "$mode" != standalone && ( ! -x "$editor" || ! -f "$mac_build" ) ]]; then
     printf 'Unreal Engine 5.8 not found at "%s". Install it from Epic or set UE_ROOT.\n' "$engine" >&2
     exit 1
 fi
 
-if [[ "$mode" == package || "$skip_build" == false ]]; then
+if [[ "$mode" == package || ( "$mode" != standalone && "$skip_build" == false ) ]]; then
     if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk macosx --show-sdk-path >/dev/null 2>&1; then
         printf 'A full Xcode installation with an active macOS SDK is required. Open Xcode once and finish its setup.\n' >&2
         exit 1
@@ -68,12 +70,24 @@ if [[ "$mode" == package ]]; then
     exec bash "$root/Scripts/package-local-mac.sh" "$@"
 fi
 
-if [[ "$skip_build" == false ]]; then
+if [[ "$mode" != standalone && "$skip_build" == false ]]; then
     bash "$mac_build" SabarmatiPrototypeEditor Mac Development "$project" -WaitMutex
 fi
 
 if [[ "$mode" == editor ]]; then
     exec "$editor" "$project" "$@"
+fi
+
+launcher=("$editor" "$project" -game)
+if [[ "$mode" == standalone ]]; then
+    bundle="$root/Saved/MacPackage/SabarmatiPrototype.app"
+    if [[ ! -x "$bundle/Contents/MacOS/SabarmatiPrototype" ]]; then
+        printf '%s\n' 'Build the standalone game with --package first.' >&2
+        exit 1
+    fi
+    launcher=(/usr/bin/open -n "$bundle" --args)
+    # An explicit -UserDir comes first, allowing QA to use its own profile.
+    set -- "$@" "-UserDir=$root"
 fi
 
 # Match Unreal's default window placement on the primary display. NSScreen reports
@@ -104,6 +118,6 @@ if [[ "$size" =~ ^([0-9]+)[[:space:]]([0-9]+)$ ]]; then
     width="${BASH_REMATCH[1]}"
     height="${BASH_REMATCH[2]}"
 fi
-exec "$editor" "$project" -game -windowed "-ResX=$width" "-ResY=$height" \
+exec "${launcher[@]}" -windowed "-ResX=$width" "-ResY=$height" \
     "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=$dpi" \
     "${video_args[@]}" "$@"

@@ -253,8 +253,19 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 {
                     const int32 Style=(Parcel+(Bank<0?1:0))%5;
                     const double Front=BankPosition(Bank,6300.+Style*67.);
-                    DetailFrontage(X,Front,Bank,1150.+(Parcel%4)*90.,1070.,2+Parcel%3,
-                        Style==0?ETint::Terracotta:Style==2?ETint::FacadeStone:ETint::Plaster,Style);
+                    const double FrontWidth = 1150. + (Parcel % 4) * 90.;
+                    constexpr double FrontDepth = 1070.;
+                    DetailFrontage(X, Front, Bank, FrontWidth, FrontDepth, 2 + Parcel % 3,
+                        Style == 0 ? ETint::Terracotta : Style == 2 ? ETint::FacadeStone : ETint::Plaster, Style);
+#if !UE_BUILD_SHIPPING
+                    if (Bank > 0. && bNorth && ServiceLaneCircuit.IsEmpty())
+                    {
+                        const double Left = X - FrontWidth * .5 - 130., Right = X + FrontWidth * .5 + 130.;
+                        const double Entry = Front - 145., Rear = Front + FrontDepth + 145.;
+                        ServiceLaneCircuit = {FVector(Left, Entry, 99.), FVector(Right, Entry, 99.),
+                            FVector(Right, Rear, 99.), FVector(Left, Rear, 99.), FVector(Left, Entry, 99.)};
+                    }
+#endif
                 }
                 const double Width = Dress.FRandRange(1180, 1820);
                 const double Depth = Dress.FRandRange(1090, 1730);
@@ -262,6 +273,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 const double Y = BankPosition(Bank, Dress.FRandRange(9400, 12000));
                 const ETint Wall = Dress.RandRange(0, 3) == 0 ? ETint::FacadeStone : ETint::Plaster;
                 Box(Wall, FVector(X, Y, Height * .5), FVector(Width, Depth, Height), true);
+                DressServiceElevations(X, Y - Bank * Depth * .5, Bank, Width, Depth, Height, Parcel % 5, false);
                 Box(ETint::Retaining, FVector(X, Y, Height + 22), FVector(Width + 18, Depth + 18, 44));
                 for (double Floor = 235; Floor < Height - 85; Floor += 282)
                 {

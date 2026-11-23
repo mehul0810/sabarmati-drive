@@ -56,6 +56,70 @@ void ARiverfrontWorld::DressFacade(double X, double Front, double Bank, double W
     }
 }
 
+void ARiverfrontWorld::DressServiceElevations(double X, double Front, double Bank, double Width,
+    double Depth, double Height, int32 Style, bool bStreet)
+{
+    const int32 Floors = FMath::Clamp(FMath::RoundToInt(Height / 305.), 2, 7);
+    const double Storey = Height / Floors;
+    const auto Elevation = [&](FVector Center, FVector Along, FVector Out, double Span, bool bRear)
+    {
+        const FRotator Rotation = Along.Rotation();
+        const auto Part = [&](ETint Tint, double Offset, double Projection, double Z,
+            double W, double D, double H)
+        {
+            const FVector Location = Center + Along * Offset + Out * Projection + FVector(0, 0, Z);
+            Box(Tint, Location, FVector(W, D, H), false, Rotation);
+        };
+        const int32 Bays = FMath::Clamp(FMath::FloorToInt(Span / 355.), 1, bStreet ? 4 : 3);
+        const double Pitch = Span * .82 / Bays;
+        const double ServiceEnd = ((Style % 2) ? -1. : 1.) * Span * .412;
+        // A staggered stair light, high utility windows and projecting stone chajjas
+        // give different depths to the walls seen on the walk around the block.
+        for (int32 Floor = 0; Floor < Floors; ++Floor)
+        {
+            for (int32 Bay = 0; Bay < Bays; ++Bay)
+            {
+                if (bRear && Floor == 0 && Bay == 0) continue;
+                const bool Stair = Bay == Bays - 1 && Style % 3 != 1;
+                const double W = Stair ? 64. : FMath::Min(Pitch * .58, 146.);
+                const double H = Stair ? 121. : 96.;
+                const double Z = Storey * (Floor + (Stair ? .69 : .55));
+                const double A = Pitch * (Bay - (Bays - 1) * .5);
+                Part(ETint::Shadow, A, 2., Z, W + 14., 7., H + 12.);
+                Part(ETint::Glass, A, 7., Z, W, 5., H);
+                Part(ETint::FacadeStone, A, 13., Z - H * .5 - 4., W + 18., 29., 8.);
+                if (bStreet || Stair)
+                {
+                    Part(ETint::Rail, A, 11., Z, 4., 5., H);
+                    Part(ETint::Retaining, A, 20., Z + H * .5 + 8., W + 31., 42., 9.);
+                }
+                if (bStreet && Stair)
+                {
+                    for (int32 Louver = -1; Louver <= 1; ++Louver)
+                        Part(ETint::Terracotta, A, 15., Z + Louver * 25., W + 1., 9., 7.);
+                }
+            }
+        }
+        if (!bStreet) return;
+        Part(ETint::Retaining, ServiceEnd, 8., Height * .49, 7., 9., Height * .96);
+        for (int32 Floor = 0; Floor < Floors; ++Floor)
+            Part(ETint::Rail, ServiceEnd, 8., (Floor + .58) * Storey, 12., 14., 3.);
+        if (bRear)
+        {
+            const double Door = -(Bays - 1) * Pitch * .5;
+            Part(ETint::Shadow, Door, 2., 108., 107., 8., 216.);
+            Part(ETint::Timber, Door, 8., 103., 94., 7., 206.);
+            Part(ETint::Brass, Door + 31., 15., 101., 4., 8., 19.);
+            Part(ETint::Retaining, Door, 23., 229., 142., 48., 11.);
+        }
+    };
+    const double Middle = Front + Bank * Depth * .5;
+    for (const double Side : {-1., 1.})
+        Elevation(FVector(X + Side * Width * .5, Middle, 0), FVector(0, Bank, 0),
+            FVector(Side, 0, 0), Depth, false);
+    Elevation(FVector(X, Front + Bank * Depth, 0), FVector(1, 0, 0), FVector(0, Bank, 0), Width, true);
+}
+
 void ARiverfrontWorld::DressMarketUtilities()
 {
     // An overhead service run stays on the inland shop edge, clear of the vehicle lane and arcade passage.

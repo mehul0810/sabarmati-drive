@@ -1,6 +1,7 @@
 """Build the editor-only material assets from the verified CC0 source textures."""
 from pathlib import Path
 import os
+import runpy
 from zipfile import ZipFile
 import unreal as ue
 
@@ -122,31 +123,7 @@ float coverage = smoothstep(.035, .14, grain + Broad * .20);
 return lerp(Fine * .74, float3(.65,.62,.53), .86 * coverage);
 """
                 else:
-                    code = """
-// Recover the strip width and transverse coordinate even on a rotated bridge deck.
-float2 dx = ddx(UV), dy = ddy(UV);
-float det = max(abs(dx.x*dy.y - dx.y*dy.x), 1e-10);
-float2 widths = float2(length(ddx(P)*dy.y - ddy(P)*dx.y),
-                       length(ddy(P)*dx.x - ddx(P)*dy.x)) / det;
-float across = widths.x < widths.y ? UV.x : UV.y;
-float width = min(widths.x, widths.y);
-float lanes = clamp(round(width / 360.), 1., 4.);
-float lane = frac(across*lanes);
-float wheel = 1. - smoothstep(.045,.12, abs(abs(lane-.5)-.22));
-float dust = 1. - smoothstep(.018,.075,min(across,1.-across));
-float2 metres = P.xy * .01;
-float2 grid = metres / float2(21., 8.);
-float2 id = floor(grid);
-float hash = frac(sin(dot(id,float2(39.7,17.1))) * 13758.5);
-float2 dist = (abs(frac(grid)-.5) - float2(.15 + .10*hash,.15)) * float2(21.,8.);
-float edge = max(dist.x,dist.y) + (Broad-.15)*.55;
-float alias = max(fwidth(edge),.025);
-float repair = (1.-smoothstep(-alias,alias,edge)) * step(.57,hash);
-float tar = (1.-smoothstep(.02,.055+alias,abs(edge))) * step(.57,hash);
-float3 asphalt = lerp(Fine, Old * float3(.55,.59,.63), .31 + .25*smoothstep(.1,.26,Broad));
-asphalt *= (.86 - wheel*.14 + dust*.17) * lerp(1., .69, repair);
-return lerp(asphalt, asphalt*.42, tar*.79);
-"""
+                    code = (ROOT / "Scripts/riverfront-asphalt.hlsl").read_text()
                 inputs = ("Fine", "Broad", "UV", "P", "Old") if road else ("Fine", "Broad")
                 finish_color = custom(material, "CMOT_FLOAT3", inputs, code, 40, -180)
                 connect(tint_node, finish_color, "Fine")
@@ -279,4 +256,5 @@ if scope in {"all", "facades", "street"}:
     surface("M_FacadePlaster", "Plaster001", 145, (.89, .78, .62), vertical=True)
     surface("M_FacadeTerracotta", "Bricks051", 125, (.81, .72, .67), vertical=True)
     street_glazing()
+    runpy.run_path(str(ROOT / "Scripts/build-facade-weathering.py"))
 ue.log("SABARMATI LOOK BUILD COMPLETE")

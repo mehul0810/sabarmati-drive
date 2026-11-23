@@ -18,13 +18,14 @@ struct FWalkTrial
 {
     FString Name;
     TArray<FVector> Points;
+    double TimeLimit = 27.;
 };
 }
 void ARiverfrontPlayerController::RunDistrictReview()
 {
     TActorIterator<ARiverfrontWorld> District(GetWorld());
     auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
-    if (!District || !Walker || District->GetShopPath().Num()<3)
+    if (!District || !Walker || District->GetShopPath().Num()<3 || District->GetServiceLaneCircuit().Num()!=5)
     {
         UE_LOG(LogTemp,Error,TEXT("Sabarmati district review needs the riverfront, the shop and a walker."));
         FPlatformMisc::RequestExitWithStatus(false,1);
@@ -32,6 +33,7 @@ void ARiverfrontPlayerController::RunDistrictReview()
     }
     TArray<FWalkTrial> Routes;
     Routes.Add({TEXT("tea-house"),District->GetShopPath()});
+    Routes.Add({TEXT("north-bank-service-lane"), District->GetServiceLaneCircuit(), 48.});
     for (const double X : {-64400.,58600.})
         for (const double Y : {2350.,-24270.})
             Routes.Add({FString::Printf(TEXT("%s-%s"),X<0?TEXT("sardar"):TEXT("ellis"),Y>0?TEXT("west"):TEXT("east")),
@@ -88,7 +90,7 @@ void ARiverfrontPlayerController::RunDistrictReview()
                 Leg=0;
                 return true;
             }
-            if (!Good || Now-Start>27.)
+            if (!Good || Now - Start > Trial.TimeLimit)
             {
                 UE_LOG(LogTemp,Error,TEXT("Sabarmati district review blocked in %s at leg %d, position %s."),*Trial.Name,Leg,*Here.ToCompactString());
                 FPlatformMisc::RequestExitWithStatus(false,1);

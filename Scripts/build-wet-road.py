@@ -1,4 +1,5 @@
 """Create a rain-responsive copy of the credited asphalt, preserving the dry graph at zero wetness."""
+from pathlib import Path
 import unreal as ue
 
 root="/Game/Sabarmati/Riverfront"
@@ -84,4 +85,21 @@ return lerp(Base*(1.-inside*.16)+float3(.004,.003,.001)*inside,Base*.41+float3(.
     if not lib.connect_material_property(finish,"",prop):raise RuntimeError("road repair output")
     lib.layout_material_expressions(mat);lib.recompile_material(mat)
     if not assets.save_loaded_asset(mat,False):raise RuntimeError(dest)
+# The dry and wet graphs contain the same two scanned wearing courses. Update the
+# shared asphalt node in place so existing material and instance references survive.
+shader_path = Path(ue.Paths.convert_relative_path_to_full(ue.Paths.project_dir())) / "Scripts/riverfront-asphalt.hlsl"
+road_code = shader_path.read_text()
+for path in (source, dest):
+    road_material = assets.load_asset(path)
+    matching = [expression for expression in lib.get_material_expressions(road_material)
+                if isinstance(expression, ue.MaterialExpressionCustom) and
+                [str(pin.get_editor_property("input_name")) for pin in expression.get_editor_property("inputs")]
+                == ["Fine", "Broad", "UV", "P", "Old"]]
+    if len(matching) != 1:
+        raise RuntimeError("Expected one two-scan asphalt node in " + path)
+    if matching[0].get_editor_property("code") != road_code:
+        matching[0].set_editor_property("code", road_code)
+        lib.recompile_material(road_material)
+        if not assets.save_loaded_asset(road_material, False):
+            raise RuntimeError("Could not save " + path)
 ue.log("SABARMATI RAIN ROAD SAVED")

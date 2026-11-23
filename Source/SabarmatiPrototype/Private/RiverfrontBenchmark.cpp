@@ -42,7 +42,9 @@ const FBenchmarkView Views[] = {
     {TEXT("shopfront"), FVector(-5450, 3790, 161), FRotator(4, 50, 0), 70.f},
     {TEXT("parked-hatch"), FVector(-3750, 3670, 145), FRotator(-7, 147, 0), 61.f},
     {TEXT("tea-room"), FVector(-3505, 5890, 158), FRotator(-5, 118, 0), 77.f},
-    {TEXT("garden-walk"), FVector(-3050, 4170, 165), FRotator(-2, -151, 0), 76.f}
+    {TEXT("garden-walk"), FVector(-3050, 4170, 165), FRotator(-2, -151, 0), 76.f},
+    {TEXT("service-lane"), FVector(9890, 6405, 162), FRotator(6, 141, 0), 76.f},
+    {TEXT("road-surface"), FVector(-80310, 4065, 126), FRotator(-13, 15, 0), 70.f}
 };
 
 class FRiverfrontBenchmark
@@ -90,9 +92,10 @@ public:
         }
         auto* Viewport = World->GetGameViewport()->Viewport;
         const FIntPoint Size = Viewport->GetSizeXY();
-        FString Info = FString::Printf(TEXT("format=2\ntime=%s\nviewport=%dx%d\nwindowed=%d\nengine=%s\ngpu=%s\n"),
+        FString Info = FString::Printf(TEXT("format=3\ntime=%s\nviewport=%dx%d\nwindowed=%d\nengine=%s\ngpu=%s\n"),
             TimeName, Size.X, Size.Y, Viewport->GetWindowMode() == EWindowMode::Windowed,
             *FEngineVersion::Current().ToString(), *FPlatformMisc::GetPrimaryGPUBrand());
+        Info += FString::Printf(TEXT("frame_smoothing=%d\n"), GEngine && GEngine->IsAllowedFramerateSmoothing());
         for (const TCHAR* Key : {TEXT("r.ScreenPercentage"), TEXT("r.SecondaryScreenPercentage.GameViewport"), TEXT("r.AntiAliasingMethod"), TEXT("r.VSync"),
             TEXT("r.DynamicRes.OperationMode"), TEXT("r.ReflectionMethod"), TEXT("r.DynamicGlobalIlluminationMethod"),
             TEXT("sg.ShadowQuality"), TEXT("sg.PostProcessQuality"), TEXT("t.MaxFPS"), TEXT("t.IdleWhenNotForeground")})

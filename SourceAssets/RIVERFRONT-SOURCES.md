@@ -102,3 +102,7 @@ Upper-floor windows use a cropped, tone-mapped interior panorama in a view-depen
 The center-mounted instrument panel, headlamp internals, grille and street utilities are project-authored. The dashboard receives actual road speed, engine RPM and gear. A seated version of the public clothed resident rides the two- and three-wheelers. Thirteen original synthesized clips cover vehicles, footfalls, shop bell, weather, river, distant traffic and market voices. The market voices contain no identifiable speech or recordings.
 
 The phone user and seated residents on promenade benches derive from the same public clothed mesh. The 70 × 143 mm phone is original geometry. The mapped streets share the Jacaranda canopy and a new dry ground shader derived from the credited Concrete 034 aggregate. These props and materials follow local art direction.
+
+## Riverfront service elevations and asphalt repairs
+
+The original service elevations add shaded stair lights, stone sills, rear service doors and rainwater pipes to the existing building footprints. The three masonry materials keep their credited scan maps. A world-space moisture mask changes colour and roughness close to ground level. The road blends the credited Asphalt 033 and 019 materials, with worn wheel tracks, dusty shoulders and irregular resurfacing cuts at metre scale. The two new fixed camera views capture a public side lane and a low view over a cast access cover. The editor can rebuild these adjustments with `Scripts/build-wet-road.py` and `Scripts/build-facade-weathering.py`.

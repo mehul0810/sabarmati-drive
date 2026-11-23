@@ -412,6 +412,7 @@ void ARiverfrontWorld::BuildFrontage()
             Box(ETint::FacadeStone, FVector(X + Width * .2, Y + Bank * Depth * .15, Height * .97 + 61),
                 FVector(Width * .35, Depth * .34, 123));
             const double Face = Y - Bank * Depth * .5;
+            DressServiceElevations(X, Face, Bank, Width, Depth, Height * .97, Index % 5, false);
             for (double Z = 235.; Z < Height * .94; Z += 293.)
             {
                 const int32 Bays = Index % 3 + 3;
@@ -460,6 +461,7 @@ void ARiverfrontWorld::DetailFrontage(double X, double FrontY, double Bank, doub
             FVector(16, Depth, 90));
     }
     DressFacade(X, FrontY, Bank, Width, Height, Style);
+    DressServiceElevations(X, FrontY, Bank, Width, Depth, Height, Style, true);
     const double RoofSide = Style % 2 == 0 ? 1.0 : -1.0;
     Box(Wall, FVector(X + RoofSide * Width * .23, FrontY + Bank * Depth * .65, Height + 83),
         FVector(Width * .27, Depth * .32, 165));
