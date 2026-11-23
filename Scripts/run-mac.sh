@@ -86,8 +86,25 @@ if [[ "$mode" == standalone ]]; then
         exit 1
     fi
     launcher=(/usr/bin/open -n "$bundle" --args)
-    # An explicit -UserDir comes first, allowing QA to use its own profile.
-    set -- "$@" "-UserDir=$root"
+fi
+
+# Keep normal editor-game and standalone progress together. The packaged app can
+# open its own Application Support folder without asking to read all of Documents.
+explicit_data=false
+review=false
+for argument in "$@"; do
+    case "$argument" in
+        -[Uu]ser[Dd]ir=*|-USERDIR=*) explicit_data=true ;;
+        -SabarmatiBenchmark|-Sabarmati*Review|-SabarmatiEndurance=*) review=true ;;
+    esac
+done
+if [[ "$explicit_data" == false && ( "$review" == false || "$mode" == standalone ) ]]; then
+    data_dir="$HOME/Library/Application Support/Sabarmati Drive"
+    if [[ "$review" == false ]]; then
+        profile_file="Saved/SaveGames/SabarmatiPlayerProfileV1.sav"
+        python3 "$root/Scripts/prepare-mac-profile.py" "$root/$profile_file" "$data_dir/$profile_file"
+    fi
+    set -- "$@" "-UserDir=$data_dir"
 fi
 
 # Match Unreal's default window placement on the primary display. NSScreen reports
