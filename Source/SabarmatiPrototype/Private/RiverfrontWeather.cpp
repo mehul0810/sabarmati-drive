@@ -115,6 +115,15 @@ void ARiverfrontWorld::CycleWeather()
     UE_LOG(LogTemp,Display,TEXT("Sabarmati weather: %s."),WeatherName());
 }
 
+void ARiverfrontWorld::StartMorningClock()
+{
+    ClockSeconds = 7.25f * 30.f;
+    bClock = true;
+    SetActorTickInterval(.045f);
+    SetActorTickEnabled(true);
+    UpdateWeather(0.f);
+}
+
 void ARiverfrontWorld::ToggleClock()
 {
     bClock=!bClock;

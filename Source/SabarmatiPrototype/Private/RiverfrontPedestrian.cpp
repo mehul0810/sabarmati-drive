@@ -171,7 +171,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
     // Wide loops stay away from road edges; landing bypasses fit between curb and bollards.
     const double Bridge = ARiverfrontWorld::AtalX;
     const FPedestrianRoute Routes[] = {
-        {{-6850, 3504, 2}, {-4650, 3504, 2}, 38, .71, 131},
+        {{-6850, 3504, 2}, {-6510, 3504, 2}, 38, .71, 114},
         {{-4100, 3060, 2}, {-980, 3060, 2}, 75, .25, 123},
         {{-640, 3050, 2}, {2120, 3050, 2}, 42, .20, 143},
         {{4200, 3005, 2}, {6700, 3005, 2}, 38, .62, 117},
@@ -212,6 +212,14 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
             const bool Alternate=SecondReady && Index%3!=0;
             Walker->Configure(Alternate?Second:Model, Alternate?SecondWalk:(Index%3==1?WalkAlt:Walk), GroundedStart, GroundedEnd,
                 Route.Radius, Route.StartFraction, Route.Speed, Index);
+            if (Index == 0 && Public)
+            {
+                Walker->bSightseeing = true;
+                Walker->RestAt = 4.5;
+                Walker->Tags.Add(TEXT("SightseeingVisitor"));
+                Walker->DressCloseResident(FColor(174, 128, 102), FLinearColor(.74f, .9f, 1.08f), true);
+                Walker->EquipVisitorCamera();
+            }
             ++Count;
         }
     }
@@ -219,27 +227,37 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
     // Shop customers use the very same physical doorways and counter aisles as the player.
     if (TActorIterator<ARiverfrontWorld> District(&World); District)
     {
+        const bool bFamilyAtTea = Public && SpawnFamilyOuting(**District, *Model, *Walk,
+            SecondReady ? *Second : *Model, SecondReady ? *SecondWalk : *WalkAlt);
         for (const bool Tea:{true,false})
         {
+            if (Tea && bFamilyAtTea) continue;
             const auto& Path=District->GetShopVisit(Tea);
             if (Path.Num()<3) continue;
             if (auto* Customer=World.SpawnActor<ARiverfrontPedestrian>(Path[0],FRotator::ZeroRotator))
             {
-                const bool Alternate=Tea && SecondReady;
+                const bool Alternate=SecondReady;
                 Customer->Configure(Alternate?Second:Model,Alternate?SecondWalk:Walk,Path[0],Path.Last(),1.,0.,Tea?102.:116.,Tea?12:7);
+                if (!Tea && Public)
+                {
+                    Customer->bVisitingPrintmaker = true;
+                    Customer->Tags.Add(TEXT("VisitingPrintmaker"));
+                    Customer->DressCloseResident(FColor(126, 88, 66), FLinearColor(.82f, 1.f, 1.14f), false);
+                    Customer->EquipPrintPortfolio();
+                    ApplyClothingColor(*Customer->Mesh, TEXT("scarf"), FColor(108, 120, 131));
+                }
                 Customer->Errand=Path; Customer->ErrandStep=1;
                 Customer->SetActorLocation(Path[0]); Customer->RestLeft=Tea?1.8:7.2; Customer->SetMoving(false);
             }
         }
     }
-    // Staggered walkers start on opposite kerbs. They enter only on the walk phase.
-    for (int32 I=0;I<2;++I)
+    // A solo commuter crosses independently in the lane beside the family.
     {
-        const FVector A(Bridge+(I?59.:-59.),I?4685.:3470.,2);
-        const FVector B(A.X,I?3470.:4685.,2);
+        const FVector A(Bridge+111.,4685.,4.);
+        const FVector B(A.X,3470.,2.);
         if (auto* Person=World.SpawnActor<ARiverfrontPedestrian>(A,FRotator::ZeroRotator))
         {
-            Person->Configure(I && SecondReady?Second:Model,I && SecondReady?SecondWalk:WalkAlt,A,B,1,0.,I?147.:132.,19+I);
+            Person->Configure(Model,WalkAlt,A,B,1,0.,139.,19);
             Person->bAtCrosswalk=true;
             Person->SetActorLocationAndRotation(A,FRotator(0,(B-A).Rotation().Yaw+Person->MeshYawToForward,0));
             Person->SetMoving(false);
@@ -299,6 +317,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
     const APawn* Player=PC?PC->GetPawn():nullptr;
     const bool Far=Player && FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(12500.);
     SetActorTickInterval(Far?.22f:.035f);
+    if (!Family.IsEmpty()) { TickFamily(DeltaSeconds); return; }
     if (!Errand.IsEmpty()) {TickErrand(DeltaSeconds);return;}
     if (bAtCrosswalk)
     {
@@ -325,6 +344,10 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
     }
     if (RestLeft>0.)
     {
+        if (bSightseeing)
+        {
+            LookTowards(FVector(ARiverfrontWorld::AtalX, 800., 240.), DeltaSeconds);
+        }
         RestLeft-=DeltaSeconds;
         if (RestLeft<=0) SetMoving(true);
         return;
@@ -342,8 +365,14 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
 
 void ARiverfrontPedestrian::SetMoving(bool Moving)
 {
+    if (bMoving == Moving) return;
+    bMoving = Moving;
     UAnimSequence* Clip=Moving || !IdlePose?Gait.Get():IdlePose.Get();
-    if (Clip) Mesh->PlayAnimation(Clip,true);
+    if (Clip)
+    {
+        Mesh->PlayAnimation(Clip, true);
+        Mesh->SetPosition(Clip->GetPlayLength() * FMath::Frac(Speed * .0618), false);
+    }
     Mesh->SetPlayRate(Moving?FMath::Clamp(float(Speed/132.),.76f,1.26f):(IdlePose?.87f:0.f));
 }
 
@@ -377,6 +406,12 @@ void ARiverfrontPedestrian::TickErrand(float Delta)
 {
     if (RestLeft>0.)
     {
+        if (bVisitingPrintmaker && ErrandDirection < 0 && ErrandStep == Errand.Num() - 2)
+        {
+            const FVector Inside = (Errand[1] - Errand[0]).GetSafeNormal2D();
+            // Look over the prints behind the counter while holding the portfolio.
+            LookTowards(Errand.Last() + Inside * 270. + FVector(Inside.Y, -Inside.X, 0.) * 95., Delta);
+        }
         RestLeft-=Delta;
         if (RestLeft<=0.) SetMoving(true);
         return;

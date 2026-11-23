@@ -44,6 +44,7 @@ public:
     float GetFuel() const { return Fuel; }
     float GetCondition() const { return Condition; }
     bool IsOccupied() const { return Driver.Get() != nullptr; }
+    bool FindDriverExit(FVector& Point, int32& Side) const;
     bool IsNearDoor(const ARiverfrontCharacter& Character) const;
     void Enter(ARiverfrontCharacter& Character);
     float GetSpeedKph() const { return FMath::Abs(Speed) * 0.036f; }

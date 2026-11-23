@@ -23,4 +23,21 @@ for name,dest in (("SK_RiverResident",root),("SK_RiverResidentKurta",root+"/Kurt
         path=dest+"/"+key
         if path!=obj.get_path_name().split(".")[0] and not library.rename_asset(obj.get_path_name(),path):raise RuntimeError(path)
         if not library.save_asset(path,False):raise RuntimeError(path)
+# Seated passengers, benches and phone users share these nine original
+# material instances through UE's instanced static mesh components.
+instanced = ue.MaterialUsage.MATUSAGE_INSTANCED_STATIC_MESHES
+editing = ue.MaterialEditingLibrary
+for surface in ("bottom_denim", "hair", "iris", "lips", "sclera", "shoe", "skin", "top_seams", "top_teal_woven"):
+    path = root + "/SK_RiverResident/Materials/" + surface
+    material = library.load_asset(path)
+    if not isinstance(material, ue.MaterialInstanceConstant):
+        raise RuntimeError(path)
+    if not (editing.has_material_usage_override(material, instanced) and editing.has_material_usage(material, instanced)):
+        editing.set_material_usage_override(material, instanced, True, True)
+        editing.update_material_instance(material)
+        if not library.save_loaded_asset(material, False):
+            raise RuntimeError("Could not save instancing support for " + path)
+    if not (editing.has_material_usage_override(material, instanced) and editing.has_material_usage(material, instanced)):
+        raise RuntimeError("Missing instancing support on " + path)
+    ue.log("SABARMATI INSTANCE SURFACE VERIFIED " + path)
 ue.log("SABARMATI PUBLIC RESIDENTS SAVED")

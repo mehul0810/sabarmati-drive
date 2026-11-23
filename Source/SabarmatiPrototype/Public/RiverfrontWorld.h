@@ -28,6 +28,7 @@ public:
     void CycleTimeOfDay();
     void CycleWeather();
     void ToggleClock();
+    void StartMorningClock();
     float GetWetness() const { return SurfaceWetness; }
     const TCHAR* WeatherName() const;
     const TCHAR* TimeName() const;
@@ -56,6 +57,7 @@ public:
     static constexpr double AtalEndHalfWidth = 500.0;
 
 private:
+    friend struct FRiverfrontFirstMorningWorld;
     enum class EShape : uint8 { Box, Cylinder, Sphere, Plane, Count };
     enum class ETint : uint8
     {

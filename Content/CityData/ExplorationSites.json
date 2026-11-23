@@ -1,5 +1,7 @@
 {
   "riverfront": [
+    {"id":"home-wardrobe","name":"Kesar Apartments · Flat 2B","action":"Open your wardrobe","note":"Your wardrobe at home.","kind":"Wardrobe","location":"wardrobe","reach_cm":128},
+    {"id":"sutra","name":"Sutra Cloth House","action":"Browse clothes and accessories","note":"Sutra Cloth House.","kind":"ClothesShop","location":"cloth","reach_cm":145},
     {
       "id": "tea",
       "name": "Nadi Chai",

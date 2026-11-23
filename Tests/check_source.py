@@ -27,8 +27,10 @@ class SourceTests(unittest.TestCase):
 
         for header in (SOURCE / "Public").glob("*.h"):
             data = header.read_text()
-            self.assertIn(f'#include "{header.stem}.generated.h"', data)
-            self.assertIn("GENERATED_BODY()", data)
+            if re.search(r"\bU(?:CLASS|STRUCT|ENUM|INTERFACE|DELEGATE)\s*\(", data):
+                self.assertIn(f'#include "{header.stem}.generated.h"', data)
+            if re.search(r"\bU(?:CLASS|STRUCT|INTERFACE)\s*\(", data):
+                self.assertIn("GENERATED_BODY()", data)
 
     def test_map_and_renderer(self):
         config = configparser.ConfigParser(strict=False)  # Unreal allows repeated +Array entries.
@@ -117,8 +119,12 @@ class SourceTests(unittest.TestCase):
         source = (PRIVATE / "RiverfrontPlayerController.cpp").read_text()
         storage = (SOURCE / "Public" / "RiverfrontLocalProfile.h").read_text()
         self.assertIn("public USaveGame", storage)
-        self.assertIn("UGameplayStatics::SaveGameToSlot", source)
-        self.assertIn("UGameplayStatics::LoadGameFromSlot", source)
+        life = (PRIVATE / "RiverfrontLifeProfile.cpp").read_text()
+        self.assertIn("RiverfrontLife::Create(ProfileSlot, Clean)", source)
+        self.assertIn("RiverfrontLife::Load(ProfileSlot)", source)
+        self.assertIn("UGameplayStatics::SaveGameToSlot", life)
+        self.assertIn("UGameplayStatics::LoadGameFromSlot", life)
+        self.assertNotIn("FHttpModule", life)
         self.assertIn("Screen == EScreen::Title && !HasLocalProfile()", source)
         self.assertIn('SabarmatiQA-', source)
         self.assertNotIn("FHttpModule", source)
