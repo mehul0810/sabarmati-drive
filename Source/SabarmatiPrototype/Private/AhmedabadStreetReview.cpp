@@ -1,6 +1,7 @@
 #include "RiverfrontPlayerController.h"
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCar.h"
+#include "Components/PrimitiveComponent.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontWorld.h"
@@ -31,6 +32,7 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
     {
         int32 Stop=0,Stage=0,Count=0;
         double Since=0,Last=0,Walked=0,Driven=0,TravelMs=0;
+        FKey Pending;
         FVector From=FVector::ZeroVector;
         FString Rows=TEXT("place,plots_within_150m,walk_m,measured_frames,p95_wall_ms,street_travel_call_ms\n");
         TArray<double> Frames;
@@ -50,7 +52,11 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
             if (!City.IsValid() || !Who.IsValid() || !Vehicle.IsValid() || Age>35.) return Fail(TEXT("actor or timeout"));
             const auto Key=[&](FKey K,EInputEvent E){InputKey(FInputKeyEventArgs(GetWorld()->GetGameViewport()->Viewport,
                 FInputDeviceId::CreateFromInternalId(0),K,E,FPlatformTime::Cycles64()));};
-            const auto Tap=[&](FKey K){Key(K,IE_Pressed);Key(K,IE_Released);};
+            if (State->Pending.IsValid())
+            {
+                Key(State->Pending,IE_Released);State->Pending=FKey();
+            }
+            const auto Tap=[&](FKey K){Key(K,IE_Pressed);State->Pending=K;};
             const auto Next=[&](int32 N){State->Stage=N;State->Since=Now;};
             const auto Shot=[&](const FString& Name){FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,Name+TEXT(".png")),false,false);};
             const FRiverSite* Target=Destination();
@@ -63,12 +69,14 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
                     Tap(EKeys::N);State->Since=Now;return true;
                 }
                 State->Count=0;
-                Tap(EKeys::V);State->TravelMs=(FPlatformTime::Seconds()-Now)*1000.;Next(1);
+                LastStreetTravelMs=0.;Tap(EKeys::V);Next(1);
             }
             else if (State->Stage==1)
             {
                 if (Age<3.0) return true;
-                if (!Target || FVector::Dist2D(GetPawn()->GetActorLocation(),Target->Point)>600.) return Fail(TEXT("street travel"));
+                if (!Target || FVector::Dist2D(GetPawn()->GetActorLocation(),Target->Point)>1200.) return Fail(TEXT("street travel"));
+                if (LastStreetTravelMs<=0.) return Fail(TEXT("destination did not report a completed transfer"));
+                State->TravelMs=LastStreetTravelMs;
                 State->From=GetPawn()->GetActorLocation();
                 if (State->Stop==3)
                 {
@@ -88,6 +96,10 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
             else if (State->Stage==2)
             {
                 if (!Target || Who->GetCharacterMovement()->IsFalling()) return Fail(TEXT("unsupported walking lane"));
+                FHitResult Floor;
+                const FVector Feet=Who->GetActorLocation();
+                if (!GetWorld()->LineTraceSingleByObjectType(Floor,Feet,Feet-FVector(0,0,170),FCollisionObjectQueryParams(ECC_WorldStatic))
+                    || !Floor.GetComponent() || !Floor.GetComponent()->ComponentHasTag(TEXT("CityFootpath"))) return Fail(TEXT("walker left the footpath"));
                 Who->AddMovementInput(FRotator(0,Target->StreetHeading.GetValue(),0).Vector(),1.f,true);
                 State->Frames.Add((Now-State->Last)*1000.);State->Last=Now;
                 State->Walked=FVector::Dist2D(Who->GetActorLocation(),State->From)/100.;

@@ -601,6 +601,18 @@ void ARiverfrontWorld::BuildStreetFurniture()
     UStaticMesh* DetailedTree = StreetTreeMesh();
     int32 DetailedTreeCount = 0;
     int32 LeafCardCount = 0;
+    const auto ResidentBatch=[this](const TCHAR* Path)
+    {
+        auto* Model=LoadObject<UStaticMesh>(nullptr,Path);
+        if (!Model) return static_cast<UInstancedStaticMeshComponent*>(nullptr);
+        auto* Seats=NewObject<UInstancedStaticMeshComponent>(this);
+        AddInstanceComponent(Seats); Seats->SetupAttachment(GetRootComponent());
+        Seats->SetMobility(EComponentMobility::Static); Seats->SetStaticMesh(Model);
+        Seats->SetCollisionEnabled(ECollisionEnabled::NoCollision); Seats->SetCanEverAffectNavigation(false);
+        Seats->SetCullDistances(7600,14000);Seats->RegisterComponent();return Seats;
+    };
+    auto* Seated=ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident.SM_SeatedResident"));
+    auto* Phone=ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/SM_PhoneResident.SM_PhoneResident"));
     for (const double Bank : {-1.0, 1.0})
     {
         for (double X = -6900; X <= 6900; X += 850)
@@ -667,11 +679,24 @@ void ARiverfrontWorld::BuildStreetFurniture()
                     Beam(ETint::Rail, FVector(BenchX + Offset, BenchY - Bank * 17, 41),
                         FVector(BenchX + Offset, BenchY - Bank * 25, 82), 5);
                 }
+                const int32 BenchIndex=FMath::RoundToInt((X+6900.)/1700.)+(Bank>0?1:0);
+                if (Seated && BenchIndex%3==1)
+                {
+                    const FRotator Facing(0,Bank>0?0.:180.,0);
+                    Seated->AddInstance(FTransform(Facing,FVector(BenchX-28.,BenchY,-9.),FVector(.96)));
+                    if (Phone && BenchIndex%2==1)
+                    {
+                        const FVector Standing(BenchX+104.,BenchY+Bank*51.,2.);
+                        const FRotator Looking(0,Bank>0?137.:-32.,0);
+                        Phone->AddInstance(FTransform(Looking,Standing,FVector(1.02)));
+                    }
+                }
                 // Player contact matches the slat seat, not the floor void under each leg.
                 Box(ETint::Bark, FVector(BenchX, BenchY, 43), FVector(175, 42, .4), true);
             }
         }
     }
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati promenade: %d seated residents, %d phone users."),Seated?Seated->GetInstanceCount():0,Phone?Phone->GetInstanceCount():0);
     UE_LOG(LogTemp, Display, TEXT("Sabarmati riverfront: %d detailed trees; %d masked foliage cards."),
         DetailedTreeCount, LeafCardCount);
 }

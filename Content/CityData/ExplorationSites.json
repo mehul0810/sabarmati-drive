@@ -153,7 +153,7 @@
         54925,
         90
       ],
-      "reach_cm": 650,
+      "reach_cm": 1000,
       "street_heading": -7.98
     },
     {
@@ -167,7 +167,7 @@
         147812,
         90
       ],
-      "reach_cm": 650,
+      "reach_cm": 1000,
       "street_heading": 163.56
     },
     {
@@ -181,7 +181,7 @@
         654628,
         90
       ],
-      "reach_cm": 650,
+      "reach_cm": 1000,
       "street_heading": 156.01
     },
     {
@@ -195,7 +195,7 @@
         25263,
         68
       ],
-      "reach_cm": 500,
+      "reach_cm": 1000,
       "street_heading": 1.0302
     }
   ]

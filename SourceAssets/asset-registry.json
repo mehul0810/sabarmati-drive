@@ -216,7 +216,7 @@
       "collision": "Traffic chassis handles collision.",
       "lod": "Screen-size mesh LODs and traffic culling.",
       "location": "Content/Sabarmati/Riverfront/People/SM_SeatedResident.uasset",
-      "verification": "Imported, cooked and fitted to traffic vehicles."
+      "verification": "Three LODs imported. The seated figure appears in traffic and on a subset of the modeled riverfront benches."
     },
     {
       "id": "mapped-street-plots",
@@ -229,6 +229,30 @@
       "lod": "600 m tiles with bounded loading around the player.",
       "location": "Content/CityData/AhmedabadDistrictBuildings.bin",
       "verification": "Regional record counts and binary digest reproduced from the bundled manifest."
+    },
+    {
+      "id": "phone-resident",
+      "category": "character",
+      "source": "Baked hand, elbow, head and shoulder pose from the public clothed resident. Project-authored handheld prop.",
+      "license": "CC0 1.0 MakeHuman generic base, with original pose, geometry and wardrobe.",
+      "geometry": "Handset 70 × 143 mm, case and inset screen. The mesh shares the resident's original weights and garment proportions.",
+      "textures": "Existing public clothing, skin and vehicle-finish materials.",
+      "collision": "Decorative group placed outside the pedestrian circuits.",
+      "lod": "Three verified mesh LODs and instanced distance culling.",
+      "location": "Content/Sabarmati/Riverfront/People/SM_PhoneResident.uasset",
+      "verification": "Imported by Unreal and placed beside the occupied benches."
+    },
+    {
+      "id": "street-ground",
+      "category": "environment material",
+      "source": "Earth and gravel pigment over the existing ambientCG Concrete 034 aggregate. Scripts/build-street-ground.py.",
+      "license": "CC0 1.0 aggregate and original project shader.",
+      "geometry": "Ground cover on streamed land tiles containing the named street pilot.",
+      "textures": "World-space pigment variation, credited aggregate albedo, tangent normal and roughness.",
+      "collision": "Terrain tiles supply the traversable floor.",
+      "lod": "Texture mipmaps; geometry unloads with its tile.",
+      "location": "Content/Sabarmati/Riverfront/M_StreetGround.uasset",
+      "verification": "Unreal material commandlet and street-level capture."
     }
   ]
 }

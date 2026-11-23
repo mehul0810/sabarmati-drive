@@ -38,6 +38,7 @@ public:
     const FVector& GetTeaCounter() const { return TeaCounter; }
     const FVector& GetPressCounter() const { return PressCounter; }
     bool PrepareCityTravel(const FVector& Focus);
+    bool FindCityFootway(const FVector& Origin, double Yaw, FVector& Surface) const;
     bool HasStreetDistricts() const { return bStreetDistricts; }
     bool IsCityMode() const { return CityState.IsValid(); }
     virtual void Tick(float DeltaSeconds) override;
@@ -126,6 +127,7 @@ private:
     UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> RainStreaks;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> RoadWeather;
     UPROPERTY() TObjectPtr<UStaticMesh> MatureTree;
+    UPROPERTY() TObjectPtr<UMaterialInterface> StreetGround;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CanopyLeaves;
     UPROPERTY() TObjectPtr<UAudioComponent> RainAudio;
     UPROPERTY() TObjectPtr<UAudioComponent> WindAudio;

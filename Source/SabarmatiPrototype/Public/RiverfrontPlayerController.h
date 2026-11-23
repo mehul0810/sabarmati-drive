@@ -95,6 +95,7 @@ private:
     void RunDistrictReview();
     void RunSystemsReview();
     void RunNeighbourhoodReview();
+    double LastStreetTravelMs=0.;
 #endif
     void TogglePauseMenu();
     void CycleDistrictTime();

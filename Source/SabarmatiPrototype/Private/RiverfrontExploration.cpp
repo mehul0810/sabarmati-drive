@@ -61,7 +61,7 @@ void ARiverfrontPlayerController::LoadSites()
             if (!District->HasStreetDistricts()) continue;
             Travel=Heading;
         }
-        Sites.Add({FName(*Id),Name,Action,Discovery,Point,Kind,float(FMath::Clamp(Reach,50.,800.)),Travel});
+        Sites.Add({FName(*Id),Name,Action,Discovery,Point,Kind,float(FMath::Clamp(Reach,50.,1100.)),Travel});
     }
 }
 int32 ARiverfrontPlayerController::NearbySite() const
@@ -215,6 +215,9 @@ void ARiverfrontPlayerController::TravelToDestination()
     if (Car && Car->GetSpeedKph()>1.f) { Notice(TEXT("Stop before travelling to a city street.")); return; }
     TActorIterator<ARiverfrontWorld> World(GetWorld());
     const FVector Before=GetPawn()->GetActorLocation();
+#if !UE_BUILD_SHIPPING
+    const double BeginTravel=FPlatformTime::Seconds();
+#endif
     if (!World || !World->PrepareCityTravel(Stop->Point)) return;
     const double Yaw=Stop->StreetHeading.GetValue();
     const FRotator Heading(0,Yaw,0);
@@ -222,11 +225,10 @@ void ARiverfrontPlayerController::TravelToDestination()
     if (Car) Moved=Car->TravelToStreet(Stop->Point,Yaw);
     else if (Walker)
     {
-        FHitResult Floor;
-        const FVector Kerb=Stop->Point+Heading.RotateVector(FVector(0,-210,0));
-        if (GetWorld()->LineTraceSingleByObjectType(Floor,Kerb+FVector(0,0,160),Kerb-FVector(0,0,180),FCollisionObjectQueryParams(ECC_WorldStatic)))
+        FVector Surface;
+        if (World->FindCityFootway(Stop->Point,Yaw,Surface))
         {
-            const FVector Feet=Floor.ImpactPoint+FVector(0,0,Walker->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+2.);
+            const FVector Feet=Surface+FVector(0,0,Walker->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+2.);
             Moved=Walker->TeleportTo(Feet,Heading);
             if (Moved) Walker->GetCharacterMovement()->StopMovementImmediately();
         }
@@ -234,4 +236,7 @@ void ARiverfrontPlayerController::TravelToDestination()
     if (!Moved) { World->PrepareCityTravel(Before); Notice(TEXT("The arrival point is occupied.")); return; }
     SetControlRotation(FRotator(-6,Yaw,0));
     Notice(Stop->Name);
+#if !UE_BUILD_SHIPPING
+    LastStreetTravelMs=(FPlatformTime::Seconds()-BeginTravel)*1000.;
+#endif
 }

@@ -4,7 +4,10 @@ from pathlib import Path
 import unreal as ue
 src=Path(os.environ["SABARMATI_TRIM_SOURCE"])
 assets=ue.EditorAssetLibrary;root="/Game/Sabarmati/Riverfront";tools=ue.AssetToolsHelpers.get_asset_tools()
-for name,folder in (("SM_SeatedResident",root+"/People"),("SM_HatchTrim",root+"/Vehicles/Coachwork")):
+items=(("SM_SeatedResident",root+"/People"),("SM_HatchTrim",root+"/Vehicles/Coachwork"))
+if (src/"SM_PhoneResident.glb").is_file():
+    items+=(("SM_PhoneResident",root+"/People"),)
+for name,folder in items:
     path=folder+"/"+name
     if not assets.does_asset_exist(path):
         manager=ue.InterchangeManager.get_interchange_manager_scripted();pipeline=ue.InterchangeGenericAssetsPipeline()
@@ -15,7 +18,12 @@ for name,folder in (("SM_SeatedResident",root+"/People"),("SM_HatchTrim",root+"/
     if not isinstance(mesh,ue.StaticMesh):raise RuntimeError(path)
     for idx,slot in enumerate(mesh.get_editor_property("static_materials")):
         key=str(slot.get_editor_property("material_slot_name")).lower()
-        base=root+"/People/SK_RiverResident/Materials/"+key if name=="SM_SeatedResident" else root+"/Vehicles/Fleet/MI_Fleet_"+key
+        if key.startswith("phone_"):
+            base=root+"/Vehicles/Fleet/MI_Fleet_"+("panel" if key=="phone_screen" else "iron")
+        elif folder.endswith("/People"):
+            base=root+"/People/SK_RiverResident/Materials/"+key
+        else:
+            base=root+"/Vehicles/Fleet/MI_Fleet_"+key
         mat=assets.load_asset(base)
         if not mat:raise RuntimeError(base)
         mesh.set_material(idx,mat)

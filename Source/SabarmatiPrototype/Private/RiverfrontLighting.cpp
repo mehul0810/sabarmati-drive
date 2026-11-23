@@ -25,9 +25,9 @@ struct FDistrictSky
 };
 
 constexpr int32 MaxPracticalLights = 14;
-const FDistrictSky Day = {FRotator(-43, 100, 0), 5.1f, 5750.f, .80f, .007f, FLinearColor(.35,.41,.49)};
-const FDistrictSky Golden = {FRotator(-18, 63, 0), 4.1f, 4900.f, .82f, .010f, FLinearColor(.42,.31,.22)};
-const FDistrictSky Night = {FRotator(-29, -61, 0), .23f, 8400.f, .36f, .006f, FLinearColor(.009,.015,.033)};
+const FDistrictSky DayLighting = {FRotator(-43, 100, 0), 5.1f, 5750.f, .80f, .007f, FLinearColor(.35,.41,.49)};
+const FDistrictSky GoldenLighting = {FRotator(-18, 63, 0), 4.1f, 4900.f, .82f, .010f, FLinearColor(.42,.31,.22)};
+const FDistrictSky NightLighting = {FRotator(-29, -61, 0), .23f, 8400.f, .36f, .006f, FLinearColor(.009,.015,.033)};
 }
 
 const TCHAR* ARiverfrontWorld::TimeName() const
@@ -151,7 +151,7 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
 {
     TimeOfDay = Time;
     const bool AtNight = Time == ERiverfrontTime::Night;
-    const FDistrictSky& Lighting = AtNight ? Night : Time == ERiverfrontTime::Day ? Day : Golden;
+    const FDistrictSky& Lighting = AtNight ? NightLighting : Time == ERiverfrontTime::Day ? DayLighting : GoldenLighting;
     if (Sun)
     {
         Sun->SetWorldRotation(Lighting.Direction);

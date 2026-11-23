@@ -285,19 +285,19 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         Box(Tint, Centre, FVector(Along.Size() + .08, Width, Thickness), Solid, Along.Rotation());
     };
     const auto SpanStrip = [&](ETint Tint, double X, double Width, double Depth,
-        double Offset, double HalfLength, bool Solid)
+        double Offset, double SpanHalfLength, bool Solid)
     {
-        double Prior = RiverCenter - HalfLength;
+        double Prior = RiverCenter - SpanHalfLength;
         for (double Station : {-14760., -13480., 13480., 14760.})
         {
             const double Y = RiverCenter + Station;
-            if (Y > Prior && Y < RiverCenter + HalfLength)
+            if (Y > Prior && Y < RiverCenter + SpanHalfLength)
             {
                 Strip(Tint, X, Prior, Y, Width, Depth, Offset, Solid);
                 Prior = Y;
             }
         }
-        Strip(Tint, X, Prior, RiverCenter + HalfLength, Width, Depth, Offset, Solid);
+        Strip(Tint, X, Prior, RiverCenter + SpanHalfLength, Width, Depth, Offset, Solid);
     };
     const auto RoadSpan = [&](double X, double Width, bool bWide)
     {
