@@ -1,0 +1,266 @@
+#include "RiverfrontPedestrian.h"
+
+#include "Animation/AnimSequence.h"
+#include "CollisionQueryParams.h"
+#include "CollisionShape.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "RiverfrontWorld.h"
+
+namespace
+{
+struct FRouteSample
+{
+    FVector Position;
+    FVector Forward;
+};
+
+struct FPedestrianRoute
+{
+    FVector Start;
+    FVector End;
+    double Radius;
+    double StartFraction;
+    double Speed;
+};
+
+constexpr const TCHAR* AvatarMeshPath = TEXT("/Game/Sabarmati/Avatar/SK_Sabarmati.SK_Sabarmati");
+constexpr const TCHAR* WalkPath = TEXT("/Game/Sabarmati/Avatar/A_Walk.A_Walk");
+constexpr const TCHAR* WalkAltPath = TEXT("/Game/Sabarmati/Avatar/A_WalkAlt.A_WalkAlt");
+
+// Rounded ends keep position and heading continuous, without frequent reversal animations.
+FRouteSample SampleCircuit(const FVector& A, const FVector& B, double Radius, double Distance)
+{
+    const FVector Delta = B - A;
+    const double Length = Delta.Size2D();
+    const FVector Along = Delta.GetSafeNormal2D();
+    const FVector Across(-Along.Y, Along.X, 0.0);
+    const double ArcLength = UE_PI * Radius;
+
+    if (Distance < Length)
+    {
+        return {A + Along * Distance + Across * Radius, Along};
+    }
+    Distance -= Length;
+    if (Distance < ArcLength)
+    {
+        const double T = Distance / Radius;
+        return {
+            B + Radius * (Across * FMath::Cos(T) + Along * FMath::Sin(T)),
+            Along * FMath::Cos(T) - Across * FMath::Sin(T)
+        };
+    }
+    Distance -= ArcLength;
+    if (Distance < Length)
+    {
+        return {B - Along * Distance - Across * Radius, -Along};
+    }
+
+    const double T = (Distance - Length) / Radius;
+    return {
+        A - Radius * (Across * FMath::Cos(T) + Along * FMath::Sin(T)),
+        -Along * FMath::Cos(T) + Across * FMath::Sin(T)
+    };
+}
+
+bool ValidateCircuit(UWorld& World, const FPedestrianRoute& Route, double& GroundZ,
+    int32 RouteIndex)
+{
+    const double Perimeter = 2.0 * (FVector::Dist2D(Route.Start, Route.End) + UE_PI * Route.Radius);
+    const int32 Samples = FMath::Max(12, FMath::CeilToInt(Perimeter / 140.0));
+    const FCollisionObjectQueryParams StaticOnly(ECC_WorldStatic);
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontPedestrianRoute), false);
+    // Keep the clearance capsule just off the deck. It checks obstacles, not walkable floor.
+    const FCollisionShape Person = FCollisionShape::MakeCapsule(33.0f, 96.0f);
+    FVector PreviousCenter = FVector::ZeroVector;
+    for (int32 I = 0; I <= Samples; ++I)
+    {
+        const FVector Sample = SampleCircuit(Route.Start, Route.End, Route.Radius,
+            Perimeter * I / Samples).Position;
+        FHitResult Ground;
+        if (!World.LineTraceSingleByObjectType(Ground, Sample + FVector(0, 0, 20),
+            Sample - FVector(0, 0, 30), StaticOnly, Query) ||
+            Ground.ImpactNormal.Z < .8 || FMath::Abs(Ground.ImpactPoint.Z - Route.Start.Z) > 12.0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: route %d missing walkable floor at %s."),
+                RouteIndex, *Sample.ToCompactString());
+            return false;
+        }
+        if (I == 0)
+        {
+            GroundZ = Ground.ImpactPoint.Z;
+        }
+        else if (FMath::Abs(Ground.ImpactPoint.Z - GroundZ) > 6.0)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: route %d changes height at %s."),
+                RouteIndex, *Sample.ToCompactString());
+            return false;
+        }
+
+        const FVector Center(Sample.X, Sample.Y, GroundZ + 101.0);
+        FHitResult Obstacle;
+        if ((I == 0 && World.OverlapAnyTestByObjectType(Center, FQuat::Identity, StaticOnly, Person, Query)) ||
+            (I > 0 && World.SweepSingleByObjectType(Obstacle, PreviousCenter, Center,
+                FQuat::Identity, StaticOnly, Person, Query)))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: route %d lacks clearance near %s (%s)."),
+                RouteIndex, *Sample.ToCompactString(), *GetNameSafe(Obstacle.GetComponent()));
+            return false;
+        }
+        PreviousCenter = Center;
+    }
+    return true;
+}
+
+UMaterialInstanceDynamic* ApplyClothingColor(USkeletalMeshComponent& Mesh, const TCHAR* SlotName, FColor Color)
+{
+    const int32 Slot = Mesh.GetMaterialIndex(FName(SlotName));
+    if (Slot == INDEX_NONE)
+    {
+        return nullptr;
+    }
+    UMaterialInstanceDynamic* Material = Mesh.CreateDynamicMaterialInstance(Slot);
+    if (Material)
+    {
+        // This is the color parameter on the imported glTF garment material.
+        Material->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Color));
+    }
+    return Material;
+}
+} // namespace
+
+ARiverfrontPedestrian::ARiverfrontPedestrian()
+{
+    PrimaryActorTick.bCanEverTick = true;
+    Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("PedestrianMesh"));
+    SetRootComponent(Mesh);
+    Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Mesh->SetGenerateOverlapEvents(false);
+    Mesh->SetCanEverAffectNavigation(false);
+    Mesh->SetCullDistance(14000.0f);
+    Mesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+    Mesh->bEnableUpdateRateOptimizations = true;
+}
+
+int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
+{
+    USkeletalMesh* Model = LoadObject<USkeletalMesh>(nullptr, AvatarMeshPath);
+    UAnimSequence* Walk = LoadObject<UAnimSequence>(nullptr, WalkPath);
+    UAnimSequence* WalkAlt = LoadObject<UAnimSequence>(nullptr, WalkAltPath);
+    if (!Model || !Walk || Walk->GetSkeleton() != Model->GetSkeleton())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: required fictional mesh or walk clip unavailable."));
+        return 0;
+    }
+    if (!WalkAlt || WalkAlt->GetSkeleton() != Model->GetSkeleton())
+    {
+        WalkAlt = Walk;
+    }
+
+    // The approach in front of spawn, both banks and independently paced bridge walkers.
+    // Wide loops stay away from road edges; landing bypasses fit between curb and bollards.
+    const double Bridge = ARiverfrontWorld::AtalX;
+    const FPedestrianRoute Routes[] = {
+        {{-6850, 3504, 2}, {-4650, 3504, 2}, 38, .71, 131},
+        {{-4100, 3060, 2}, {-980, 3060, 2}, 75, .25, 123},
+        {{-640, 3180, 2}, {2120, 3180, 2}, 85, .20, 143},
+        {{4200, 3110, 2}, {6700, 3110, 2}, 82, .62, 117},
+        {{-7130, 2360, -84}, {-6070, 2360, -84}, 63, .34, 121},
+        {{-6800, -25424, 2}, {-4560, -25424, 2}, 38, .52, 119},
+        {{-4110, -24980, 2}, {-130, -24980, 2}, 85, .27, 137},
+        {{4280, -25040, 2}, {6800, -25040, 2}, 79, .74, 126},
+        {{Bridge, 2710, 23}, {Bridge, 770, 23}, 46, .23, 109},
+        {{Bridge + 184, 2880, 23}, {Bridge + 184, -1780, 23}, 69, .09, 133},
+        {{Bridge - 195, -2940, 23}, {Bridge - 195, 2800, 23}, 76, .44, 121},
+        {{Bridge + 160, -5900, 23}, {Bridge + 160, -12900, 23}, 77, .45, 142},
+        {{Bridge - 184, -12900, 23}, {Bridge - 184, -5900, 23}, 70, .18, 128},
+        {{Bridge + 177, -15400, 23}, {Bridge + 177, -24740, 23}, 75, .70, 131},
+        {{Bridge - 184, -24680, 23}, {Bridge - 184, -15400, 23}, 75, .32, 115},
+        {{12800, 3230, 2}, {18600, 3230, 2}, 78, .28, 124},
+        {{-23800, -25130, 2}, {-16700, -25130, 2}, 80, .61, 129},
+    };
+
+    int32 Count = 0;
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(Routes); ++Index)
+    {
+        const FPedestrianRoute& Route = Routes[Index];
+        double GroundZ = 0.0;
+        if (!ValidateCircuit(World, Route, GroundZ, Index))
+        {
+            continue;
+        }
+
+        FVector GroundedStart = Route.Start;
+        GroundedStart.Z = GroundZ;
+        FVector GroundedEnd = Route.End;
+        GroundedEnd.Z = GroundZ;
+        FActorSpawnParameters Parameters;
+        Parameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        if (ARiverfrontPedestrian* Walker = World.SpawnActor<ARiverfrontPedestrian>(
+            GroundedStart, FRotator::ZeroRotator, Parameters))
+        {
+            Walker->Configure(Model, Index % 3 == 1 ? WalkAlt : Walk, GroundedStart, GroundedEnd,
+                Route.Radius, Route.StartFraction, Route.Speed, Index);
+            ++Count;
+        }
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati crowd: %d/%d animated pedestrian routes active."),
+        Count, static_cast<int32>(UE_ARRAY_COUNT(Routes)));
+    return Count;
+}
+
+void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
+    const FVector& StartTurn, const FVector& EndTurn, double Radius, double StartFraction,
+    double SpeedCmPerSecond, int32 Variant)
+{
+    RouteStart = StartTurn;
+    RouteEnd = EndTurn;
+    TurnRadius = Radius;
+    RouteLength = 2.0 * (FVector::Dist2D(RouteStart, RouteEnd) + UE_PI * Radius);
+    Distance = RouteLength * StartFraction;
+    Speed = SpeedCmPerSecond;
+
+    Mesh->SetSkeletalMesh(Model);
+    const double HeightScale = .90 + ((Variant * 7) % 17) * .01;
+    const double BuildScale = .88 + ((Variant * 13) % 23) * .01;
+    SetActorScale3D(FVector(BuildScale, BuildScale, HeightScale));
+
+    const FColor Shirts[] = {
+        FColor(149, 107, 70), FColor(172, 188, 191), FColor(104, 60, 79),
+        FColor(104, 126, 91), FColor(169, 120, 100), FColor(65, 92, 138),
+        FColor(164, 150, 105)
+    };
+    const FColor Trousers[] = {
+        FColor(56, 66, 76), FColor(85, 77, 69), FColor(47, 53, 59), FColor(108, 109, 97)
+    };
+    const FColor Shirt = Shirts[Variant % UE_ARRAY_COUNT(Shirts)];
+    ApplyClothingColor(*Mesh, TEXT("top_teal_woven"), Shirt);
+    ApplyClothingColor(*Mesh, TEXT("top_seams"), FColor(Shirt.R * 83 / 100, Shirt.G * 83 / 100, Shirt.B * 83 / 100));
+    ApplyClothingColor(*Mesh, TEXT("bottom_denim"), Trousers[(Variant / 3) % UE_ARRAY_COUNT(Trousers)]);
+
+    Mesh->PlayAnimation(Walk, true);
+    Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
+    Mesh->SetPlayRate(FMath::Clamp(static_cast<float>(Speed / (132.0 * BuildScale)), .75f, 1.25f));
+    UpdateRouteTransform();
+}
+
+void ARiverfrontPedestrian::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (RouteLength > UE_SMALL_NUMBER)
+    {
+        Distance = FMath::Fmod(Distance + Speed * DeltaSeconds, RouteLength);
+        UpdateRouteTransform();
+    }
+}
+
+void ARiverfrontPedestrian::UpdateRouteTransform()
+{
+    const FRouteSample Sample = SampleCircuit(RouteStart, RouteEnd, TurnRadius, Distance);
+    // The imported avatar faces -Y; add 90 degrees to align it to the route tangent.
+    const FRotator Facing(0, Sample.Forward.Rotation().Yaw + 90.0, 0);
+    SetActorLocationAndRotation(Sample.Position, Facing, false);
+}

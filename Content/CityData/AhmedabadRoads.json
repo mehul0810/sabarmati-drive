@@ -1,0 +1,39 @@
+{
+  "licence": "ODbL 1.0",
+  "attribution": "\u00a9 OpenStreetMap contributors; sourced via Esri India Living Atlas",
+  "bbox_lonlat": [
+    72.4472,
+    22.9121,
+    72.7037,
+    23.1387
+  ],
+  "origin_lonlat": [
+    72.5754464,
+    23.0164704
+  ],
+  "bounds_cm": [
+    -1160547,
+    -1312587,
+    1359133,
+    1312514
+  ],
+  "roads_way_count": 50030,
+  "road_strip_count": 170328,
+  "road_length_km": 8269.0,
+  "source_water_polygons": 142,
+  "water_strips": 6669,
+  "tile_count": 1892,
+  "walk_spawn_cm": [
+    382,
+    25479,
+    110
+  ],
+  "car_spawn_cm": [
+    376,
+    25263,
+    68
+  ],
+  "yaw": 1.0302,
+  "spawn_road": "Sabarmati Riverfront Road",
+  "sha256": "c3df97bc2eef86ac3c791c5f77fac3d0c42da17b2fb822267cd5f6eed514ae1a"
+}

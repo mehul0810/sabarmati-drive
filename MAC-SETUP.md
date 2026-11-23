@@ -1,0 +1,55 @@
+# First Apple Silicon playtest
+
+Start with the existing UE 5.8 project and a Development build. The browser game and
+the delivered source archive are separate and unchanged. This setup does not install
+anything or switch the system's default developer tools.
+
+1. Run `bash Scripts/check-mac-setup.sh`. It checks disk space, Unreal, full Xcode,
+   ARM64 compilation and the Metal shader compiler.
+2. With Unreal and Metal available, build and run from the project directory:
+   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash Scripts/run-mac.sh`.
+   Set `UE_ROOT` too if Unreal is not in its default location. This use of
+   `DEVELOPER_DIR` leaves the Mac's global Xcode selection unchanged.
+3. Verify walking and mouse look on one bank, then enter and drive the car across
+   the bridge, stop, exit and reset. Next, import your optional local Blender avatar
+   using the README and repeat the movement check.
+4. After the in-editor playtest, run the launcher with `--package` for the local
+   Development app, verify its executable is ARM64, then launch that app independently.
+   This is not a signed, notarized or distributed release.
+
+On the M1 Max, Xcode 27 compiled and ran an ARM64 C++ probe, the Metal
+Toolchain compiled a shader to AIR, and Unreal 5.8.4 linked the project editor
+module as ARM64. The first launch may spend several minutes validating Epic's
+libraries and compiling shaders. This validates this configuration locally,
+not support for packaging or other Mac models. Check free space before cooking.
+If the Unreal build fails early, compare with a minimal UE 5.8 C++ project using
+the same toolchain before changing gameplay code. Leave global developer settings
+and other projects untouched. See [Epic's macOS requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine)
+and [Apple's developer-directory documentation](https://developer.apple.com/documentation/xcode/configuring-command-line-tools-settings).
+
+### Local riverfront art verification
+
+Use **Play Sabarmati Drive.command** for the normal start screen. On the
+first run, choose a local display name to unlock Start. The profile is a
+local Unreal save on this installation; no email, password or server is used.
+Start opens the current map. Choose **Explore Ahmedabad** from the title or
+pause screen to load the offline city map, then press **Start**. The same local
+profile works in both maps. The city map's sources and fidelity limits are
+documented in [AHMEDABAD-CITY-SOURCES.md](SourceAssets/AHMEDABAD-CITY-SOURCES.md).
+Mouse look starts at 30% of the old sensitivity. Change it in **Start** or **Esc**;
+the chosen value is saved when you enter or resume the game.
+
+For the wider two-bank route and the named destinations, see
+[the corridor guide](SourceAssets/RIVERFRONT-CORRIDOR.md). Atal is for walking.
+Sardar and the concrete approaches at Ellis are vehicle crossings. On the lower
+promenade, use the stairs near these crossings to continue on the upper walk.
+Animated pedestrians are ambient and do not block player movement.
+
+An opt-in Development build run with `-SabarmatiArtReview` captures the title, starting
+character view, a view of the street, pause, Atal Bridge, Flower Park, Ellis
+Bridge, and an Atal pedestrian in `Saved/ArtReview`. It logs road and foot
+surface probes, route-join clearance, crowd movement and sensitivity testing.
+Add `-SabarmatiCityReview` to also exercise a profile-gated City map switch
+and capture a real road. QA uses separate `SabarmatiQA-*.sav` files, never the
+player's `SabarmatiPlayerProfileV1.sav` save. The flags inject test inputs;
+they do not replace hardware playtesting.

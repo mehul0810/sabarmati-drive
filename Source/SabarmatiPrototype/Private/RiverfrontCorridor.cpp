@@ -1,0 +1,456 @@
+#include "RiverfrontWorld.h"
+
+#include "Components/TextRenderComponent.h"
+
+namespace
+{
+// North is +X; west is +Y. Cross-bank offsets and deck heights preserve the
+// existing Atal slice. This is a straightened reference corridor, not a survey.
+// Sardar and Ellis are roughly 590 m south and 640 m north of the Atal center.
+constexpr double SouthEnd = -82000.0;
+constexpr double NorthEnd = 84000.0;
+constexpr double SardarX = -64400.0;
+constexpr double EllisX = 58600.0;
+constexpr double EllisRoadOffset = 710.0;
+constexpr double CoreLower = 7600.0;
+constexpr double CoreUpper = 7750.0;
+constexpr double RiverCenter = -10960.0;
+constexpr double RoadDeckLength = 31800.0;
+constexpr double SardarOpening = 970.0;
+constexpr double EllisOpening = 1190.0;
+constexpr double PortalHalfWidth = 162.0;
+constexpr double FlowerX = 19600.0;
+constexpr double MarketX = 43400.0;
+constexpr double BJParkX = 73200.0;
+constexpr double EventX = -28000.0;
+
+constexpr double BankPosition(double Bank, double Distance)
+{
+    return Bank * Distance + (Bank < 0.0 ? 2.0 * RiverCenter : 0.0);
+}
+}
+
+void ARiverfrontWorld::BuildRiverfrontCorridor()
+{
+    const auto Stretch = [this](ETint Tint, double Bank, double Start, double End,
+        double Distance, double Width, double Top, double Depth, bool bSolid)
+    {
+        if (End > Start)
+        {
+            Box(Tint, FVector((Start + End) * .5, BankPosition(Bank, Distance), Top - Depth * .5),
+                FVector(End - Start, Width, Depth), bSolid);
+        }
+    };
+
+    const auto Sign = [this](double X, double Bank, double Distance, const TCHAR* Name, double Width)
+    {
+        const double Y = BankPosition(Bank, Distance);
+        Box(ETint::Rail, FVector(X, Y, 151), FVector(Width, 12, 76));
+        for (const double Side : {-1.0, 1.0})
+        {
+            Box(ETint::Rail, FVector(X + Side * (Width * .5 - 12.0), Y, 68), FVector(8, 8, 138));
+            const double Face = Side * Bank;
+            UTextRenderComponent* Text = NewObject<UTextRenderComponent>(this);
+            AddInstanceComponent(Text);
+            Text->SetupAttachment(GetRootComponent());
+            Text->SetMobility(EComponentMobility::Static);
+            Text->SetText(FText::FromString(Name));
+            Text->SetHorizontalAlignment(EHTA_Center);
+            Text->SetVerticalAlignment(EVRTA_TextCenter);
+            Text->SetWorldSize(31.f);
+            Text->SetTextRenderColor(FColor(255, 246, 221));
+            Text->SetRelativeLocation(FVector(X, Y + Face * 7.0, 151));
+            Text->SetRelativeRotation(FRotator(0, Face * 90.0, 0));
+            Text->RegisterComponent();
+        }
+    };
+
+    const bool bHasLeafMaterial = IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get());
+    const auto Tree = [this, bHasLeafMaterial](double X, double Y, double Size, FRandomStream& Random)
+    {
+        const double Height = (295.0 + Random.FRandRange(0, 130)) * Size;
+        const FVector Base(X, Y, 4);
+        Shape(EShape::Cylinder, ETint::Bark, Base + FVector(0, 0, Height * .42),
+            FVector(25 * Size, 26 * Size, Height * .86), true);
+        const double Turn = Random.FRandRange(-PI, PI);
+        for (int32 Bough = 0; Bough < 4; ++Bough)
+        {
+            const double Angle = Turn + (Bough * 0.5 * PI) + Random.FRandRange(-.42, .42);
+            const double Reach = Random.FRandRange(77.0, 138.0) * Size;
+            const FVector Fork = Base + FVector(Reach * FMath::Cos(Angle), Reach * FMath::Sin(Angle),
+                Height * Random.FRandRange(.81, 1.12));
+            Beam(ETint::Bark, Base + FVector(0, 0, Height * .55), Fork, 10.0 * Size);
+            for (int32 Spray = 0; Spray < 6; ++Spray)
+            {
+                const FVector Tip = Fork + Random.VRand() * (Random.FRandRange(35, 105) * Size);
+                if (Spray < 2)
+                {
+                    Beam(ETint::Bark, Fork, Tip, 4.6 * Size);
+                }
+                if (bHasLeafMaterial)
+                {
+                    // Use the same scanned leaf cutout as the core instead of solid crowns.
+                    const double Width = Random.FRandRange(62, 109) * Size;
+                    Shape(EShape::Plane, ETint::Leaf, Tip, FVector(Width, Width * 1.44, 100), false,
+                        FRotator(Random.FRandRange(-64, 64), Random.FRandRange(-180, 180),
+                            Random.FRandRange(-62, 62)));
+                }
+            }
+        }
+    };
+
+    const auto BreakForRoad = [](double X, double Extra = 0.0)
+    {
+        return FMath::Abs(X - SardarX) < SardarOpening + Extra ||
+            FMath::Abs(X - EllisX) < EllisOpening + Extra;
+    };
+
+    // Close-to-shore ground remains continuous through the core/extension seam.
+    // Segmented barriers leave space for road crossings and pairs of stairs.
+    const double StairCenters[] = {SardarX - 1510, SardarX + 1510, -44200, -20100,
+        18000, 41600, EllisX - 1640, EllisX + 1640, 75400};
+    FRandomStream Dress(210183);
+    for (const double Bank : {-1.0, 1.0})
+    {
+        for (const bool bNorth : {false, true})
+        {
+            const double Start = bNorth ? CoreUpper : SouthEnd;
+            const double End = bNorth ? NorthEnd : -CoreUpper;
+            const double LowerStart = bNorth ? CoreLower : SouthEnd;
+            const double LowerEnd = bNorth ? NorthEnd : -CoreLower;
+            Stretch(ETint::Paving, Bank, Start, End, 3100, 960, 2, 50, true);
+            Stretch(ETint::Asphalt, Bank, Start, End, 4090, 1020, 0, 56, true);
+            Stretch(ETint::Paving, Bank, Start, End, 5020, 840, 4, 56, true);
+            Stretch(ETint::Stone, Bank, Start, End, 10060, 9240, 0, 100, true);
+            Stretch(ETint::Paving, Bank, LowerStart, LowerEnd, 2350, 310, -84, 52, true);
+            Stretch(ETint::Retaining, Bank, LowerStart, LowerEnd, 2200, 28, -89, 92, true);
+            for (const double Height : {-49.0, 9.0})
+            {
+                Stretch(ETint::Rail, Bank, LowerStart, LowerEnd, 2205, 9,
+                    Height + 4.5, 9, true);
+            }
+
+            // Sorted intervals ensure that each stair/crossing opens both the rail and wall.
+            struct FOpening { double X; double Half; };
+            TArray<FOpening> Openings{{SardarX, SardarOpening}, {EllisX, EllisOpening}};
+            for (const double Stair : StairCenters)
+            {
+                Openings.Add({Stair, PortalHalfWidth});
+            }
+            Openings.Sort([](const FOpening& A, const FOpening& B) { return A.X < B.X; });
+            double Previous = LowerStart;
+            double WallPrevious = bNorth ? 10250.0 : LowerStart;
+            const double WallEnd = bNorth ? LowerEnd : -10250.0;
+            const auto BankRails = [&](double From, double To)
+            {
+                for (const double Height : {35.0, 105.0})
+                {
+                    Stretch(ETint::Rail, Bank, From, To, 2503, 12, Height + 5, 10, true);
+                }
+                Stretch(ETint::PaleStone, Bank, From, To, 2508, 62, 9.5, 17, false);
+            };
+            for (const FOpening& Gap : Openings)
+            {
+                if (Gap.X > LowerStart && Gap.X < LowerEnd)
+                {
+                    BankRails(Previous, Gap.X - Gap.Half);
+                    Stretch(ETint::Retaining, Bank, WallPrevious, FMath::Min(WallEnd, Gap.X - Gap.Half),
+                        2630, 280, -.5, 195, true);
+                    Previous = Gap.X + Gap.Half;
+                    WallPrevious = FMath::Max(WallPrevious, Previous);
+                }
+            }
+            BankRails(Previous, LowerEnd);
+            Stretch(ETint::Retaining, Bank, WallPrevious, WallEnd, 2630, 280, -.5, 195, true);
+
+            for (double X = Start + 155; X < End; X += 440)
+            {
+                Box(ETint::Rail, FVector(X, BankPosition(Bank, 2205), -33), FVector(9, 9, 102));
+                bool bAtStair = false;
+                for (const double Stair : StairCenters)
+                {
+                    bAtStair |= FMath::Abs(X - Stair) <= PortalHalfWidth + 15;
+                }
+                if (!BreakForRoad(X, 120))
+                {
+                    Box(ETint::Paint, FVector(X, BankPosition(Bank, 4090), .55), FVector(182, 11, 1));
+                    if (!bAtStair)
+                    {
+                        Box(ETint::Rail, FVector(X, BankPosition(Bank, 2503), 54), FVector(9, 9, 108), true);
+                    }
+                }
+            }
+            for (double X = Start + 440; X < End - 320; X += 1960)
+            {
+                if (BreakForRoad(X, 220))
+                {
+                    continue;
+                }
+                const double LampY = BankPosition(Bank, 3500);
+                Box(ETint::Rail, FVector(X, LampY, 228), FVector(12, 12, 452), true);
+                Beam(ETint::Rail, FVector(X, LampY, 451),
+                    FVector(X, LampY + Bank * 82, 482), 9);
+                Box(ETint::Paint, FVector(X, LampY + Bank * 84, 481), FVector(26, 45, 7));
+            }
+            for (double X = Start + 800; X < End - 450; X += 2380)
+            {
+                if (BreakForRoad(X, 930))
+                {
+                    continue;
+                }
+                const double Y = BankPosition(Bank, 5690 + Dress.FRandRange(-25, 165));
+                Tree(X, Y, Dress.FRandRange(.83, 1.2), Dress);
+            }
+            for (double X = Start + 900; X < End - 600; X += 2600)
+            {
+                const bool bParkOrMarket = (Bank > 0.0 && (FMath::Abs(X - FlowerX) < 4900 ||
+                    FMath::Abs(X - BJParkX) < 4700 || FMath::Abs(X - EventX) < 7100)) ||
+                    (Bank < 0.0 && FMath::Abs(X - MarketX) < 5100);
+                if (bParkOrMarket || BreakForRoad(X, 2200))
+                {
+                    continue;
+                }
+                const double Width = Dress.FRandRange(1180, 1820);
+                const double Depth = Dress.FRandRange(1090, 1730);
+                const double Height = Dress.FRandRange(680, 2050);
+                const double Y = BankPosition(Bank, Dress.FRandRange(9400, 12000));
+                const ETint Wall = Dress.RandRange(0, 3) == 0 ? ETint::FacadeStone : ETint::Plaster;
+                Box(Wall, FVector(X, Y, Height * .5), FVector(Width, Depth, Height), true);
+                Box(ETint::Retaining, FVector(X, Y, Height + 22), FVector(Width + 18, Depth + 18, 44));
+                for (double Floor = 235; Floor < Height - 85; Floor += 282)
+                {
+                    const double FrontY = Y - Bank * (Depth * .5 + 2);
+                    Box(ETint::Shadow, FVector(X, FrontY, Floor + 22), FVector(Width * .83, 7, 97));
+                    Box(ETint::PaleStone, FVector(X, FrontY - Bank * 32, Floor - 36),
+                        FVector(Width * .86, 74, 19));
+                    for (const double Unit : {-.33, -.11, .11, .33})
+                    {
+                        Box(ETint::Glass, FVector(X + Unit * Width, FrontY - Bank * 5, Floor + 23),
+                            FVector(Width * .166, 4, 74));
+                    }
+                }
+            }
+
+            // Perimeter is explicit, leaving the full two-bank road and park routes inside it.
+            const double Limit = bNorth ? End : Start;
+            Box(ETint::Retaining, FVector(Limit, BankPosition(Bank, 8500), 47),
+                FVector(68, 12700, 122), true);
+            Stretch(ETint::Retaining, Bank, Start, End, 14690, 60, 112, 126, true);
+        }
+
+        for (const double Stair : StairCenters)
+        {
+            for (int32 Step = 0; Step < 5; ++Step)
+            {
+                const double Top = -14.0 * (1 + Step);
+                const double Depth = Top + 111;
+                Box(ETint::Paving, FVector(Stair, BankPosition(Bank, 2606 - Step * 37), Top - Depth * .5),
+                    FVector(2 * PortalHalfWidth, 38, Depth), true);
+            }
+            for (const double Side : {-1.0, 1.0})
+            {
+                const double X = Stair + Side * (PortalHalfWidth - 7.0);
+                Beam(ETint::Rail, FVector(X, BankPosition(Bank, 2630), 96),
+                    FVector(X, BankPosition(Bank, 2429), 24), 9);
+                Box(ETint::Rail, FVector(X, BankPosition(Bank, 2625), 44), FVector(9, 9, 110));
+                Box(ETint::Rail, FVector(X, BankPosition(Bank, 2430), -23), FVector(9, 9, 100));
+            }
+        }
+
+        // At these flat prototype road spans, stairs detour the lower promenade
+        // to the upper walk rather than promising non-existent under-deck headroom.
+        for (const double Center : {SardarX, EllisX})
+        {
+            const double Half = Center < 0 ? SardarOpening : EllisOpening;
+            for (const double Side : {-1.0, 1.0})
+            {
+                Box(ETint::Rail, FVector(Center + Side * (Half + 74), BankPosition(Bank, 2350), -27),
+                    FVector(13, 290, 114), true);
+            }
+        }
+        // The heritage deck itself is visual-only; the side spans are the crossings.
+        Box(ETint::Rail, FVector(EllisX, BankPosition(Bank, 2650), 50),
+            FVector(649, 16, 100), true);
+        for (const double Side : {-1.0, 1.0})
+        {
+            Box(ETint::Retaining, FVector(EllisX + Side * 1107, BankPosition(Bank, 2650), 53),
+                FVector(149, 90, 109), true);
+        }
+        Sign(-4250, Bank, 3420, TEXT("ATAL BRIDGE  /  RIVERFRONT"), 540);
+        Sign(SardarX + 1450, Bank, 3505, TEXT("SARDAR BRIDGE"), 350);
+        Sign(EllisX - 1550, Bank, 3505, TEXT("ELLIS BRIDGE"), 320);
+    }
+
+    // Flat new crossings preserve the prototype chassis ground profile. Ellis
+    // has an ornamental central steel span and usable concrete spans either side.
+    const auto RoadSpan = [this](double X, double Width, bool bWide)
+    {
+        Box(ETint::Retaining, FVector(X, RiverCenter, -68), FVector(Width + 42, RoadDeckLength, 96));
+        Box(ETint::Asphalt, FVector(X, RiverCenter, -22), FVector(Width, RoadDeckLength, 44), true);
+        constexpr double BarrierLength = 26870.0;
+        for (const double Edge : {-1.0, 1.0})
+        {
+            const double GuardX = X + Edge * (Width * .5 + 20);
+            Box(ETint::PaleStone, FVector(GuardX, RiverCenter, 20),
+                FVector(27, BarrierLength, 45), true);
+            Box(ETint::Rail, FVector(GuardX, RiverCenter, 91),
+                FVector(12, BarrierLength, 14), true);
+            for (double Y = -BarrierLength * .5 + 160; Y < BarrierLength * .5; Y += 250)
+            {
+                Box(ETint::Rail, FVector(GuardX, RiverCenter + Y, 64), FVector(9, 9, 53));
+            }
+        }
+        if (bWide)
+        {
+            for (double Y = -14600; Y <= 14600; Y += 370)
+            {
+                for (const double Offset : {-375.0, 0.0, 375.0})
+                {
+                    Box(ETint::Paint, FVector(X + Offset, RiverCenter + Y, .52),
+                        FVector(12, 166, 1));
+                }
+            }
+        }
+        else
+        {
+            for (double Y = -14600; Y <= 14600; Y += 370)
+            {
+                Box(ETint::Paint, FVector(X, RiverCenter + Y, .52), FVector(11, 158, 1));
+            }
+        }
+        for (const double PierY : {-9900.0, -6600.0, -3300.0, 0.0, 3300.0, 6600.0, 9900.0})
+        {
+            Box(ETint::Retaining, FVector(X, RiverCenter + PierY, -236),
+                FVector(Width * .81, 177, 244));
+        }
+    };
+    RoadSpan(SardarX, 1520, true);
+    RoadSpan(EllisX - EllisRoadOffset, 640, false);
+    RoadSpan(EllisX + EllisRoadOffset, 640, false);
+
+    for (const double Side : {-1.0, 1.0})
+    {
+        const double X = SardarX + Side * 846.0;
+        Box(ETint::Paving, FVector(X, RiverCenter, -12), FVector(140, RoadDeckLength, 36), true);
+        Box(ETint::Rail, FVector(X + Side * 64, RiverCenter, 109), FVector(11, 27240, 13), true);
+        for (double Y = -13000; Y < 13000; Y += 1990)
+        {
+            const FVector Mast(X + Side * 54, RiverCenter + Y, 479);
+            Beam(ETint::Rail, Mast - FVector(0, 0, 445), Mast, 13);
+            Beam(ETint::Rail, Mast, Mast - FVector(Side * 96, 0, 0), 9);
+        }
+
+        const double TrussX = EllisX + Side * 307.0;
+        const double StartY = RiverCenter - 13150;
+        constexpr double Step = 657.5;
+        const FVector Front(TrussX, StartY, 31);
+        const FVector Back(TrussX, StartY + 40 * Step, 31);
+        Beam(ETint::Rail, Front, Back, 18);
+        Beam(ETint::Rail, Front + FVector(0, 0, 485), Back + FVector(0, 0, 485), 18);
+        for (int32 Panel = 0; Panel <= 40; ++Panel)
+        {
+            const FVector Bottom = Front + FVector(0, Panel * Step, 0);
+            const FVector Top = Bottom + FVector(0, 0, 485);
+            Beam(ETint::Rail, Bottom, Top, 11);
+            Beam(ETint::Rail, Top, Top - FVector(Side * 614, 0, 0), 12);
+            if (Panel < 40)
+            {
+                const FVector Next = Bottom + FVector(0, Step, 0);
+                if (Panel % 2 == 0)
+                {
+                    Beam(ETint::Rail, Bottom, Next + FVector(0, 0, 485), 13);
+                }
+                else
+                {
+                    Beam(ETint::Rail, Top, Next, 13);
+                }
+            }
+        }
+    }
+    Box(ETint::Retaining, FVector(EllisX, RiverCenter, -42), FVector(645, 27190, 82));
+    Box(ETint::DeckWood, FVector(EllisX, RiverCenter, 4), FVector(590, 26700, 7));
+
+    // Flower Park: distinct planting rooms, soft beds and pedestrian aisles.
+    Box(ETint::Paving, FVector(FlowerX, 8520, .5), FVector(7850, 5800, 3));
+    Sign(FlowerX, 1.0, 5475, TEXT("RIVERFRONT FLOWER PARK"), 540);
+    for (int32 Side = -1; Side <= 1; Side += 2)
+    {
+        for (int32 Row = 0; Row < 3; ++Row)
+        {
+            const double X = FlowerX + Side * (880 + Row * 960);
+            for (const double Y : {7160.0, 8770.0, 10380.0})
+            {
+                Shape(EShape::Cylinder, ETint::PaleStone, FVector(X, Y, 17), FVector(677, 1120, 34), true);
+                Shape(EShape::Cylinder, ETint::Bark, FVector(X, Y, 36), FVector(633, 1060, 10));
+                for (int32 Flower = 0; Flower < 28; ++Flower)
+                {
+                    const double Angle = Dress.FRandRange(-PI, PI);
+                    const double Radius = FMath::Sqrt(Dress.FRand()) * .93;
+                    const FVector Plant(X + 305 * Radius * FMath::Cos(Angle),
+                        Y + 510 * Radius * FMath::Sin(Angle), Dress.FRandRange(47, 74));
+                    Shape(EShape::Plane, ETint::Leaf, Plant, FVector(46, 66, 100), false,
+                        FRotator(24, Dress.FRandRange(-180, 180), Dress.FRandRange(-25, 25)));
+                    Shape(EShape::Sphere, Row % 2 == 0 ? ETint::Flower : ETint::Sail,
+                        Plant + FVector(0, 0, 9), FVector(12, 13, 7));
+                }
+            }
+        }
+    }
+
+    // Ravivari: building-free shaded rows and paved market aisles off the east road.
+    const double MarketY = BankPosition(-1.0, 8375.0);
+    Box(ETint::Paving, FVector(MarketX, MarketY, .5), FVector(9200, 5900, 3));
+    Sign(MarketX, -1.0, 5520, TEXT("RAVIVARI  /  RIVERFRONT MARKET"), 690);
+    for (int32 Row = 0; Row < 3; ++Row)
+    {
+        const double Y = MarketY + (Row - 1) * 1030;
+        for (int32 Stall = 0; Stall < 10; ++Stall)
+        {
+            const double X = MarketX + (Stall - 4.5) * 710.0 + (Stall >= 5 ? 360.0 : -360.0);
+            const ETint Awning = Row == 0 ? ETint::Terracotta : Row == 1 ? ETint::Ad : ETint::Sail;
+            for (const double Side : {-1.0, 1.0})
+            {
+                Box(ETint::Rail, FVector(X + Side * 142, Y + 90, 117), FVector(8, 8, 234));
+                Box(ETint::Rail, FVector(X + Side * 142, Y - 90, 107), FVector(8, 8, 214));
+            }
+            Box(Awning, FVector(X, Y, 222), FVector(322, 243, 6), false, FRotator(0, 0, 5));
+            for (int32 Stripe = -2; Stripe <= 2; ++Stripe)
+            {
+                Box(ETint::PaleStone, FVector(X + Stripe * 62, Y - 118, 215),
+                    FVector(29, 7, 18));
+            }
+            Box(ETint::DeckWood, FVector(X, Y, 42), FVector(265, 75, 80), true);
+            for (int32 Crate = 0; Crate < 3; ++Crate)
+            {
+                Box(Crate % 2 == 0 ? ETint::WoodLight : ETint::Terracotta,
+                    FVector(X - 80 + Crate * 65, Y, 94), FVector(55, 53, 27));
+            }
+        }
+    }
+
+    // West-bank event lawn and B.J. Park are wider open areas, not street canyons.
+    const auto Green = [&](double X, double Y, double Length, double Width)
+    {
+        Box(ETint::Foliage, FVector(X, Y, 1), FVector(Length, Width, 3));
+        Box(ETint::Paving, FVector(X, Y, 3), FVector(Length, 290, 4));
+        Box(ETint::Paving, FVector(X, Y, 3), FVector(330, Width, 4));
+        for (const double Side : {-1.0, 1.0})
+        {
+            for (double Offset = -Length * .43; Offset < Length * .45; Offset += 1150.0)
+            {
+                if (FMath::Abs(Offset) > 410.0)
+                {
+                    Tree(X + Offset, Y + Side * (Width * .31 + Dress.FRandRange(-130, 130)),
+                        Dress.FRandRange(.9, 1.45), Dress);
+                }
+            }
+        }
+    };
+    Green(EventX, 9120, 10940, 6000);
+    Sign(EventX, 1.0, 5510, TEXT("RIVERFRONT EVENT GROUNDS"), 590);
+    Green(BJParkX, 8950, 7650, 5940);
+    Sign(BJParkX, 1.0, 5520, TEXT("B.J. PARK"), 295);
+
+    UE_LOG(LogTemp, Display,
+        TEXT("Sabarmati corridor: 1660 m on both banks; Sardar, Atal, Ellis, Flower Park, Ravivari, Event Grounds and B.J. Park."));
+}
