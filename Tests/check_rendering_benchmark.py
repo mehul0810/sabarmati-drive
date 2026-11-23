@@ -25,12 +25,12 @@ class BenchmarkTests(unittest.TestCase):
             writer.writerow(("view","frame","wall_ms","game_ms","render_ms","gpu_ms"))
             for view in ("atal-landing","shopfront","parked-hatch","driving"):
                 (self.run_dir / (view + ".png")).write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + struct.pack(">II",32,18))
-                for i in range(180 if view != "driving" else 20):
+                for i in range(180):
                     writer.writerow((view,i,16.7,1.5,2.2,10))
 
     def test_valid_run_and_nearest_rank_tail(self):
         _, _, groups = report.inspect_run(self.run_dir)
-        self.assertEqual(len(groups["driving"]), 20)
+        self.assertEqual(len(groups["driving"]), 180)
         self.assertEqual(report.percentile(range(1,101), .95), 95)
 
     def test_rejects_vehicle_or_input_failure(self):
@@ -41,6 +41,36 @@ class BenchmarkTests(unittest.TestCase):
     def test_rejects_stale_or_rescaled_capture(self):
         (self.run_dir / "shopfront.png").write_bytes(b"x"*24)
         with self.assertRaisesRegex(ValueError, "Capture size"):
+            report.inspect_run(self.run_dir)
+
+    def test_rejects_one_chase_frame(self):
+        data = self.run_dir / "frames.csv"
+        rows = data.read_text().splitlines()
+        data.write_text("\n".join(r for r in rows if not r.startswith("driving,") or r.startswith("driving,0,")) + "\n")
+        with self.assertRaisesRegex(ValueError, "Incomplete samples"):
+            report.inspect_run(self.run_dir)
+
+    def test_current_format_requires_both_street_level_views(self):
+        settings = self.run_dir / "settings.txt"
+        settings.write_text(settings.read_text() + "format=3\n")
+        with self.assertRaisesRegex(ValueError, "camera view"):
+            report.inspect_run(self.run_dir)
+        frames = self.run_dir / "frames.csv"
+        fixed = [line for line in frames.read_text().splitlines() if line.startswith("shopfront,")]
+        for view in ("tea-room", "garden-walk", "service-lane", "road-surface"):
+            (self.run_dir / (view + ".png")).write_bytes((self.run_dir / "shopfront.png").read_bytes())
+            with frames.open("a") as output:
+                for line in fixed:
+                    output.write(line.replace("shopfront,", view + ",", 1) + "\n")
+        drive = self.run_dir / "drive.txt"
+        drive.write_text(drive.read_text() + "contact_samples=180\nduration_s=3.006\n")
+        _, _, groups = report.inspect_run(self.run_dir)
+        self.assertEqual(len(groups["service-lane"]), 180)
+        self.assertEqual(len(groups["road-surface"]), 180)
+
+    def test_rejects_a_project_shader_fallback(self):
+        (self.run_dir / "engine.log").write_text("LogMaterial: Failed to compile Material /Game/Sabarmati/Riverfront/Test for SF_METAL_SM5")
+        with self.assertRaisesRegex(ValueError, "shader fell back"):
             report.inspect_run(self.run_dir)
 
     def test_registry_paths_and_rights(self):

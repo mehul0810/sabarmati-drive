@@ -1,6 +1,9 @@
 #include "RiverfrontWorld.h"
+#include "RiverfrontCrossings.h"
 
 #include "Components/TextRenderComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -66,10 +69,38 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
     };
 
     const bool bHasLeafMaterial = IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get());
-    const auto Tree = [this, bHasLeafMaterial](double X, double Y, double Size, FRandomStream& Random)
+    // All outer-bank and park trees share one spatially culled, three-LOD canopy batch.
+    MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
+    UHierarchicalInstancedStaticMeshComponent* Grove=nullptr;
+    if (MatureTree)
+    {
+        Grove=NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+        AddInstanceComponent(Grove); Grove->SetupAttachment(GetRootComponent());
+        Grove->SetMobility(EComponentMobility::Static); Grove->SetStaticMesh(MatureTree);
+        Grove->SetCollisionEnabled(ECollisionEnabled::NoCollision);Grove->SetCanEverAffectNavigation(false);
+        Grove->SetCullDistances(42000,66000);
+        const int32 Leaf=Grove->GetMaterialIndex(TEXT("jacaranda_tree_leaves"));
+        if (Leaf!=INDEX_NONE)
+        {
+            CanopyLeaves=UMaterialInstanceDynamic::Create(Grove->GetMaterial(Leaf),this);
+            Grove->SetMaterial(Leaf,CanopyLeaves);
+        }
+        Grove->bAutoRebuildTreeOnInstanceChanges=false;
+        Grove->RegisterComponent();
+    }
+    const auto Tree = [this, bHasLeafMaterial,Grove](double X, double Y, double Size, FRandomStream& Random)
     {
         const double Height = (295.0 + Random.FRandRange(0, 130)) * Size;
         const FVector Base(X, Y, 4);
+        if (Grove)
+        {
+            const FBoxSphereBounds Bounds=MatureTree->GetBounds();
+            const double Scale=Height*1.85/FMath::Max(1.,Bounds.BoxExtent.Z*2.);
+            const double Z=Base.Z-(Bounds.Origin.Z-Bounds.BoxExtent.Z)*Scale;
+            Grove->AddInstance(FTransform(FRotator(0,Random.FRandRange(-180,180),0),FVector(X,Y,Z),FVector(Scale)));
+            Shape(EShape::Cylinder,ETint::Bark,Base+FVector(0,0,Height*.28),FVector(22*Size,22*Size,Height*.56),true);
+            return;
+        }
         Shape(EShape::Cylinder, ETint::Bark, Base + FVector(0, 0, Height * .42),
             FVector(25 * Size, 26 * Size, Height * .86), true);
         const double Turn = Random.FRandRange(-PI, PI);
@@ -202,6 +233,11 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 const double Y = BankPosition(Bank, 5690 + Dress.FRandRange(-25, 165));
                 Tree(X, Y, Dress.FRandRange(.83, 1.2), Dress);
             }
+            for (double X=Start+1410.; X<End-900.; X+=1870.)
+            {
+                if (!BreakForRoad(X,690.))
+                    Tree(X,BankPosition(Bank,3423.),Dress.FRandRange(.78f,1.12f),Dress);
+            }
             for (double X = Start + 900; X < End - 600; X += 2600)
             {
                 const bool bParkOrMarket = (Bank > 0.0 && (FMath::Abs(X - FlowerX) < 4900 ||
@@ -211,12 +247,33 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 {
                     continue;
                 }
+                // Closer shop and apartment fronts leave a continuous public sidewalk and an accessible rear lane.
+                const int32 Parcel=FMath::FloorToInt((X-SouthEnd)/2600.);
+                if (Parcel%2==0 && FMath::Abs(X+14100.)>2000.)
+                {
+                    const int32 Style=(Parcel+(Bank<0?1:0))%5;
+                    const double Front=BankPosition(Bank,6300.+Style*67.);
+                    const double FrontWidth = 1150. + (Parcel % 4) * 90.;
+                    constexpr double FrontDepth = 1070.;
+                    DetailFrontage(X, Front, Bank, FrontWidth, FrontDepth, 2 + Parcel % 3,
+                        Style == 0 ? ETint::Terracotta : Style == 2 ? ETint::FacadeStone : ETint::Plaster, Style);
+#if !UE_BUILD_SHIPPING
+                    if (Bank > 0. && bNorth && ServiceLaneCircuit.IsEmpty())
+                    {
+                        const double Left = X - FrontWidth * .5 - 130., Right = X + FrontWidth * .5 + 130.;
+                        const double Entry = Front - 145., Rear = Front + FrontDepth + 145.;
+                        ServiceLaneCircuit = {FVector(Left, Entry, 99.), FVector(Right, Entry, 99.),
+                            FVector(Right, Rear, 99.), FVector(Left, Rear, 99.), FVector(Left, Entry, 99.)};
+                    }
+#endif
+                }
                 const double Width = Dress.FRandRange(1180, 1820);
                 const double Depth = Dress.FRandRange(1090, 1730);
                 const double Height = Dress.FRandRange(680, 2050);
                 const double Y = BankPosition(Bank, Dress.FRandRange(9400, 12000));
                 const ETint Wall = Dress.RandRange(0, 3) == 0 ? ETint::FacadeStone : ETint::Plaster;
                 Box(Wall, FVector(X, Y, Height * .5), FVector(Width, Depth, Height), true);
+                DressServiceElevations(X, Y - Bank * Depth * .5, Bank, Width, Depth, Height, Parcel % 5, false);
                 Box(ETint::Retaining, FVector(X, Y, Height + 22), FVector(Width + 18, Depth + 18, 44));
                 for (double Floor = 235; Floor < Height - 85; Floor += 282)
                 {
@@ -258,17 +315,6 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
             }
         }
 
-        // At these flat prototype road spans, stairs detour the lower promenade
-        // to the upper walk rather than promising non-existent under-deck headroom.
-        for (const double Center : {SardarX, EllisX})
-        {
-            const double Half = Center < 0 ? SardarOpening : EllisOpening;
-            for (const double Side : {-1.0, 1.0})
-            {
-                Box(ETint::Rail, FVector(Center + Side * (Half + 74), BankPosition(Bank, 2350), -27),
-                    FVector(13, 290, 114), true);
-            }
-        }
         // The heritage deck itself is visual-only; the side spans are the crossings.
         Box(ETint::Rail, FVector(EllisX, BankPosition(Bank, 2650), 50),
             FVector(649, 16, 100), true);
@@ -282,23 +328,46 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         Sign(EllisX - 1550, Bank, 3505, TEXT("ELLIS BRIDGE"), 320);
     }
 
-    // Flat new crossings preserve the prototype chassis ground profile. Ellis
-    // has an ornamental central steel span and usable concrete spans either side.
-    const auto RoadSpan = [this](double X, double Width, bool bWide)
+    // The upper road climbs above the original lower promenade on both banks.
+    // Each strip has a matching solid top. Paint, parapets and the adjacent walk
+    // follow the same profile as the car to avoid floating corners at the joins.
+    const auto Strip = [this](ETint Tint, double X, double Y0, double Y1,
+        double Width, double Thickness, double Offset, bool Solid = false)
     {
-        Box(ETint::Retaining, FVector(X, RiverCenter, -68), FVector(Width + 42, RoadDeckLength, 96));
-        Box(ETint::Asphalt, FVector(X, RiverCenter, -22), FVector(Width, RoadDeckLength, 44), true);
+        const double Z0 = RiverfrontCrossings::DeckZ(Y0) + Offset;
+        const double Z1 = RiverfrontCrossings::DeckZ(Y1) + Offset;
+        const FVector Along(0, Y1 - Y0, Z1 - Z0);
+        const FVector Centre(X, (Y0 + Y1) * .5, (Z0 + Z1) * .5 - Thickness * .5);
+        Box(Tint, Centre, FVector(Along.Size() + .08, Width, Thickness), Solid, Along.Rotation());
+    };
+    const auto SpanStrip = [&](ETint Tint, double X, double Width, double Depth,
+        double Offset, double SpanHalfLength, bool Solid)
+    {
+        double Prior = RiverCenter - SpanHalfLength;
+        for (double Station : {-14760., -13480., 13480., 14760.})
+        {
+            const double Y = RiverCenter + Station;
+            if (Y > Prior && Y < RiverCenter + SpanHalfLength)
+            {
+                Strip(Tint, X, Prior, Y, Width, Depth, Offset, Solid);
+                Prior = Y;
+            }
+        }
+        Strip(Tint, X, Prior, RiverCenter + SpanHalfLength, Width, Depth, Offset, Solid);
+    };
+    const auto RoadSpan = [&](double X, double Width, bool bWide)
+    {
+        SpanStrip(ETint::Retaining, X, Width + 42, 30, -3, RoadDeckLength * .5, false);
+        SpanStrip(ETint::Asphalt, X, Width, 24, 0, RoadDeckLength * .5, true);
         constexpr double BarrierLength = 26870.0;
         for (const double Edge : {-1.0, 1.0})
         {
             const double GuardX = X + Edge * (Width * .5 + 20);
-            Box(ETint::PaleStone, FVector(GuardX, RiverCenter, 20),
-                FVector(27, BarrierLength, 45), true);
-            Box(ETint::Rail, FVector(GuardX, RiverCenter, 91),
-                FVector(12, BarrierLength, 14), true);
+            SpanStrip(ETint::PaleStone, GuardX, 27, 45, 42.5, BarrierLength * .5, true);
+            SpanStrip(ETint::Rail, GuardX, 12, 14, 98, BarrierLength * .5, true);
             for (double Y = -BarrierLength * .5 + 160; Y < BarrierLength * .5; Y += 250)
             {
-                Box(ETint::Rail, FVector(GuardX, RiverCenter + Y, 64), FVector(9, 9, 53));
+                Box(ETint::Rail, FVector(GuardX, RiverCenter + Y, 64 + RiverfrontCrossings::DeckZ(RiverCenter + Y)), FVector(9, 9, 53));
             }
         }
         if (bWide)
@@ -307,8 +376,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
             {
                 for (const double Offset : {-375.0, 0.0, 375.0})
                 {
-                    Box(ETint::RoadPaint, FVector(X + Offset, RiverCenter + Y, .52),
-                        FVector(12, 166, 1));
+                    Strip(ETint::RoadPaint, X + Offset, RiverCenter + Y - 83, RiverCenter + Y + 83, 12, .7, .65);
                 }
             }
         }
@@ -316,13 +384,13 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         {
             for (double Y = -14600; Y <= 14600; Y += 370)
             {
-                Box(ETint::RoadPaint, FVector(X, RiverCenter + Y, .52), FVector(11, 158, 1));
+                Strip(ETint::RoadPaint, X, RiverCenter + Y - 79, RiverCenter + Y + 79, 11, .7, .65);
             }
         }
         for (const double PierY : {-9900.0, -6600.0, -3300.0, 0.0, 3300.0, 6600.0, 9900.0})
         {
-            Box(ETint::Retaining, FVector(X, RiverCenter + PierY, -236),
-                FVector(Width * .81, 177, 244));
+            Box(ETint::Retaining, FVector(X, RiverCenter + PierY, -115),
+                FVector(Width * .81, 177, 486));
         }
     };
     RoadSpan(SardarX, 1520, true);
@@ -332,11 +400,11 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
     for (const double Side : {-1.0, 1.0})
     {
         const double X = SardarX + Side * 846.0;
-        Box(ETint::Paving, FVector(X, RiverCenter, -12), FVector(140, RoadDeckLength, 36), true);
-        Box(ETint::Rail, FVector(X + Side * 64, RiverCenter, 109), FVector(11, 27240, 13), true);
+        SpanStrip(ETint::Paving, X, 140, 27, 6, RoadDeckLength * .5, true);
+        SpanStrip(ETint::Rail, X + Side * 64, 11, 13, 116, 13620, true);
         for (double Y = -13000; Y < 13000; Y += 1990)
         {
-            const FVector Mast(X + Side * 54, RiverCenter + Y, 479);
+            const FVector Mast(X + Side * 54, RiverCenter + Y, 479 + RiverfrontCrossings::DeckZ(RiverCenter + Y));
             Beam(ETint::Rail, Mast - FVector(0, 0, 445), Mast, 13);
             Beam(ETint::Rail, Mast, Mast - FVector(Side * 96, 0, 0), 9);
         }
@@ -344,8 +412,8 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         const double TrussX = EllisX + Side * 307.0;
         const double StartY = RiverCenter - 13150;
         constexpr double Step = 657.5;
-        const FVector Front(TrussX, StartY, 31);
-        const FVector Back(TrussX, StartY + 40 * Step, 31);
+        const FVector Front(TrussX, StartY, 189);
+        const FVector Back(TrussX, StartY + 40 * Step, 189);
         Beam(ETint::Rail, Front, Back, 18);
         Beam(ETint::Rail, Front + FVector(0, 0, 485), Back + FVector(0, 0, 485), 18);
         for (int32 Panel = 0; Panel <= 40; ++Panel)
@@ -368,12 +436,27 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
             }
         }
     }
-    Box(ETint::Retaining, FVector(EllisX, RiverCenter, -42), FVector(645, 27190, 82));
-    Box(ETint::DeckWood, FVector(EllisX, RiverCenter, 4), FVector(590, 26700, 7));
+    SpanStrip(ETint::Retaining, EllisX, 645, 29, -1, 13595, false);
+    SpanStrip(ETint::DeckWood, EllisX, 590, 7, 7, 13350, false);
 
     // Flower Park: distinct planting rooms, soft beds and pedestrian aisles.
     Box(ETint::Paving, FVector(FlowerX, 8520, .5), FVector(7850, 5800, 3));
-    Sign(FlowerX, 1.0, 5475, TEXT("RIVERFRONT FLOWER PARK"), 540);
+    Sign(FlowerX-850., 1.0, 5475, TEXT("RIVERFRONT FLOWER PARK"), 540);
+    for (const double Side:{-1.,1.})
+    {
+        // Stone piers, a shaded timber screen and a clear five-metre public garden entrance.
+        for (int32 I=0;I<6;++I)
+        {
+            const double PX=FlowerX+Side*(295.+I*455.);
+            Box(ETint::FacadeStone,FVector(PX,5555.,105.),FVector(52.,53.,210.),true);
+            Box(ETint::Retaining,FVector(PX,5555.,216.),FVector(60.,60.,13.));
+            if (I==5) continue;
+            Box(ETint::Retaining,FVector(PX+Side*228.,5555.,23.),FVector(416.,32.,46.),true);
+            for (int32 Slat=0;Slat<12;++Slat)
+                Box(ETint::Timber,FVector(PX+Side*(41.+Slat*33.),5555.,103.),FVector(8.,17.,118.));
+            Box(ETint::Timber,FVector(PX+Side*228.,5555.,151.),FVector(416.,15.,7.));
+        }
+    }
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
         for (int32 Row = 0; Row < 3; ++Row)
@@ -429,6 +512,22 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         }
     }
 
+    // Two open bays at the original, unbranded service stop. A driver can pull in from the bank road.
+    Box(ETint::Asphalt,FVector(-14100,5360,.3),FVector(1900,1530,2),true);
+    for (double X:{-14700.,-13500.})
+    {
+        Box(ETint::Ceramic,FVector(X,5670,12),FVector(108,250,23),true);
+        Box(ETint::Terracotta,FVector(X,5670,128),FVector(62,94,212),true);
+        Box(ETint::Shadow,FVector(X,5621,144),FVector(47,4,32));
+        Box(ETint::Brass,FVector(X,5616,144),FVector(30,3,8));
+        Beam(ETint::Rail,FVector(X+36,5650,135),FVector(X+46,5656,63),5);
+        Beam(ETint::Rail,FVector(X+46,5656,63),FVector(X+34,5675,104),5);
+        Box(ETint::Rail,FVector(X,5750,214),FVector(21,21,428),true);
+        AddPractical(FVector(X,5500,418),-90.);
+    }
+    Box(ETint::Plaster,FVector(-14100,5500,442),FVector(1730,1140,37));
+    Box(ETint::Terracotta,FVector(-14100,4927,438),FVector(1730,10,26));
+    Sign(-14100,1.,6180,TEXT("RIVER MOTOR WORKS"),250);
     // West-bank event lawn and B.J. Park are wider open areas, not street canyons.
     const auto Green = [&](double X, double Y, double Length, double Width)
     {
@@ -452,6 +551,12 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
     Green(BJParkX, 8950, 7650, 5940);
     Sign(BJParkX, 1.0, 5520, TEXT("B.J. PARK"), 295);
 
+    if (Grove)
+    {
+        Grove->bAutoRebuildTreeOnInstanceChanges=true;
+        Grove->BuildTreeIfOutdated(false,true);
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati corridor: %d spatially culled scanned trees."),Grove->GetInstanceCount());
+    }
     UE_LOG(LogTemp, Display,
         TEXT("Sabarmati corridor: 1660 m on both banks; Sardar, Atal, Ellis, Flower Park, Ravivari, Event Grounds and B.J. Park."));
 }

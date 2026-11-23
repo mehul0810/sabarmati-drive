@@ -1,0 +1,41 @@
+{
+  "areas": [
+    {
+      "id": "ashram",
+      "bbox_lonlat": [
+        72.566099,
+        23.041766,
+        72.574099,
+        23.049766
+      ],
+      "input": 263,
+      "exterior_shells": 243
+    },
+    {
+      "id": "cg",
+      "bbox_lonlat": [
+        72.556932,
+        23.032048,
+        72.564932,
+        23.040048
+      ],
+      "input": 607,
+      "exterior_shells": 559
+    },
+    {
+      "id": "sg-service",
+      "bbox_lonlat": [
+        72.507703,
+        23.03343,
+        72.515703,
+        23.04143
+      ],
+      "input": 394,
+      "exterior_shells": 362
+    }
+  ],
+  "licence": "ODbL 1.0",
+  "attribution": "\u00a9 OpenStreetMap contributors",
+  "exterior_shells": 1164,
+  "sha256": "483021ed98ca343833d44d569475ce3bf725fc4bd4caa9e899143e354337b578"
+}

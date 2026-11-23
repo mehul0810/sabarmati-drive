@@ -17,6 +17,11 @@ from urllib.request import Request, urlopen
 
 BBOX = (72.4472, 22.9121, 72.7037, 23.1387)  # W, S, E, N; not an AMC boundary polygon
 BUILDING_CORE = (72.559, 23.002, 72.591, 23.032)  # ~3.3 km central pilot
+DISTRICT_BOUNDS = {
+    "ashram": (72.566099, 23.041766, 72.574099, 23.049766),
+    "cg": (72.556932, 23.032048, 72.564932, 23.040048),
+    "sg-service": (72.507703, 23.033430, 72.515703, 23.041430),
+}
 BASE = "https://livingatlas.esri.in/server/rest/services/OSM"
 CLASSES = (
     "Motorway", "Motorway Link", "Trunk", "Trunk Link", "Primary", "Primary Link",
@@ -28,8 +33,8 @@ WATER = "fclass IN ('River','Riverbank','Water','Reservoir','Dock')"
 PAGE_SIZE = 2000
 
 
-def fetch(kind, **params):
-    args = dict(geometry=",".join(map(str, BUILDING_CORE if kind == "Buildings" else BBOX)), geometryType="esriGeometryEnvelope",
+def fetch(kind, bounds=None, **params):
+    args = dict(geometry=",".join(map(str, bounds or (BUILDING_CORE if kind == "Buildings" else BBOX))), geometryType="esriGeometryEnvelope",
                 spatialRel="esriSpatialRelIntersects", inSR="4326", outSR="4326", **params)
     url = f"{BASE}/{kind}/MapServer/0/query?{urlencode(args)}"
     req = Request(url, headers={"User-Agent": "SabarmatiDrive open-data import/1.0"})
@@ -48,8 +53,8 @@ def fetch(kind, **params):
             time.sleep(2 ** attempt)
 
 
-def collect(kind, where, out_fields, directory):
-    count = fetch(kind, f="json", where=where, returnCountOnly="true")["count"]
+def collect(kind, where, out_fields, directory, bounds=None):
+    count = fetch(kind, bounds, f="json", where=where, returnCountOnly="true")["count"]
     if not 0 < count < 120000:
         raise ValueError(f"Unexpected {kind} count {count}; refusing an unbounded pull")
     def page(offset):
@@ -57,7 +62,7 @@ def collect(kind, where, out_fields, directory):
         if target.exists():
             value = json.loads(target.read_text())
         else:
-            value = fetch(kind, f="geojson", where=where, orderByFields="objectid ASC",
+            value = fetch(kind, bounds, f="geojson", where=where, orderByFields="objectid ASC",
                           outFields=out_fields, resultOffset=offset, resultRecordCount=PAGE_SIZE)
             if value.get("type") != "FeatureCollection":
                 raise ValueError(f"Unexpected page type for {kind}+{offset}")
@@ -81,7 +86,7 @@ def collect(kind, where, out_fields, directory):
         if previous != row:
             raise ValueError(f"{kind} feature {object_id} changed during paging")
     if len(stable) != count:
-        verified_count = fetch(kind, f="json", where=where, returnCountOnly="true")["count"]
+        verified_count = fetch(kind, bounds, f="json", where=where, returnCountOnly="true")["count"]
         if len(stable) != verified_count:
             raise ValueError(f"{kind} paging does not match either reference count")
     if len(stable) != len(rows):
@@ -95,8 +100,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--only", choices=("Roads", "Water", "Buildings"))
+    parser.add_argument("--districts", action="store_true",
+                        help="Only fetch the three named street-district building snapshots.")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    if args.districts:
+        if args.only and args.only != "Buildings":
+            parser.error("--districts queries building footprints only")
+        for key, bounds in DISTRICT_BOUNDS.items():
+            target = args.output / key
+            target.mkdir(exist_ok=True)
+            collect("Buildings", "1=1", "objectid,id,fclass,ftype", target, bounds)
+        return
     for kind, where, fields in (
         ("Roads", ROADS, "objectid,id,fclass,fname,brg_flg,tnl_flg,lyr_cnt"),
         ("Water", WATER, "objectid,id,fclass,fname"),

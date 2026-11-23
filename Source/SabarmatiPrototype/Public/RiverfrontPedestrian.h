@@ -17,7 +17,11 @@ class SABARMATIPROTOTYPE_API ARiverfrontPedestrian : public AActor
 
 public:
     ARiverfrontPedestrian();
+    bool IsCrossingStreet() const { return bAtCrosswalk && bSteppingOff; }
+    int32 ShopVisits() const {return CounterVisits;}
+    int32 CrossingsCompleted() const { return Crossings; }
     static int32 SpawnRiverfrontCrowd(UWorld& World);
+    static ARiverfrontPedestrian* SpawnStreetWalker(UWorld& World, const FVector& A, const FVector& B, int32 Variant);
 
 protected:
     void Tick(float DeltaSeconds) override;
@@ -32,8 +36,18 @@ private:
 
     FVector RouteStart = FVector::ZeroVector;
     FVector RouteEnd = FVector::ZeroVector;
+    double MeshYawToForward=90.;
     double TurnRadius = 0.0;
     double RouteLength = 0.0;
     double Distance = 0.0;
     double Speed = 0.0;
+    double RestAt=0., RestLeft=0.;
+    int32 Crossings=0;
+    bool bAtCrosswalk=false, bSteppingOff=false, bReturning=false;
+    UPROPERTY() TObjectPtr<UAnimSequence> Gait;
+    UPROPERTY() TObjectPtr<UAnimSequence> IdlePose;
+    TArray<FVector> Errand;
+    int32 ErrandStep=0,ErrandDirection=1,CounterVisits=0;
+    void TickErrand(float Delta);
+    void SetMoving(bool Moving);
 };

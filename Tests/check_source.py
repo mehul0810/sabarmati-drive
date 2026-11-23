@@ -71,11 +71,15 @@ class SourceTests(unittest.TestCase):
         road_near, road_far = get_y_extent(r"FVector\(0, BankY\(Bank, (\d+)\), -28\), FVector\(15500, (\d+), 56\)")
         channel = float(re.search(r"ChannelWidth = ([0-9.]+)", source).group(1))
         water_edge = float(re.search(r"NearWaterEdge = ([0-9.]+)", source).group(1))
-        extra_span = float(re.search(r"BridgeHalfLength = NearWaterEdge \+ ([0-9.]+)", source).group(1))
+        west_abutment = float(re.search(r"BridgeHalfLength = ([0-9.]+) - ChannelCenter", source).group(1))
+        channel_centre = water_edge - channel * .5
+        east_abutment = 2 * channel_centre - west_abutment
         self.assertEqual(channel, 26300.0)
         self.assertIn("DeckLength = 2.0 * BridgeHalfLength", source)
         self.assertIn("FVector(BridgeX, ChannelCenter, -20), FVector(720, DeckLength, 40)", source)
-        self.assertGreater(water_edge + extra_span, road_far)
+        self.assertAlmostEqual(west_abutment, road_near)
+        self.assertAlmostEqual(east_abutment, 2 * channel_centre - road_near)
+        self.assertIn("const double RailEnd = BridgeHalfLength - 170.0;", source)
         self.assertIn("2.0 * ChannelCenter", source)
         self.assertLessEqual(road_near, far)
         spawn = re.search(r"SpawnPoint\(-?\d+, (\d+), \d+\)", source)
@@ -98,11 +102,15 @@ class SourceTests(unittest.TestCase):
 
         bridge_x = numeric(world, "BridgeX")
         atal_x = numeric(header, "AtalX")
-        self.assertEqual(2 * numeric(source, "HalfLength"), 30000)
+        centre = numeric(source, "MidY")
+        half_length = numeric(source, "HalfLength")
+        self.assertAlmostEqual(2 * half_length, 28500)
+        self.assertLess(centre + half_length + 180, 4090 - 510)
+        self.assertGreater(centre - half_length - 180, -26010 + 510)
         self.assertEqual(2 * numeric(header, "AtalEndHalfWidth"), 1000)
         self.assertGreater(abs(bridge_x - atal_x),
                            numeric(world, "BridgeSide") + numeric(header, "AtalEndHalfWidth") + 200)
-        self.assertLess(numeric(source, "WalkHalfLength"), numeric(source, "HalfLength"))
+        self.assertIn("3580.0 - ChannelCenter", world)
         self.assertIn("BuildAtalBridge();", world)
 
     def test_offline_player_profile_gates_gameplay(self):
@@ -118,7 +126,9 @@ class SourceTests(unittest.TestCase):
 
     def test_game_launchers_use_a_fitted_window(self):
         launch = (ROOT / "Scripts" / "run-mac.sh").read_text()
-        self.assertIn("-game -windowed", launch)
+        self.assertIn('launcher=("$editor" "$project" -game)', launch)
+        self.assertIn('launcher=(/usr/bin/open -n "$bundle" --args)', launch)
+        self.assertIn('exec "${launcher[@]}" -windowed "-ResX=$width" "-ResY=$height"', launch)
         self.assertNotIn("-fullscreen", launch)
         self.assertIn("screen.visibleFrame", launch)
         self.assertIn("screen.backingScaleFactor", launch)

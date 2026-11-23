@@ -1,4 +1,5 @@
 #include "RiverfrontGameMode.h"
+#include "DistrictLoadProgress.h"
 
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -9,6 +10,7 @@
 #include "RiverfrontCharacter.h"
 #include "RiverfrontHUD.h"
 #include "RiverfrontPedestrian.h"
+#include "RiverfrontTraffic.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontWorld.h"
 
@@ -68,6 +70,7 @@ void ARiverfrontGameMode::BeginPlay()
         }
     }
 
+    DistrictLoadProgress::Reached(4);
     const FRotator CarFacing(0.0, CarYaw, 0.0);
     Car = GetWorld()->SpawnActor<ARiverfrontCar>(CarSpawn, CarFacing);
     if (IsValid(Car) && IsValid(River) && FPackageName::DoesPackageExist(
@@ -83,8 +86,14 @@ void ARiverfrontGameMode::BeginPlay()
             }
         }
     }
+    DistrictLoadProgress::Reached(5);
+    Traffic=GetWorld()->SpawnActor<ARiverfrontTraffic>();
+    if (Traffic) Traffic->Start(bCityBuilt);
     Super::BeginPlay();
+    DistrictLoadProgress::Reached(6);
 }
+
+ARiverfrontTraffic* ARiverfrontGameMode::GetTraffic() const { return Traffic.Get(); }
 
 ARiverfrontCar* ARiverfrontGameMode::SpawnCrossover(ARiverfrontWorld& WorldActor,
     const FVector& Position, const FRotator& Facing)

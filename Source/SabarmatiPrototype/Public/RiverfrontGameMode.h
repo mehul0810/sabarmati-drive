@@ -7,6 +7,7 @@
 class ARiverfrontCar;
 class ARiverfrontCharacter;
 class ARiverfrontWorld;
+class ARiverfrontTraffic;
 class APlayerStart;
 
 UCLASS()
@@ -21,6 +22,7 @@ public:
     virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
     ARiverfrontCar* GetCar() const { return Car; }
     ARiverfrontCar* FindEnterableCar(const ARiverfrontCharacter& Character) const;
+    ARiverfrontTraffic* GetTraffic() const;
     bool IsCityMode() const { return bCityBuilt; }
     bool CityFailed() const { return bCityRequested && !bCityBuilt; }
     FVector GetWalkSpawn() const { return WalkSpawn; }
@@ -32,6 +34,7 @@ private:
     bool bCityRequested = false;
     bool bCityBuilt = false;
 
+    UPROPERTY() TObjectPtr<ARiverfrontTraffic> Traffic;
     UPROPERTY()
     TObjectPtr<APlayerStart> RiverStart;
     UPROPERTY()

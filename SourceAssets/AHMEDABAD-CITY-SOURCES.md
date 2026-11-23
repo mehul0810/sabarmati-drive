@@ -38,8 +38,7 @@ proprietary basemap style, satellite imagery or Esri rendering is embedded.
   uses fitted simplified rectangles, estimated heights and existing art
   materials, with procedural glazing, roof trim and street-facing openings.
   The closest large plot to the city start has two structural wings, a sheltered colonnade and an open cross-passage. Facades, heights and openings are artistic estimates. Private interiors are outside the playable area.
-  Shapes that overlap mapped roads or water are excluded. The rest of the
-  city does not yet have exterior massing.
+  Shapes that overlap mapped roads or water are excluded. A Development preview adds three smaller mapped pockets within the existing city extent.
 - The verified start is on Sabarmati Riverfront Road west of Atal's
   geographic center, on mapped pavement; adjacent driver-side walk start.
 
@@ -64,3 +63,15 @@ GeoJSON is not packaged.
 The Atal west-bank reference area shows elongated flat-roofed buildings, secondary roof volumes, and narrow access lanes beside the larger carriageways. The original arcade interprets those features using the existing OSM plot. Esri World Imagery was viewed during development. All shipped geometry and textures come from the local map data, project models and the credited surface materials. [Satellite view centred on the west approach](https://www.arcgis.com/apps/mapviewer/index.html?basemap=satellite&center=72.572,23.017&level=18)
 
 Major road sections within about 530 m of the city start receive precast kerbs, footpaths and drain grilles. The mesh builder checks adjacent mapped road widths and leaves openings at junctions. Width, drainage positions and façade details are inferred.
+
+## Named street preview
+
+Three 0.008° square windows were sampled around Ashram Road, CG Road and an SG Highway service road. The 1,264 incoming building records yielded 243, 559 and 362 exterior shells respectively. The preparation step filters roads, water and overlap with the central 1,422 footprints. The binary companion manifest records all three query boxes and the SHA-256 digest. The heights, glazing and frontage materials are estimates. The service road is a local segment beside the highway.
+
+```sh
+python3 Scripts/fetch-ahmedabad-osm.py Saved/AhmedabadDistrictSource --districts
+python3 Scripts/prepare-ahmedabad-buildings.py Saved/AhmedabadDistrictSource Content/CityData/AhmedabadRoads.bin Content/CityData/AhmedabadDistrictBuildings.bin --districts Content/CityData/AhmedabadBuildings.bin
+python3 Scripts/prepare-ahmedabad-routes.py Content/CityData/AhmedabadRoads.bin Content/CityData/AhmedabadRoutes.json --sites Content/CityData/ExplorationSites.json
+```
+
+Six closed traffic circuits around the river and two at each of the three streets follow connected, mapped road edges. Each circuit supports two directions. These tests and transforms run locally against the packaged data. [OSM source and attribution](https://www.openstreetmap.org/copyright)

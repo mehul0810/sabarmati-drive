@@ -1,4 +1,7 @@
 #include "RiverfrontCharacter.h"
+#include "RiverfrontResidentOrientation.h"
+#include "Sound/SoundWave.h"
+#include "Kismet/GameplayStatics.h"
 
 #include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
@@ -9,6 +12,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -16,6 +20,7 @@
 #include "Misc/PackageName.h"
 #include "RiverfrontCar.h"
 #include "RiverfrontGameMode.h"
+#include "RiverfrontPlayerController.h"
 #include "RiverfrontWorld.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -28,7 +33,13 @@ const TCHAR* AvatarRoot = TEXT("/Game/Sabarmati/Avatar/");
 template <typename Type>
 Type* LoadOptionalAvatarAsset(const TCHAR* Name)
 {
-    const FString Package = FString(AvatarRoot) + Name;
+    FString Package=FString(AvatarRoot)+Name;
+    if (!FPackageName::DoesPackageExist(Package))
+    {
+        const FString PublicName=FCString::Strcmp(Name,TEXT("SK_Sabarmati"))==0?TEXT("SK_RiverResident"):Name;
+        Package=FString(TEXT("/Game/Sabarmati/Riverfront/People/"))+PublicName;
+        return FPackageName::DoesPackageExist(Package)?LoadObject<Type>(nullptr,*(Package+TEXT(".")+PublicName)):nullptr;
+    }
     return FPackageName::DoesPackageExist(Package)
         ? LoadObject<Type>(nullptr, *(Package + TEXT(".") + Name)) : nullptr;
 }
@@ -124,13 +135,14 @@ void ARiverfrontCharacter::MakePiece(const TCHAR* Name, USceneComponent* Parent,
 void ARiverfrontCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    StoneStep=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_FootStone.S_FootStone"));
+    GritStep=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_FootGrit.S_FootGrit"));
 
     // A cooked Unreal Skeletal Mesh, not a runtime read of the raw GLB.
     if (USkeletalMesh* ImportedMesh = LoadOptionalAvatarAsset<USkeletalMesh>(TEXT("SK_Sabarmati")))
     {
         GetMesh()->SetSkeletalMesh(ImportedMesh);
-        // This glTF's face points down Unreal -Y after Interchange conversion.
-        GetMesh()->SetRelativeRotation(FRotator(0.0, 90.0, 0.0));
+        GetMesh()->SetRelativeRotation(FRotator(0,RiverfrontResident::YawToActorForward(*ImportedMesh),0));
         GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
         PreviewRig->SetVisibility(false, true);
         PreviewRig->SetHiddenInGame(true, true);
@@ -165,6 +177,18 @@ void ARiverfrontCharacter::BeginPlay()
 void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (!IsHidden() && GetCharacterMovement()->IsMovingOnGround())
+    {
+        const float Rate=GetVelocity().Size2D();
+        StepTravel+=Rate*DeltaSeconds;
+        if (StepTravel>=FMath::Lerp(69.f,112.f,FMath::Clamp(Rate/600.f,0.f,1.f)))
+        {
+            StepTravel=0; ++StepIndex;
+            const FVector Foot=GetActorLocation()-FVector(0,0,87);
+            USoundWave* Step=StepIndex%3==0?GritStep.Get():StoneStep.Get();
+            if (Step) UGameplayStatics::PlaySoundAtLocation(this,Step,Foot,.18f+FMath::Min(Rate/1600.f,.3f),.94f+(StepIndex%4)*.042f);
+        }
+    }
     const double FlatSpeed = GetVelocity().Size2D();
     if (bUsesImportedMesh)
     {
@@ -217,6 +241,7 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
     Input->BindAction(TEXT("Sprint"), IE_Pressed, this, &ARiverfrontCharacter::Sprint);
     Input->BindAction(TEXT("Sprint"), IE_Released, this, &ARiverfrontCharacter::StopSprint);
     Input->BindAction(TEXT("Interact"), IE_Pressed, this, &ARiverfrontCharacter::EnterCar);
+    Input->BindAction(TEXT("VehicleDoor"),IE_Pressed,this,&ARiverfrontCharacter::OpenCarDoor);
     Input->BindAction(TEXT("Reset"), IE_Pressed, this, &ARiverfrontCharacter::ResetWalk);
     Input->BindAction(TEXT("DebugStats"), IE_Pressed, this, &ARiverfrontCharacter::ToggleStats);
 }
@@ -247,13 +272,21 @@ void ARiverfrontCharacter::StopSprint()
     GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
+void ARiverfrontCharacter::OpenCarDoor()
+{
+    if (auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>())
+        if (auto* Car=Mode->FindEnterableCar(*this)) Car->OperateDoor(GetActorLocation());
+}
+
 void ARiverfrontCharacter::EnterCar()
 {
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     if (ARiverfrontCar* Available = Mode ? Mode->FindEnterableCar(*this) : nullptr)
     {
         Available->Enter(*this);
+        return;
     }
+    if (auto* Driver=Cast<ARiverfrontPlayerController>(GetController())) Driver->InteractWithPlace();
 }
 
 void ARiverfrontCharacter::SetInCar(bool bInCar)
@@ -280,6 +313,7 @@ void ARiverfrontCharacter::ResetWalk()
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const FVector Spawn = Mode ? Mode->GetWalkSpawn() : ARiverfrontWorld::SpawnPoint;
     const double Yaw = Mode ? Mode->GetSpawnYaw() : ARiverfrontWorld::SpawnYaw;
+    for (TActorIterator<ARiverfrontWorld> It(GetWorld()); It; ++It) It->PrepareCityTravel(Spawn);
     if (TeleportTo(Spawn, FRotator(0, Yaw, 0)))
     {
         if (Controller)

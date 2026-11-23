@@ -8,6 +8,12 @@ from pathlib import Path
 
 
 def inspect_run(folder):
+    log = folder / "engine.log"
+    if log.is_file():
+        failed = next((line for line in log.read_text(errors="replace").splitlines()
+                       if "Failed to compile Material /Game/Sabarmati/" in line), None)
+        if failed:
+            raise ValueError("A project shader fell back to the default material: " + failed)
     settings = dict(row.split("=", 1) for row in (folder / "settings.txt").read_text().splitlines())
     width, height = map(int, settings["viewport"].split("x"))
     drive = dict(row.split("=", 1) for row in (folder / "drive.txt").read_text().splitlines())
@@ -25,15 +31,29 @@ def inspect_run(folder):
             if int(row["frame"]) != len(samples) or timings[0] <= 0 or not all(math.isfinite(x) and x >= 0 for x in timings):
                 raise ValueError(f"Invalid frame in {row['view']}")
             samples.append(timings)
-    if set(groups) != {"atal-landing", "shopfront", "parked-hatch", "driving"}:
+    expected = {"atal-landing", "shopfront", "parked-hatch", "driving"}
+    version = settings.get("format", "1")
+    if version not in {"1", "2", "3"}:
+        raise ValueError("Unknown benchmark format")
+    if version in {"2", "3"}:
+        expected.update(("tea-room", "garden-walk"))
+    if version == "3":
+        expected.update(("service-lane", "road-surface"))
+    if set(groups) != expected:
         raise ValueError("Missing or unexpected camera view")
     for name, rows in groups.items():
-        if len(rows) < (1 if name == "driving" else 180):
+        if len(rows) < (30 if name == "driving" else 180):
             raise ValueError(f"Incomplete samples for {name}")
         with (folder / (name + ".png")).open("rb") as source:
             header = source.read(24)
         if header[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", header[16:24]) != (width, height):
             raise ValueError(f"Capture size mismatch for {name}")
+    wall_seconds = sum(row[0] for row in groups["driving"]) / 1000
+    if wall_seconds < 2.5:
+        raise ValueError("Insufficient chase duration")
+    if version in {"2", "3"} and (int(drive.get("contact_samples", 0)) != len(groups["driving"])
+            or abs(float(drive.get("duration_s", 0)) - wall_seconds) > .05):
+        raise ValueError("Chase contact count or duration mismatch")
     return settings, drive, groups
 
 
@@ -47,6 +67,7 @@ def main():
     args = parser.parse_args()
     settings, drive, groups = inspect_run(args.folder)
     print(f"{settings['time']} | {settings['gpu']} | {settings['viewport']} | {drive['distance_m']} m driven")
+    print(f"Chase covered {len(groups['driving'])} frames in {sum(row[0] for row in groups['driving'])/1000:.3f} s")
     print("| View | Frames | Median ms | P95 ms | P99 ms | Game median ms | Render median ms | GPU median ms |")
     print("|---|---:|---:|---:|---:|---:|---:|---:|")
     for name, rows in groups.items():

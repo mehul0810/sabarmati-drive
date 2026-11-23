@@ -25,9 +25,9 @@ struct FDistrictSky
 };
 
 constexpr int32 MaxPracticalLights = 14;
-const FDistrictSky Day = {FRotator(-43, 100, 0), 5.1f, 5750.f, .80f, .007f, FLinearColor(.35,.41,.49)};
-const FDistrictSky Golden = {FRotator(-18, 63, 0), 4.1f, 4900.f, .82f, .010f, FLinearColor(.42,.31,.22)};
-const FDistrictSky Night = {FRotator(-29, -61, 0), .23f, 8400.f, .36f, .006f, FLinearColor(.009,.015,.033)};
+const FDistrictSky DayLighting = {FRotator(-43, 100, 0), 5.1f, 5750.f, .80f, .007f, FLinearColor(.35,.41,.49)};
+const FDistrictSky GoldenLighting = {FRotator(-18, 63, 0), 4.1f, 4900.f, .82f, .010f, FLinearColor(.42,.31,.22)};
+const FDistrictSky NightLighting = {FRotator(-29, -61, 0), .23f, 8400.f, .36f, .006f, FLinearColor(.009,.015,.033)};
 }
 
 const TCHAR* ARiverfrontWorld::TimeName() const
@@ -94,12 +94,7 @@ void ARiverfrontWorld::BuildLighting()
         Haze = Actor->GetComponent();
         Haze->SetFogHeightFalloff(.24f);
     }
-    if (IsCityMode())
-    {
-        ApplyTimeOfDay(ERiverfrontTime::Day);
-        return;
-    }
-    NightWindows = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Sabarmati/Riverfront/M_OccupiedWindow.M_OccupiedWindow"));
+    NightWindows = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Sabarmati/Riverfront/MI_DistrictWindowNight.MI_DistrictWindowNight"));
 #if !UE_BUILD_SHIPPING
     // A/B control: the previous lighting on the exact same geometry, render settings and camera route.
     if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark"))
@@ -141,24 +136,22 @@ void ARiverfrontWorld::BuildLighting()
     }
     FString Requested;
     FParse::Value(FCommandLine::Get(), TEXT("SabarmatiTime="), Requested);
-    ApplyTimeOfDay(Requested == TEXT("day") ? ERiverfrontTime::Day
+    ApplyTimeOfDay(Requested == TEXT("day") || (Requested.IsEmpty() && IsCityMode()) ? ERiverfrontTime::Day
         : Requested == TEXT("night") ? ERiverfrontTime::Night : ERiverfrontTime::Golden);
 }
 
 void ARiverfrontWorld::CycleTimeOfDay()
 {
-    if (!IsCityMode())
-    {
-        ApplyTimeOfDay(TimeOfDay == ERiverfrontTime::Golden ? ERiverfrontTime::Night
-            : TimeOfDay == ERiverfrontTime::Night ? ERiverfrontTime::Day : ERiverfrontTime::Golden);
-    }
+    bClock=false;
+    ApplyTimeOfDay(TimeOfDay == ERiverfrontTime::Golden ? ERiverfrontTime::Night
+        : TimeOfDay == ERiverfrontTime::Night ? ERiverfrontTime::Day : ERiverfrontTime::Golden);
 }
 
 void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
 {
     TimeOfDay = Time;
     const bool AtNight = Time == ERiverfrontTime::Night;
-    const FDistrictSky& Lighting = AtNight ? Night : Time == ERiverfrontTime::Day ? Day : Golden;
+    const FDistrictSky& Lighting = AtNight ? NightLighting : Time == ERiverfrontTime::Day ? DayLighting : GoldenLighting;
     if (Sun)
     {
         Sun->SetWorldRotation(Lighting.Direction);
@@ -186,6 +179,11 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
         : SurfaceMaterials.FindRef(static_cast<int32>(ETint::Glass)).Get();
     if (Glazing)
     {
+        if (IsCityMode())
+        {
+            for (UActorComponent* Component:GetComponentsByTag(UInstancedStaticMeshComponent::StaticClass(),TEXT("AhmedabadGlazing")))
+                CastChecked<UInstancedStaticMeshComponent>(Component)->SetMaterial(0,Glazing);
+        }
         for (const auto& Pair : Batches)
         {
             if (Pair.Key % static_cast<int32>(ETint::Count) == static_cast<int32>(ETint::Glass))
@@ -198,7 +196,10 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
     {
         It->SetNightDriving(AtNight);
     }
-    SetActorTickEnabled(AtNight || IsCityMode());
+    DrySunIntensity=Lighting.KeyIntensity;
+    DryFogDensity=Lighting.Haze;
+    ApplyWeatherLight();
+    SetActorTickEnabled(true);
     if (AtNight)
     {
         RefreshPracticalLights(true);

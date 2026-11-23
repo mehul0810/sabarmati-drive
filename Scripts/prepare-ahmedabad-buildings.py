@@ -86,16 +86,9 @@ def road_clear(item, network):
     return True
 
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("buildings_geojson",type=Path)
-    parser.add_argument("road_data",type=Path)
-    parser.add_argument("output",type=Path)
-    a=parser.parse_args()
-    network=terrain_index(a.road_data)
-    doc=json.loads(a.buildings_geojson.read_text())
+def fit_buildings(features, network):
     result=[]
-    for f in doc["features"]:
+    for f in features:
         g,p=f.get("geometry"),f["properties"]
         if not g or (p.get("ftype") or "").casefold() in OMIT_TYPES or g["type"] not in ("Polygon","MultiPolygon"):
             continue
@@ -112,11 +105,51 @@ def main():
             height=320*floors+45
             yaw=round(math.degrees(angle)*100)
             result.append((round(x),round(y),round(w),round(d),height,yaw,stable%3))
-    if len(result)<600 or len(result)>5000:
+    return result
+
+
+def build_districts(directory, road_data, core_path):
+    network = terrain_index(road_data)
+    core = core_path.read_bytes()
+    if len(core)<12 or core[:8]!=b"SABBLD1\0" or len(core)!=12+17*struct.unpack_from("<I",core,8)[0]:
+        raise ValueError("Expected a valid core footprint sidecar")
+    seen = {(r[0], r[1]) for r in RECORD.iter_unpack(core[12:])}
+    rows, areas = [], []
+    bounds = runpy.run_path(str(Path(__file__).with_name("fetch-ahmedabad-osm.py")))["DISTRICT_BOUNDS"]
+    for key, bbox in bounds.items():
+        doc = json.loads((directory / key / "buildings.geojson").read_text())
+        accepted = []
+        for row in sorted(fit_buildings(doc["features"], network)):
+            centre = row[:2]
+            if centre in seen:
+                continue
+            accepted.append(row)
+            seen.add(centre)
+        if not 10 <= len(accepted) <= 1500:
+            raise ValueError(f"{key}: unexpected number of clear exterior plots: {len(accepted)}")
+        rows.extend(accepted)
+        areas.append({"id":key,"bbox_lonlat":bbox,"input":len(doc["features"]),"exterior_shells":len(accepted)})
+    return rows, {"areas":areas, "licence":"ODbL 1.0", "attribution":"© OpenStreetMap contributors"}
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("buildings_geojson",type=Path,help="Core GeoJSON, or the parent folder of the three district snapshots")
+    parser.add_argument("road_data",type=Path)
+    parser.add_argument("output",type=Path)
+    parser.add_argument("--districts",type=Path,metavar="CORE_BUILDINGS",help="Build the additive sidecar while excluding existing core plots")
+    a=parser.parse_args()
+    if a.districts:
+        result, manifest = build_districts(a.buildings_geojson, a.road_data, a.districts)
+    else:
+        doc=json.loads(a.buildings_geojson.read_text())
+        result=fit_buildings(doc["features"], terrain_index(a.road_data))
+        manifest={"source_building_rows":len(doc["features"])}
+    if not (30 if a.districts else 600) <= len(result) <= 5000:
         raise ValueError(f"Unexpected modeled building count {len(result)}")
     payload=b"SABBLD1\0"+struct.pack("<I",len(result))+b"".join(RECORD.pack(*r) for r in result)
     a.output.write_bytes(payload)
-    manifest={"source_building_rows":len(doc["features"]),"exterior_shells":len(result),"sha256":hashlib.sha256(payload).hexdigest()}
+    manifest.update(exterior_shells=len(result),sha256=hashlib.sha256(payload).hexdigest())
     a.output.with_suffix(".json").write_text(json.dumps(manifest,indent=2)+"\n")
     print(json.dumps(manifest,indent=2))
 

@@ -15,13 +15,12 @@ anything or switch the system's default developer tools.
    using the README and repeat the movement check.
 4. After the in-editor playtest, run the launcher with `--package` for the local
    Development app, verify its executable is ARM64, then launch that app independently.
-   This is not a signed, notarized or distributed release.
+   The local package is ad-hoc signed. It has no Developer ID distribution signature or notarization.
 
 On the M1 Max, Xcode 27 compiled and ran an ARM64 C++ probe, the Metal
 Toolchain compiled a shader to AIR, and Unreal 5.8.4 linked the project editor
 module as ARM64. The first launch may spend several minutes validating Epic's
-libraries and compiling shaders. This validates this configuration locally,
-not support for packaging or other Mac models. Check free space before cooking.
+libraries and compiling shaders. The same machine also ran the cooked, self-contained Development app. Check free space before cooking.
 If the Unreal build fails early, compare with a minimal UE 5.8 C++ project using
 the same toolchain before changing gameplay code. Leave global developer settings
 and other projects untouched. See [Epic's macOS requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine)
@@ -59,3 +58,24 @@ For the street-level check, launch with `-SabarmatiArtReview -SabarmatiWalkRevie
 ### Fixed-camera rendering benchmark
 
 Run `bash Scripts/benchmark-riverfront.sh all` in Terminal. Use `night`, `golden`, `day` or `reference` to measure one condition. Add `--no-build` after the condition to reuse an up-to-date editor module. Each native game window closes after its checks. The shell reports the run directory, verifies the captured dimensions and prints frame timing percentiles. The regular launcher opens a separate playable session. [Protocol and acceptance status](Docs/Riverfront-rendering.md)
+
+### District, driving and offline city checks
+
+Run the following from the checkout after the native build. The review flags create isolated QA saves. The normal launcher continues to use the player's offline profile.
+
+```bash
+bash Scripts/run-mac.sh --game --no-build -- -SabarmatiSystemsReview
+bash Scripts/run-mac.sh --game --no-build -- -SabarmatiSystemsReview -SabarmatiEndurance=20
+bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity -SabarmatiNeighbourhoodReview
+bash Scripts/run-mac.sh --package
+```
+
+For the interactive preview of Ashram Road, CG Road and the SG Highway service road, launch `bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity -SabarmatiStreetPreview`. Select a street with **N** and travel with **V** on foot or in a stopped car. The Atal west approach is a return stop. The ordinary city starts in the original central area. [Mapped areas and data sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
+
+After packaging, run `bash Scripts/run-mac.sh --standalone` to open the cooked game in a fitted window. Normal source-game and standalone launches share `~/Library/Application Support/Sabarmati Drive/Saved/SaveGames/SabarmatiPlayerProfileV1.sav`. The first launch seeds that profile from the checkout if a previous save exists. The original checkout copy stays in place. Later launches retain progress in Application Support. It also accepts `--4k`. This launch mode uses the local app without an Unreal Editor installation. The standalone executable accepts the same review flags. Use `-UserDir=/absolute/path/to/test-folder` to put a packaged review's Saved directory in a separate location. Summarize a completed run with `python3 Scripts/report-district-endurance.py /path/to/Saved/SystemsReviews/RUN_ID --minutes 20`. [District and benchmark evidence](Docs/Riverfront-district.md)
+
+For a sustained test through the normal fitted launcher, run `bash Scripts/benchmark-standalone-mac.sh 20`. The script records individual wall times, in-game focus and a separate macOS window-focus sample every 15 seconds. An optional final `--4k` selects the fitted Retina preset. Each run has a separate save and evidence directory under `Saved/StandaloneBenchmarks`.
+
+### Copying the standalone app
+
+After packaging, use `bash Scripts/archive-local-mac.sh` for a local ZIP under `Saved/MacPackage`. The script copies the bundle without Finder attributes, verifies its ad-hoc signature in the clean copy and tests the ZIP. Synced Documents folders can attach Finder metadata that affects strict signature inspection of the expanded folder. The game executable and its local cooked assets run directly from the checkout. This archive is for local Development testing.

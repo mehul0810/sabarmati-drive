@@ -4,7 +4,7 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 ## Start on an Apple Silicon Mac
 
-1. Install **Unreal Engine 5.8** from Epic Games Launcher and a compatible full **Xcode**. Open Xcode once to finish installing its SDK and components. See [Epic’s version-specific macOS and Xcode requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine) before installing. Epic lists macOS 14.5 and Xcode 26.0 as minimums for UE 5.8 and recommends Xcode 26.1.1. Xcode 27 on this Mac still needs a real UE build check.
+1. Install **Unreal Engine 5.8** from Epic Games Launcher and a compatible full **Xcode**. Open Xcode once to finish installing its SDK and components. See [Epic’s version-specific macOS and Xcode requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine) before installing. Epic lists macOS 14.5 and Xcode 26.0 as minimums for UE 5.8 and recommends Xcode 26.1.1. The M1 Max development machine also builds this project with Xcode 27.
 2. Open the extracted `Sabarmati-Drive-UE58-Mac` folder and open Terminal there. Use a native Apple Silicon terminal, not a shell translated by Rosetta.
 3. Build the C++ project and launch a resizable game window up to 1600×900:
 
@@ -22,6 +22,8 @@ Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine
 
 After building, **Play Sabarmati Drive.command** opens the riverfront in a titled window. **Play Sabarmati Drive 4K.command** opens Ahmedabad City in a titled Retina window with 100% render scale, up to 3840×2160 backing pixels. Both presets fit the primary display’s available desktop and leave room for the window controls.
 
+If the local Mac app has been packaged, run `bash Scripts/run-mac.sh --standalone` to play with your offline profile. On the first normal launch, the game launcher copies the existing checkout save to the Mac’s Application Support folder. Both normal launch modes use that shared copy. The launcher fits the window to the desktop. **Quit Game** is available on the title screen and in the **Esc** menu. [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg) · [District and Mac playtest results](Docs/Riverfront-district.md)
+
 ## Riverfront lighting
 
 The regular window opens the riverfront at golden hour. Press **T** during free roam to cycle through night, daylight and golden hour. Streetlights cast pools on the footpaths and carriageways. Selected apartment windows light up, and the occupied car switches its dipped beams on at night.
@@ -30,23 +32,30 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 
 ## Controls
 
-| On foot | In the car |
+| Action | Control |
 |---|---|
-| WASD move; mouse orbit; Shift jog; Space jump | W accelerate; S brake/reverse; A/D steer; mouse orbit; Space brake |
-| E enters the parked car when near either door | E exits when stopped and there is room next to the car |
-| R resets to the promenade start | R returns the car to where it started |
-| F3 toggles Unreal frame timings | F3 toggles Unreal frame timings |
+| Walk, look, run, jump | WASD, mouse, left Shift, Space |
+| Enter the nearest available car or leave a stopped car | E |
+| Drive, steer, brake or reverse | W, A/D, S. Space applies the handbrake. |
+| Change chase, cockpit and bonnet views | C |
+| Open the hatch's front doors, signal, use hazards, sound the horn | O, Z/X, B, H |
+| Order chai, collect a postcard or record a location on foot | E when the prompt appears |
+| Refuel and repair the stopped vehicle at River Motor Works | F |
+| Select a waypoint, toggle the map, start a driving challenge | N, M, G |
+| Change time, weather and automatic clock | T, P, Y |
+| Show controls, frame statistics or the pause menu | F1, F3, Esc |
+| Reset to the start | R |
 
-The parked car is on the street above the starting promenade. Move inland first (turn right from the spawn view) and then a few metres along the road. Head along the road toward the warm-colored bridge masts and turn toward the river to cross. The car uses bounded arcade driving and swept chassis collision, not suspension or crash-damage physics.
+The hatch and crossover are parked inland from the starting promenade. Visit Nadi Chai and Kagaz Print House across the road. Their doors open onto furnished rooms. A public passage runs between the shops and around the back. Atal is the walking crossing. The road bridges connect the driving lanes on both banks. A local profile saves discoveries and the best four-gate time.
 
 ## Optional local avatar import
 
-`SourceAssets/fictional-rigged.glb` may be supplied in a local checkout. The prototype rig uses one skin, 15 joints and four named clips: **Idle**, **Walk**, **WalkAlt** and **Jog**. The prototype rig is not distributed in the public repository. The raw GLB is not loaded in-game. Out of the box, the UE source uses a simple animated fallback figure. To use a locally provided, appropriately licensed avatar:
+`SourceAssets/fictional-rigged.glb` may be supplied in a local checkout. The prototype rig uses one skin, 15 joints and four named clips: **Idle**, **Walk**, **WalkAlt** and **Jog**. The prototype rig is not distributed in the public repository. The raw GLB is not loaded in-game. The public game uses an animated, clothed fictional resident when the local mesh is unavailable. To use a locally provided, appropriately licensed avatar:
 
 1. In the UE editor, create **Content/Sabarmati/Avatar**. In the Content Browser, import the GLB as an asset into that folder (do not use **Import Into Level**). In the [Interchange importer](https://dev.epicgames.com/documentation/unreal-engine/interchange-import-reference-in-unreal-engine), enable **Import Skeletal Meshes** and **Import Animations**. Enable **Combine Skeletal Meshes**, if displayed, so the skinned body/clothes/shoes use one skeletal mesh and one skeleton. Save imported materials and textures.
 2. Rename the imported skeletal mesh **SK_Sabarmati**, and its Idle, Walk and Jog animation assets **A_Idle**, **A_Walk** and **A_Jog**, all directly in that folder. The mesh and three clips must reference the same Skeleton asset. The optional `WalkAlt` clip is not loaded by default. If your Unreal glTF importer does not bring the skinned parts or clips together, re-export the fictional source rig from Blender as skeletal FBX with baked animation clips and import against the same Skeleton; do not use the fallback as proof of a successful import.
 3. Preview orientation (UE forward is +X), height (~1.8 m), ground contact, clothes/shoes and foot movement in the editor, then press Play. If necessary correct import transforms before saving. The prototype uses simple speed-based clip selection, not production foot IK, turning animations, motion matching, or retargeting.
-4. For a distributable build using the avatar, add **/Game/Sabarmati/Avatar** in Project Settings → Packaging → Additional Asset Directories to Cook. Those assets are found by name only and must be explicitly cooked.
+4. The public cook excludes this local folder automatically. Both clothed public residents ship in the Riverfront content directory.
 
 ## Run a native smoke test
 
@@ -68,20 +77,20 @@ The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual
 bash Scripts/run-mac.sh --package
 ```
 
-This requests a local arm64 cook and package under `Saved/MacPackage`. It does not notarize, distribute, or submit the app. After packaging, start the resulting `.app` in Finder and run the smoke test again. A packaged build may differ from editor behavior.
+The command cooks and ad-hoc signs a self-contained Apple Silicon Development app. Double-click `Saved/MacPackage/SabarmatiPrototype.app` in Finder. It reads its local cooked containers and starts in a window. Distribution signing and notarization are separate.
 
 ## Source checks and limits
 
 ```bash
 bash -n Scripts/run-mac.sh
-python3 Tests/check_source.py
+python3 -m unittest discover -s Tests -p 'check_*.py'
 ```
 
-These checks validate project metadata, runtime inputs, renderer flags, a world layout sanity check, and the included glTF skin/animation data. They do not compile Unreal headers or prove native rendering, input, cooking, packaging, or frame rates. The development game was built and run on Apple Silicon with Unreal 5.8.4; packaged and other-device verification are separate.
+These checks validate project metadata, runtime inputs, renderer flags, a world layout sanity check, and the included glTF skin/animation data. They do not compile Unreal headers or prove native rendering, input, cooking, packaging, or frame rates. The Development Editor game and cooked standalone game were both exercised on the M1 Max. [District validation](Docs/Riverfront-district.md)
 
 ### Start and pause
 
-The native launcher shows a **Loading game…** window before the title screen. It has no percentage because startup does not expose a reliable progress estimate. Click **Start** to enter free roam after creating or loading a local player profile.
+The native launcher opens a splash while the engine starts. The subsequent map loader shows six milestones as roads, buildings, lighting, vehicles and traffic become available. Click **Start** to enter free roam after creating or loading a local player profile.
 
 The title uses generated environmental concept artwork as a backdrop; it is not a gameplay capture.
 

@@ -79,6 +79,33 @@ void Add(const FVector& Base, const FRotator& Rotation, double Width, double Dep
         Place(Trim, FVector(Width * .17, -Depth * .13, Height + 84),
             FVector(FMath::Min(Width * .29, 350.), FMath::Min(Depth * .3, 270.), 158));
     }
+    // Window AC housings and drains sit inside the clearance margin of the mapped footprint.
+    for (int32 Side : {-1,1})
+    {
+        const double Y=Side*(Depth*.5+9.);
+        if (Style!=1)
+            Place(Trim,FVector(Width*.445,Y,Height*.51),FVector(7.,9.,Height*.98));
+        for (int32 Storey=1; Storey<Floors; Storey+=2)
+        {
+            const double X=Width*((Storey+Style)%2?.32:-.25), Z=Floor*(Storey+.33);
+            Place(Trim,FVector(X,Y+Side*7.,Z),FVector(67.,33.,46.));
+            Place(Glass,FVector(X+11.,Y+Side*24.,Z),FVector(30.,3.,29.));
+            if (Style==0 && Width>640.)
+            {
+                const double W=FMath::Min(296.,Width*.36);
+                Place(Trim,FVector(-X,Y+Side*14.,Z-42.),FVector(W,48.,12.));
+                Place(Trim,FVector(-X,Y+Side*35.,Z+35.),FVector(W,5.,5.));
+                for (int32 Bar=-2; Bar<=2; ++Bar)
+                    Place(Trim,FVector(-X+Bar*W*.22,Y+Side*35.,Z-3.),FVector(4.,4.,72.));
+            }
+        }
+        if (Style==1 && Width>620.)
+        {
+            const double Canopy=FMath::Min(580.,Width*.75);
+            Place(Trim,FVector(0,Y+Side*22.,244.),FVector(Canopy,56.,9.));
+            Place(Trim,FVector(0,Y+Side*47.,239.),FVector(Canopy,4.,18.));
+        }
+    }
     const double RoofZ = Height + 22.0;
     for (const int32 Side : {-1, 1})
     {

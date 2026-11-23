@@ -1,12 +1,18 @@
 #include "RiverfrontWorld.h"
+#include "DistrictLoadProgress.h"
 #include "AhmedabadFacadeDetail.h"
+#include "RiverfrontPedestrian.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/World.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/FileHelper.h"
+#include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "Serialization/MemoryReader.h"
 
@@ -17,7 +23,7 @@ constexpr int32 StreamRadius = 2;
 constexpr int32 MaxTileCount = 2300;
 constexpr int32 MaxStripCount = 400000;
 constexpr int32 MaxTileItems = 26000;
-enum EBatch : int32 { Dry, Road, Water, Markings, BridgeDetail, WallA, WallB, WallC, Roof, FacadeGlass, FacadeTrim, Sidewalk, Kerb, Iron, BatchCount };
+enum EBatch : int32 { Dry, Road, Water, Markings, BridgeDetail, WallA, WallB, WallC, Roof, FacadeGlass, FacadeTrim, Sidewalk, Kerb, Iron, StreetTree, Shade, Tank, TreePit, TrunkGuard, BatchCount };
 const uint8 Signature[] = {'S', 'A', 'B', 'O', 'S', 'M', '2', '\0'};
 
 struct FCityRoad
@@ -47,6 +53,7 @@ struct FCityTile
     TArray<FCityRoad> Roads;
     TArray<FCityGround> Ground;
     TArray<FCityBuilding> Buildings;
+    bool HasStreetPlots = false;
 };
 
 FString DataPath()
@@ -66,7 +73,7 @@ void AppendBox(TArray<FTransform>& Batch, const FVector& Center, const FVector& 
 }
 
 void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& RoadStrip,
-    const TArray<FCityRoad>& Network)
+    const TArray<FCityRoad>& Network, UStaticMesh* Canopy)
 {
     const FVector A(RoadStrip.Ax, RoadStrip.Ay, 0), B(RoadStrip.Bx, RoadStrip.By, 0);
     const double Length = FVector::Distance(A, B);
@@ -106,7 +113,7 @@ void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& Road
         {
             const FVector Edge = A + Along * ((I + .5) * Panel) + Out * (.5 * RoadStrip.Width);
             // Narrow the verge between divided carriageways. Omit it at actual junctions.
-            for (const double Width : {156., 26.})
+            for (const double Width : {Canopy?228.:156., 156., 26.})
             {
                 const FVector Middle = Edge + Out * (Width * .5);
                 bool bClear = true;
@@ -132,6 +139,32 @@ void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& Road
                 }
                 AppendBox(Batch[Kerb], Edge + Out * 11 + FVector(0,0,1.5),
                     FVector(Panel - 1, 22, 19), Facing);
+                if (Canopy && Width>26.)
+                {
+                    // The street survey supplies the free verge, junctions exclude both lamps and pits.
+                    const int32 Seed=HashCombine(GetTypeHash(RoadStrip.Ax/23),GetTypeHash(RoadStrip.Ay/37))&0x3fffffff;
+                    const int32 Bay=I+(Seed%41)+(Sign>0?3:0);
+                    const FVector Verge=Edge+Out*39.;
+                    if (Bay%7==0)
+                    {
+                        const double H=570.+(Bay*29)%155;
+                        const FBoxSphereBounds Bounds=Canopy->GetBounds();
+                        const double Scale=H/FMath::Max(1.,Bounds.BoxExtent.Z*2.);
+                        const FVector Base=Verge+FVector(0,0,10.-(Bounds.Origin.Z-Bounds.BoxExtent.Z)*Scale);
+                        Batch[StreetTree].Emplace(FRotator(0.,(Bay*57)%360,0.),Base,FVector(Scale));
+                        AppendBox(Batch[TreePit],Verge+FVector(0,0,10.1),FVector(117.,76.,3.),Facing);
+                        // Physical trunk/boom collision ends at the first fork; the leaf cards stay nonblocking.
+                        AppendBox(Batch[TrunkGuard],Verge+FVector(0,0,H*.24),FVector(62.,62.,H*.48),Facing);
+                    }
+                    else if (Bay%12==2)
+                    {
+                        AppendBox(Batch[Iron],Verge+FVector(0,0,274.),FVector(15.,15.,530.),Facing);
+                        const FVector Top=Verge-Out*76.+FVector(0,0,551.);
+                        AppendBox(Batch[Iron],Top+Out*37.,FVector(9.,89.,11.),Facing);
+                        AppendBox(Batch[Iron],Top-Out*13.,FVector(30.,46.,10.),Facing);
+                        AppendBox(Batch[FacadeTrim],Top-Out*14.-FVector(0,0,5.),FVector(24.,36.,3.),Facing);
+                    }
+                }
                 if (Width > 26. && (I + Count) % 8 == 0)
                 {
                     const FVector Drain = Edge - Out * 16;
@@ -154,7 +187,9 @@ struct FAhmedabadCityState
 {
     TMap<FIntPoint, FCityTile> Tiles;
     TMap<FIntPoint, TArray<TWeakObjectPtr<UInstancedStaticMeshComponent>>> Loaded;
+    TMap<FIntPoint,TArray<TWeakObjectPtr<ARiverfrontPedestrian>>> Residents;
     FIntPoint FocusTile = FIntPoint(MAX_int32, MAX_int32);
+    bool LoadedNeighbourhood = false;
     FVector Car = FVector::ZeroVector;
     FVector Walk = FVector::ZeroVector;
     double Yaw = 0.0;
@@ -165,11 +200,35 @@ struct FAhmedabadCityState
     uint32 BuildingCount = 0;
     TOptional<FCityBuilding> ArcadePlot;
     TArray<FCityRoad> ApproachRoads;
+    TArray<FVector> StreetCentres;
 
-    bool ReadBuildings()
+    void LoadStreetCentres()
+    {
+        FString Text; TSharedPtr<FJsonObject> Doc;
+        if (!FFileHelper::LoadFileToString(Text,*FPaths::Combine(FPaths::ProjectContentDir(),TEXT("CityData/ExplorationSites.json")))
+            || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Doc) || !Doc) return;
+        const TArray<TSharedPtr<FJsonValue>>* Sites=nullptr;
+        if (!Doc->TryGetArrayField(TEXT("city"),Sites)) return;
+        for (const auto& V:*Sites)
+        {
+            const auto& S=V->AsObject();
+            const TArray<TSharedPtr<FJsonValue>>* XYZ=nullptr;
+            if (S && S->HasField(TEXT("street_heading")) && S->GetStringField(TEXT("id"))!=TEXT("city-landing")
+                && S->TryGetArrayField(TEXT("location"),XYZ) && XYZ->Num()==3)
+                StreetCentres.Emplace((*XYZ)[0]->AsNumber(),(*XYZ)[1]->AsNumber(),0.);
+        }
+    }
+    bool NearNamedStreet(const FVector& A,const FVector& B) const
+    {
+        for (const auto& Centre:StreetCentres)
+            if (FMath::PointDistToSegment(Centre,A,B)<24500.) return true;
+        return false;
+    }
+
+    bool ReadBuildings(const TCHAR* Filename, bool IsCore)
     {
         const FString Path = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("CityData"),
-            TEXT("AhmedabadBuildings.bin"));
+            Filename);
         const int64 Size = IFileManager::Get().FileSize(*Path);
         TArray<uint8> Bytes;
         if (Size <= 12 || Size > 250000 || !FFileHelper::LoadFileToArray(Bytes, *Path))
@@ -213,7 +272,7 @@ struct FAhmedabadCityState
         {
             const FCityBuilding& B = Validated[I];
             const double Distance = FVector::DistSquared2D(Walk, FVector(B.X, B.Y, 0));
-            if (FMath::Max(B.Width, B.Depth) >= 2200 && FMath::Min(B.Width, B.Depth) >= 1500
+            if (IsCore && FMath::Max(B.Width, B.Depth) >= 2200 && FMath::Min(B.Width, B.Depth) >= 1500
                 && B.Height >= 900 && Distance < BestDistance)
             {
                 ArcadeIndex = I;
@@ -229,10 +288,12 @@ struct FAhmedabadCityState
             }
             else
             {
-                Tiles.FindChecked(TileAt(FVector(Building.X, Building.Y, 0))).Buildings.Add(Building);
+                FCityTile& Tile=Tiles.FindChecked(TileAt(FVector(Building.X, Building.Y, 0)));
+                Tile.Buildings.Add(Building);
+                Tile.HasStreetPlots |= !IsCore;
             }
         }
-        BuildingCount = Count;
+        BuildingCount += Count;
         return true;
     }
 
@@ -337,6 +398,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
 
     // Restrict extra kerbs and footpaths to the built-up approach. Keep junctions
     // open using the same neighbouring centreline data even across tile boundaries.
+    DistrictLoadProgress::Reached(1);
     const FIntPoint StartTile = TileAt(Parsed->Walk);
     for (const auto& Pair : Parsed->Tiles)
     {
@@ -353,10 +415,23 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
             }
         }
     }
-    Parsed->ReadBuildings(); // Optional and all-or-nothing; road mode does not require it.
+    Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"), true);
+    // A malformed optional sidecar cannot prevent the original road network from opening.
+#if !UE_BUILD_SHIPPING
+    if (FParse::Param(FCommandLine::Get(),TEXT("SabarmatiStreetPreview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
+    {
+        bStreetDistricts=Parsed->ReadBuildings(TEXT("AhmedabadDistrictBuildings.bin"),false);
+        if (bStreetDistricts)
+        {
+            Parsed->LoadStreetCentres();
+            MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
+            StreetGround=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_StreetGround.M_StreetGround"));
+        }
+    }
+#endif
     LoadSurfaceMaterials();
     CityState = Parsed;
-    UpdateCityTiles(Parsed->Car);
+    UpdateCityTiles(Parsed->Car, true);
     const auto RoadTrace = [this](const FVector& Point)
     {
         FHitResult Hit;
@@ -382,6 +457,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         CityState.Reset();
         return false;
     }
+    DistrictLoadProgress::Reached(2);
     if (Parsed->ArcadePlot.IsSet())
     {
         const FCityBuilding& B = Parsed->ArcadePlot.GetValue();
@@ -394,7 +470,9 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         BuildCityForecourt(Plot, Yaw, FMath::Max(B.Width, B.Depth), FMath::Min(B.Width, B.Depth));
         BuildArcadeBlock(Plot, Yaw, FMath::Max(B.Width, B.Depth), FMath::Min(B.Width, B.Depth), B.Height);
     }
+    DistrictLoadProgress::Reached(3);
     BuildLighting();
+    BuildWeather();
     SetActorTickEnabled(true);
     OutWalkStart = Parsed->Walk;
     OutCarStart = Parsed->Car;
@@ -477,6 +555,7 @@ void ARiverfrontWorld::BuildCityForecourt(const FVector& Plot, double Yaw, doubl
 void ARiverfrontWorld::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    UpdateWeather(DeltaSeconds);
     if (IsNight())
     {
         RefreshPracticalLights(false);
@@ -491,7 +570,7 @@ void ARiverfrontWorld::Tick(float DeltaSeconds)
     }
 }
 
-void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
+void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
 {
     const TSharedPtr<FAhmedabadCityState> State = CityState;
     if (!State)
@@ -499,16 +578,40 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
         return;
     }
     const FIntPoint Center = TileAt(Focus);
-    if (State->FocusTile == Center)
+    if (State->FocusTile == Center && State->LoadedNeighbourhood)
     {
         return;
     }
     State->FocusTile = Center;
 
+    for (auto It = State->Loaded.CreateIterator(); It; ++It)
+    {
+        const FIntPoint Key = It.Key();
+        if (FMath::Abs(Key.X - Center.X) <= StreamRadius && FMath::Abs(Key.Y - Center.Y) <= StreamRadius)
+        {
+            continue;
+        }
+        TArray<TWeakObjectPtr<ARiverfrontPedestrian>> Leaving;
+        if (State->Residents.RemoveAndCopyValue(Key,Leaving))
+            for (const auto& Walker:Leaving) if (Walker.IsValid()) Walker->Destroy();
+        for (const auto& Batch : It.Value())
+        {
+            if (Batch.IsValid())
+            {
+                Batch->DestroyComponent();
+            }
+        }
+        It.RemoveCurrent();
+    }
+    int32 Created=0;
+    bool Pending=false;
+    // Always install the support beneath the pawn first. Build the surrounding rings across ticks.
+    for (int32 Ring=0; Ring<=StreamRadius; ++Ring)
     for (int32 DX = -StreamRadius; DX <= StreamRadius; ++DX)
     {
         for (int32 DY = -StreamRadius; DY <= StreamRadius; ++DY)
         {
+            if (FMath::Max(FMath::Abs(DX),FMath::Abs(DY))!=Ring) continue;
             const FIntPoint Key = Center + FIntPoint(DX, DY);
             if (State->Loaded.Contains(Key))
             {
@@ -518,6 +621,16 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
             if (!Tile)
             {
                 continue;
+            }
+            if (!Immediate && Created>=2) { Pending=true; continue; }
+            ++Created;
+            TArray<FCityRoad> StreetRoads;
+            if (Tile->HasStreetPlots)
+            {
+                for (int32 NX=-1; NX<=1; ++NX)
+                    for (int32 NY=-1; NY<=1; ++NY)
+                        if (const FCityTile* Adjacent=State->Tiles.Find(Key+FIntPoint(NX,NY)))
+                            StreetRoads.Append(Adjacent->Roads);
             }
             TArray<FTransform> Batch[BatchCount];
             Batch[Dry].Reserve(Tile->Ground.Num());
@@ -555,9 +668,10 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
                             FVector(Length + Join, 23, 43), Rotation);
                     }
                 }
-                if (Item.Major && !Item.Bridge && FVector::DistSquared2D(Middle, State->Walk) < FMath::Square(53000.))
+                if (Item.Major && !Item.Bridge && (Tile->HasStreetPlots || FVector::DistSquared2D(Middle, State->Walk) < FMath::Square(53000.)))
                 {
-                    AddFootpaths(Batch, Item, State->ApproachRoads);
+                    AddFootpaths(Batch,Item,Tile->HasStreetPlots?StreetRoads:State->ApproachRoads,
+                        Tile->HasStreetPlots && State->NearNamedStreet(A,B)?MatureTree.Get():nullptr);
                 }
                 if (Item.Major && Length > 1200)
                 {
@@ -577,6 +691,38 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
                     FVector(Building.Width, Building.Depth, Height), Rotation);
                 AppendBox(Batch[Roof], FVector(Building.X, Building.Y, Height + 4),
                     FVector(Building.Width + 8.0, Building.Depth + 8.0, 19.0), Rotation);
+                const FVector Plot(Building.X,Building.Y,0.);
+                if (Tile->HasStreetPlots && State->NearNamedStreet(Plot,Plot))
+                {
+                    const int32 Seed=GetTypeHash(Building.X/71+Building.Y/131)&0xff;
+                    const auto Front=[&](int32 Layer,double X,double Y,double Z,double W,double D,double H)
+                    { AppendBox(Batch[Layer],Plot+Rotation.RotateVector(FVector(X,Y,Z)),FVector(W,D,H),Rotation); };
+                    if (Building.Width>710 && Building.Depth>570)
+                    {
+                        const double Side=Seed%2?1.:-1.;
+                        const double Y=Side*(Building.Depth*.5+27.);
+                        const int32 Bays=FMath::Clamp(int32(Building.Width/320),2,6);
+                        const double Bay=Building.Width/double(Bays);
+                        for (int32 J=0;J<Bays;++J)
+                        {
+                            const double X=(J+.5)*Bay-Building.Width*.5;
+                            Front(Shade,X,Y,245.,Bay-17.,58.,12.);
+                            Front(Shade,X,Y+Side*24.,235.,Bay-19.,7.,20.);
+                            Front(Iron,X+Bay*.4,Y-Side*16.,238.,4.,46.,5.);
+                            if ((J+Seed)%3==1 && Height>600.)
+                            {
+                                for (int32 L=0;L<6;++L)
+                                    Front(Shade,X-Bay*.21+L*13.,Y,510.,5.,23.,138.);
+                            }
+                        }
+                        if (Seed%3)
+                        {
+                            const double Diameter=FMath::Min(136.,Building.Depth*.18);
+                            Front(Tank,Building.Width*.21,-Building.Depth*.15,Height+70.,Diameter,Diameter,123.);
+                            Front(Tank,Building.Width*.21,-Building.Depth*.15,Height+134.,Diameter*.92,Diameter*.92,7.);
+                        }
+                    }
+                }
                 AhmedabadFacadeDetail::Add(FVector(Building.X, Building.Y, -6), Rotation,
                     Building.Width, Building.Depth, Height, Building.Palette,
                     [&Batch](const FVector& At, const FVector& Size, const FRotator& Facing)
@@ -590,7 +736,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
             }
             const ETint Tints[BatchCount] = {ETint::Stone, ETint::Asphalt, ETint::Water, ETint::RoadPaint,
                 ETint::Retaining, ETint::Plaster, ETint::FacadeStone, ETint::Terracotta, ETint::Roof,
-                ETint::Glass, ETint::Plaster, ETint::Paving, ETint::Retaining, ETint::Rail};
+                ETint::Glass, ETint::Plaster, ETint::Paving, ETint::Retaining, ETint::Rail, ETint::Leaf, ETint::Canvas, ETint::Rail, ETint::Timber, ETint::Rail};
             auto& Components = State->Loaded.Add(Key);
             for (int32 Layer = 0; Layer < BatchCount; ++Layer)
             {
@@ -601,19 +747,23 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
                 UInstancedStaticMeshComponent* Mesh = NewObject<UInstancedStaticMeshComponent>(this);
                 AddInstanceComponent(Mesh);
                 Mesh->SetupAttachment(GetRootComponent());
-                Mesh->SetStaticMesh(BoxMesh);
+                Mesh->SetStaticMesh(Layer==StreetTree?MatureTree.Get():(Layer==Tank || Layer==TrunkGuard)?CylinderMesh.Get():BoxMesh.Get());
                 Mesh->SetMobility(EComponentMobility::Static);
                 Mesh->SetCanEverAffectNavigation(false);
                 Mesh->SetGenerateOverlapEvents(false);
                 const bool bBuildingWall = Layer >= WallA && Layer <= WallC;
-                Mesh->SetCollisionProfileName(Layer == Dry || Layer == Road || Layer == Sidewalk || Layer == Kerb || bBuildingWall
+                Mesh->SetCollisionProfileName(Layer == Dry || Layer == Road || Layer == Sidewalk || Layer == Kerb || Layer == TrunkGuard || bBuildingWall
                     ? TEXT("BlockAll") : TEXT("NoCollision"));
-                Mesh->SetCastShadow(Layer == BridgeDetail || bBuildingWall || Layer == Roof || Layer == FacadeTrim);
+                Mesh->SetCastShadow(Layer==BridgeDetail || bBuildingWall || Layer==Roof || Layer==FacadeTrim || Layer==StreetTree
+                    || Layer==Shade || Layer==Tank || Layer==Iron);
+                if (Layer==StreetTree) Mesh->SetCullDistances(17000,33000);
+                if (Layer==TrunkGuard) Mesh->SetHiddenInGame(true);
+                if (Layer==Sidewalk) Mesh->ComponentTags.Add(TEXT("CityFootpath"));
                 if (UMaterialInterface* Material = SurfaceMaterials.FindRef(static_cast<int32>(Tints[Layer])))
                 {
-                    Mesh->SetMaterial(0, Material);
+                    if (Layer!=StreetTree) Mesh->SetMaterial(0,Layer==Dry && Tile->HasStreetPlots && StreetGround?StreetGround.Get():Material);
                 }
-                else if (BaseMaterial)
+                else if (BaseMaterial && Layer!=StreetTree)
                 {
                     if (auto* Default = UMaterialInstanceDynamic::Create(BaseMaterial, Mesh))
                     {
@@ -621,34 +771,110 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus)
                             FColor(48, 93, 102), FColor(229, 222, 194), FColor(133, 126, 106),
                             FColor(202, 188, 169), FColor(166, 148, 124), FColor(174, 124, 105), FColor(93, 88, 81),
                             FColor(49, 66, 70), FColor(160, 144, 126),
-                            FColor(160, 145, 121), FColor(147, 142, 130), FColor(57, 60, 56)};
+                            FColor(160,145,121),FColor(147,142,130),FColor(57,60,56),FColor(52,73,47),FColor(119,105,75),FColor(64,67,63),FColor(107,83,63),FColor(71,62,52)};
                         Default->SetVectorParameterValue(TEXT("Color"), FLinearColor(Colors[Layer]));
                         Mesh->SetMaterial(0, Default);
                     }
+                }
+                if (Layer==FacadeGlass)
+                {
+                    Mesh->ComponentTags.Add(TEXT("AhmedabadGlazing"));
+                    Mesh->InstancingRandomSeed=1+int32(GetTypeHash(Key)&0x3fffffff);
+                    if (IsNight() && NightWindows) Mesh->SetMaterial(0,NightWindows);
                 }
                 Mesh->AddInstances(Batch[Layer], false, false, false);
                 Mesh->RegisterComponent();
                 Components.Add(Mesh);
             }
-        }
-    }
-    for (auto It = State->Loaded.CreateIterator(); It; ++It)
-    {
-        const FIntPoint Key = It.Key();
-        if (FMath::Abs(Key.X - Center.X) <= StreamRadius && FMath::Abs(Key.Y - Center.Y) <= StreamRadius)
-        {
-            continue;
-        }
-        for (const auto& Batch : It.Value())
-        {
-            if (Batch.IsValid())
+            if (Tile->HasStreetPlots)
             {
-                Batch->DestroyComponent();
+                auto& Walkers=State->Residents.Add(Key);
+                int32 Tried=0;
+                for (const FCityRoad& R:Tile->Roads)
+                {
+                    const FVector A(R.Ax,R.Ay,10.), B(R.Bx,R.By,10.);
+                    const double Length=FVector::Dist2D(A,B);
+                    if (!R.Major || R.Bridge || Length<2300.) continue;
+                    const FVector Along=(B-A)/Length, Across(-Along.Y,Along.X,0.);
+                    const int32 Variant=int32(GetTypeHash(Key)&0xff)+Tried;
+                    const FVector Middle=(A+B)*.5+Across*((R.Width*.5+82.)*(Tried%2?-1.:1.));
+                    const double Span=FMath::Min(790.,Length*.24);
+                    if (auto* Walker=ARiverfrontPedestrian::SpawnStreetWalker(*GetWorld(),Middle-Along*Span,Middle+Along*Span,Variant))
+                        Walkers.Add(Walker);
+                    if (++Tried>=10 || Walkers.Num()>=3) break;
+                }
             }
         }
-        It.RemoveCurrent();
     }
-    UE_CLOG(State->Loaded.Num() > 0, LogTemp, Display,
+    State->LoadedNeighbourhood=!Pending;
+    UE_CLOG(!Pending && State->Loaded.Num() > 0, LogTemp, Display,
         TEXT("Ahmedabad City: streamed %d/%d tiles at (%d,%d)."),
         State->Loaded.Num(), State->Tiles.Num(), Center.X, Center.Y);
 }
+
+bool ARiverfrontWorld::FindCityFootway(const FVector& Origin,double Yaw,FVector& Surface) const
+{
+    if (!CityState) return false;
+    const FVector Along=FRotator(0,Yaw,0).Vector();
+    const FVector Across(-Along.Y,Along.X,0.);
+    // Project onto a real, tagged sidewalk. Check the walking direction so arrivals have room to move.
+    auto Footpath=[&](const FVector& At,FVector& HitPoint)
+    {
+        FHitResult Hit;
+        if (!GetWorld()->LineTraceSingleByObjectType(Hit,At+FVector(0,0,200),At-FVector(0,0,190),FCollisionObjectQueryParams(ECC_WorldStatic))
+            || !Hit.GetComponent() || !Hit.GetComponent()->ComponentHasTag(TEXT("CityFootpath"))) return false;
+        HitPoint=Hit.ImpactPoint;return true;
+    };
+    const FCityTile* Tile=CityState->Tiles.Find(TileAt(Origin));
+    if (!Tile) return false;
+    double Best=900., HalfWidth=0.;
+    for (const auto& RoadStrip:Tile->Roads)
+    {
+        const FVector A(RoadStrip.Ax,RoadStrip.Ay,0.), B(RoadStrip.Bx,RoadStrip.By,0.);
+        if (!RoadStrip.Major || RoadStrip.Bridge || FMath::Abs((B-A).GetSafeNormal().Dot(Along))<.94) continue;
+        const double D=FVector::Dist2D(Origin,FMath::ClosestPointOnSegment(FVector(Origin.X,Origin.Y,0),A,B));
+        if (D<Best) { Best=D; HalfWidth=RoadStrip.Width*.5; }
+    }
+    if (HalfWidth<=0.) return false;
+    const FCollisionShape Body=FCollisionShape::MakeCapsule(35.f,86.f);
+    for (const double Shift:{0.,-180.,180.,-420.,420.,-700.,700.})
+        for (const double Sign:{-1.,1.})
+            for (const double Inset:{160.,125.,93.})
+            {
+                const FVector Target=Origin+Along*Shift+Across*(Sign*(HalfWidth+Inset));
+                FVector First,Next;
+                if (Footpath(Target,First) && Footpath(Target+Along*240.,Next) && Footpath(Target+Along*535.,Next)
+                    && Footpath(Target+Along*850.,Next))
+                {
+                    FHitResult Block;
+                    const FVector Height(0,0,94.);
+                    if (!GetWorld()->SweepSingleByObjectType(Block,First+Height,Next+Height,FQuat::Identity,
+                        FCollisionObjectQueryParams(ECC_WorldStatic),Body))
+                    {Surface=First;return true;}
+                }
+            }
+    return false;
+}
+
+bool ARiverfrontWorld::PrepareCityTravel(const FVector& Focus)
+{
+    if (!CityState || !CityState->Tiles.Contains(TileAt(Focus))) return false;
+    UpdateCityTiles(Focus);
+    return true;
+}
+
+#if !UE_BUILD_SHIPPING
+int32 ARiverfrontWorld::CityBuildingsNear(const FVector& At, double Radius) const
+{
+    int32 Nearby=0;
+    if (!CityState) return Nearby;
+    for (const auto& Pair:CityState->Loaded)
+    {
+        const FCityTile* Tile=CityState->Tiles.Find(Pair.Key);
+        if (!Tile) continue;
+        for (const auto& B:Tile->Buildings)
+            if (FVector::DistSquared2D(At,FVector(B.X,B.Y,0))<=FMath::Square(Radius)) ++Nearby;
+    }
+    return Nearby;
+}
+#endif

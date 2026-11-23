@@ -7,6 +7,18 @@
 class SWidget;
 class FReply;
 class ACameraActor;
+class ARiverfrontWorld;
+
+enum class ERiverSiteKind : uint8 { Visit, Tea, Print, Service };
+struct FRiverSite
+{
+    FName Id;
+    FString Name, Action, Discovery;
+    FVector Point;
+    ERiverSiteKind Kind;
+    float Reach;
+    TOptional<double> StreetHeading;
+};
 
 UCLASS()
 class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerController
@@ -15,6 +27,20 @@ class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerControl
 
 public:
     bool IsShowingMenu() const { return Screen != EScreen::Playing; }
+
+    void InteractWithPlace();
+    FString PlacePrompt() const;
+    const FRiverSite* Destination() const;
+    FVector NextWaypoint() const;
+    FString NavigationText() const;
+    FString ActivityText() const;
+    bool MapVisible() const { return bMiniMap; }
+    bool ControlsVisible() const { return bControls; }
+    int32 Discovered() const { return Visited.Num(); }
+    virtual void PlayerTick(float DeltaSeconds) override;
+#if !UE_BUILD_SHIPPING
+    bool VerifyReviewProfile(float& RecordedTime) const;
+#endif
 
     void AddYawInput(float Value) override;
     void AddPitchInput(float Value) override;
@@ -32,7 +58,8 @@ private:
     TWeakObjectPtr<ACameraActor> TitleCamera;
     FTimerHandle OpeningMenuTimer;
     double LookReadyAt = 0.0;
-    float MouseSensitivity = 0.30f;
+    float MouseSensitivity = 0.30f, MasterVolume=1.f;
+    void ApplyVolume(float V);
     bool bSensitivityChanged = false;
 
     FString ProfileSlot = TEXT("SabarmatiPlayerProfileV1");
@@ -40,6 +67,23 @@ private:
     bool bUnreadableProfile = false;
     bool bTravelling = false;
 
+    TArray<FRiverSite> Sites;
+    TArray<FName> Visited;
+    TArray<FVector> Checkpoints;
+    int32 SelectedSite=INDEX_NONE, NextCheckpoint=INDEX_NONE;
+    bool bMiniMap=true, bControls=false, bCitySites=false;
+    float BestTrial=0.f;
+    double TrialStart=0., MessageUntil=0.;
+    FString InteractionMessage;
+    void LoadSites();
+    void CycleDestination();
+    void TravelToDestination();
+    void ToggleMap() { bMiniMap=!bMiniMap; }
+    void ToggleControls() { bControls=!bControls; }
+    void ToggleChallenge();
+    bool SaveExploration();
+    int32 NearbySite() const;
+    void Notice(const FString& Text);
     void SetMouseSensitivity(float Value);
     void LoadLocalProfile();
     FText CreateLocalProfile(const FString& RequestedName);
@@ -48,9 +92,15 @@ private:
     void ShowTitle();
 #if !UE_BUILD_SHIPPING
     void RunRenderingBenchmark();
+    void RunDistrictReview();
+    void RunSystemsReview();
+    void RunNeighbourhoodReview();
+    double LastStreetTravelMs=0.;
 #endif
     void TogglePauseMenu();
     void CycleDistrictTime();
+    void CycleDistrictWeather();
+    void ToggleDistrictClock();
     void ShowMenu(EScreen Target);
     void ResumeDrive();
     FReply QuitDrive();

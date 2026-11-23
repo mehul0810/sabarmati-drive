@@ -1,5 +1,7 @@
 # Riverfront rendering milestone
 
+This records the starting build and first milestone. [Subsequent riverfront implementation and measurements](Riverfront-district.md)
+
 ## Technical audit
 
 The local target is the existing UE 5.8.4 C++ Development game on Apple Silicon. Its native Metal SM5 renderer, two offline maps and offline player profile are the baseline. The installed arm64 and Metal compilers passed the project setup probe. The source, configs, content inventory, data conversion and import scripts, tests, packaging rules and both Mac launchers were reviewed before changing the renderer. The following describes the starting checkout, including the local arcade and road pass.

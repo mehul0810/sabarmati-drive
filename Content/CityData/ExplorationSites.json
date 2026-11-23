@@ -1,0 +1,202 @@
+{
+  "riverfront": [
+    {
+      "id": "tea",
+      "name": "Nadi Chai",
+      "action": "Order a cup of chai",
+      "note": "The kettle is on. Nadi Chai is in your notebook.",
+      "kind": "Tea",
+      "location": "tea",
+      "reach_cm": 170
+    },
+    {
+      "id": "press",
+      "name": "Kagaz Print House",
+      "action": "Collect a riverfront postcard",
+      "note": "The printer hands you a fresh riverfront postcard.",
+      "kind": "Print",
+      "location": "press",
+      "reach_cm": 165
+    },
+    {
+      "id": "atal",
+      "name": "Atal Bridge",
+      "action": "Look over the river",
+      "note": "Atal Bridge viewpoint added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        -5350,
+        -10960,
+        75
+      ],
+      "reach_cm": 520
+    },
+    {
+      "id": "flower",
+      "name": "Flower Park",
+      "action": "Explore the garden",
+      "note": "Flower Park added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        19600,
+        6110,
+        90
+      ],
+      "reach_cm": 370
+    },
+    {
+      "id": "service",
+      "name": "River Motor Works",
+      "action": "Refuel and repair",
+      "note": "Fuel topped up and bodywork repaired.",
+      "kind": "Service",
+      "location": [
+        -14100,
+        5380,
+        88
+      ],
+      "reach_cm": 690
+    },
+    {
+      "id": "ravivari",
+      "name": "Ravivari Market",
+      "action": "Browse the stalls",
+      "note": "Ravivari Market added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        43400,
+        -27600,
+        90
+      ],
+      "reach_cm": 530
+    },
+    {
+      "id": "bj",
+      "name": "B. J. Park",
+      "action": "Visit the riverside garden",
+      "note": "B. J. Park added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        73200,
+        6100,
+        90
+      ],
+      "reach_cm": 420
+    },
+    {
+      "id": "ellis",
+      "name": "Ellis Bridge",
+      "action": "Visit the west landing",
+      "note": "Ellis Bridge landing added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        58600,
+        2830,
+        90
+      ],
+      "reach_cm": 440
+    }
+  ],
+  "city": [
+    {
+      "id": "city-tea",
+      "name": "Nadi Chai",
+      "action": "Order a cup of chai",
+      "note": "A stop for tea in Ahmedabad.",
+      "kind": "Tea",
+      "location": "tea",
+      "reach_cm": 170
+    },
+    {
+      "id": "city-press",
+      "name": "Kagaz Print House",
+      "action": "Collect a postcard",
+      "note": "A city postcard for your notebook.",
+      "kind": "Print",
+      "location": "press",
+      "reach_cm": 165
+    },
+    {
+      "id": "city-west",
+      "name": "Western road circuit",
+      "action": "Mark this junction",
+      "note": "Western junction added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        -22283,
+        39660,
+        80
+      ],
+      "reach_cm": 600
+    },
+    {
+      "id": "city-north",
+      "name": "Northern road circuit",
+      "action": "Mark this junction",
+      "note": "Northern junction added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        26402,
+        68268,
+        80
+      ],
+      "reach_cm": 600
+    },
+    {
+      "id": "ashram",
+      "name": "Ashram Road",
+      "action": "Record this street",
+      "note": "Ashram Road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        324395,
+        54925,
+        90
+      ],
+      "reach_cm": 1000,
+      "street_heading": -7.98
+    },
+    {
+      "id": "cg",
+      "name": "CG Road",
+      "action": "Record this street",
+      "note": "CG Road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        217098,
+        147812,
+        90
+      ],
+      "reach_cm": 1000,
+      "street_heading": 163.56
+    },
+    {
+      "id": "sg-service",
+      "name": "SG Highway service road",
+      "action": "Record this street",
+      "note": "SG Highway service road added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        227928,
+        654628,
+        90
+      ],
+      "reach_cm": 1000,
+      "street_heading": 156.01
+    },
+    {
+      "id": "city-landing",
+      "name": "Atal west approach",
+      "action": "Record the riverfront approach",
+      "note": "Atal west approach added to your notebook.",
+      "kind": "Visit",
+      "location": [
+        376,
+        25263,
+        68
+      ],
+      "reach_cm": 1000,
+      "street_heading": 1.0302
+    }
+  ]
+}
