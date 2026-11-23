@@ -1,4 +1,7 @@
 #include "RiverfrontPlayerController.h"
+#include "AudioDevice.h"
+#include "GameFramework/GameUserSettings.h"
+#include "RiverfrontCrossings.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontCar.h"
@@ -59,12 +62,12 @@ float ScaleMouseLook(float Rate, float Sensitivity, float MaxRate)
 }
 
 #if !UE_BUILD_SHIPPING
-void CheckCorridorRoutes(UWorld& World)
+bool CheckCorridorRoutes(UWorld& World)
 {
     const auto HitsFloor = [&World](double X, double Y, double Z)
     {
         FHitResult Hit;
-        return World.LineTraceSingleByChannel(Hit, FVector(X, Y, 160), FVector(X, Y, -145),
+        return World.LineTraceSingleByChannel(Hit, FVector(X, Y, Z + 28), FVector(X, Y, Z - 36),
             ECC_Visibility) && FMath::Abs(Hit.ImpactPoint.Z - Z) < 5.0;
     };
     int32 Road = 0;
@@ -85,9 +88,26 @@ void CheckCorridorRoutes(UWorld& World)
     {
         for (const double Y : {4090.0, -1800.0, -10960.0, -19500.0, -26010.0})
         {
-            Bridges += HitsFloor(X, Y, 0.0);
+            Bridges += HitsFloor(X, Y, RiverfrontCrossings::DeckZ(Y));
         }
     }
+    int32 Underpasses = 0;
+    for (double X : {-64400., 58600.})
+    {
+        for (double Y : {2350., -24270.})
+        {
+            const double Centre = RiverfrontCrossings::WalkZ + 94.;
+            const bool Blocked = World.SweepTestByChannel(FVector(X-1300,Y,Centre), FVector(X+1300,Y,Centre),
+                FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(33, 92));
+            bool Supported = true;
+            for (int32 Offset = -1300; Offset <= 1300; Offset += 100)
+            {
+                Supported &= HitsFloor(X+Offset, Y, RiverfrontCrossings::WalkZ);
+            }
+            Underpasses += !Blocked && Supported;
+        }
+    }
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati crossings: %d/4 continuous, grounded standing-capsule routes."), Underpasses);
     int32 OpenSeams = 0;
     for (const double Y : {4090.0, -26010.0})
     {
@@ -111,10 +131,13 @@ void CheckCorridorRoutes(UWorld& World)
     UE_LOG(LogTemp, Display,
         TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/10, road seams=%d/4, foot seams=%d/4."),
         Road, Walk, Bridges, OpenSeams, OpenFootSeams);
+    return Road==16 && Walk==16 && Bridges==10 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==4;
 }
 #endif
 
 DECLARE_DELEGATE_RetVal_OneParam(FText, FCreateLocalProfile, const FString&);
+
+DECLARE_DELEGATE_OneParam(FSabarmatiQuality,int32);
 
 class SRiverfrontMenu : public SCompoundWidget
 {
@@ -122,6 +145,10 @@ public:
     SLATE_BEGIN_ARGS(SRiverfrontMenu) {}
         SLATE_ARGUMENT(bool, IsPause)
         SLATE_ARGUMENT(float, Sensitivity)
+        SLATE_ARGUMENT(float, Volume)
+        SLATE_ARGUMENT(int32, Quality)
+        SLATE_EVENT(FOnFloatValueChanged, OnVolume)
+        SLATE_EVENT(FSabarmatiQuality, OnQuality)
         SLATE_ARGUMENT(FString, PlayerName)
         SLATE_ARGUMENT(bool, UnreadableProfile)
         SLATE_ARGUMENT(bool, IsCity)
@@ -139,6 +166,7 @@ public:
         bIsPause = Args._IsPause;
         Continue = Args._OnContinue;
         LookSensitivity = Args._Sensitivity;
+        Volume=Args._Volume; Quality=Args._Quality; AudioChanged=Args._OnVolume; QualityChanged=Args._OnQuality;
         PlayerName = Args._PlayerName;
         bUnreadableProfile = Args._UnreadableProfile;
         CreateProfile = Args._OnCreateProfile;
@@ -363,6 +391,23 @@ public:
                                     ]
                                 ]
                             ]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0,8,0,0)
+                            [
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,12,0)
+                                [ SNew(STextBlock).ColorAndOpacity(Paper).Text(LOCTEXT("Volume","Master volume")) ]
+                                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                                [ SNew(SSlider).MinValue(0.f).MaxValue(1.f).StepSize(.05f)
+                                  .Value_Lambda([this]{return Volume;})
+                                  .OnValueChanged_Lambda([this](float V){Volume=V;AudioChanged.ExecuteIfBound(V);}) ]
+                                + SHorizontalBox::Slot().AutoWidth().Padding(12,0,0,0)
+                                [ SNew(SButton).ContentPadding(FMargin(9,4))
+                                  .Text_Lambda([this]{
+                                      const TCHAR* Presets[]={TEXT("Low"),TEXT("Medium"),TEXT("High"),TEXT("Ultra"),TEXT("Cinematic")};
+                                      return FText::FromString(FString(TEXT("Graphics  ·  "))+(Quality<0?TEXT("Custom"):Presets[FMath::Clamp(Quality,0,4)]));
+                                  })
+                                  .OnClicked_Lambda([this]{Quality=(Quality+1)%5;QualityChanged.ExecuteIfBound(Quality);return FReply::Handled();}) ]
+                            ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 0.f)
                             [
                                 SNew(STextBlock)
@@ -449,7 +494,10 @@ private:
     }
 
     bool bIsPause = false;
-    float LookSensitivity = .30f;
+    float LookSensitivity = .30f, Volume=1.f;
+    int32 Quality=-1;
+    FOnFloatValueChanged AudioChanged;
+    FSabarmatiQuality QualityChanged;
     FOnFloatValueChanged SensitivityChanged;
     FSimpleDelegate Continue;
     TSharedPtr<SButton> PrimaryButton;
@@ -468,6 +516,9 @@ private:
 void ARiverfrontPlayerController::BeginPlay()
 {
     Super::BeginPlay();
+    float Volume=1.f;
+    if (GConfig && GConfig->GetFloat(LookSection,TEXT("Volume"),Volume,GGameUserSettingsIni))
+        ApplyVolume(Volume);
     float Saved = MouseSensitivity;
     if (GConfig && GConfig->GetFloat(LookSection, LookPreference, Saved, GGameUserSettingsIni) && FMath::IsFinite(Saved))
     {
@@ -484,7 +535,7 @@ void ARiverfrontPlayerController::BeginPlay()
     {
 #if !UE_BUILD_SHIPPING
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
-            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
             FGuid TestId;
@@ -497,6 +548,7 @@ void ARiverfrontPlayerController::BeginPlay()
         }
 #endif
         LoadLocalProfile();
+        LoadSites();
         // Let the standalone viewport and pawn finish initialization before capturing UI input.
         OpeningMenuTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ARiverfrontPlayerController::ShowTitle);
     }
@@ -518,6 +570,13 @@ void ARiverfrontPlayerController::SetupInputComponent()
     Super::SetupInputComponent();
     InputComponent->BindAction(TEXT("PauseDrive"), IE_Pressed, this, &ARiverfrontPlayerController::TogglePauseMenu);
     InputComponent->BindAction(TEXT("DistrictTime"), IE_Pressed, this, &ARiverfrontPlayerController::CycleDistrictTime);
+    InputComponent->BindAction(TEXT("DistrictWeather"),IE_Pressed,this,&ARiverfrontPlayerController::CycleDistrictWeather);
+    InputComponent->BindAction(TEXT("NextDestination"),IE_Pressed,this,&ARiverfrontPlayerController::CycleDestination);
+    InputComponent->BindAction(TEXT("MiniMap"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleMap);
+    InputComponent->BindAction(TEXT("ShowControls"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleControls);
+    InputComponent->BindAction(TEXT("RoadChallenge"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleChallenge);
+    InputComponent->BindAction(TEXT("UsePlace"),IE_Pressed,this,&ARiverfrontPlayerController::InteractWithPlace);
+    InputComponent->BindAction(TEXT("DistrictClock"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleDistrictClock);
 }
 
 void ARiverfrontPlayerController::ShowTitle()
@@ -569,6 +628,24 @@ void ARiverfrontPlayerController::ShowTitle()
         SetViewTarget(TitleCamera.Get());
     }
 #if !UE_BUILD_SHIPPING
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")))
+    {
+        if ((!HasLocalProfile() && !CreateLocalProfile(TEXT("Systems Review")).IsEmpty()) || !CheckCorridorRoutes(*GetWorld()))
+        { FPlatformMisc::RequestExitWithStatus(false,1); return; }
+        ResumeDrive(); RunSystemsReview(); return;
+    }
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")))
+    {
+        if ((!HasLocalProfile() && !CreateLocalProfile(TEXT("District Review")).IsEmpty()) || !CheckCorridorRoutes(*GetWorld()))
+        {
+            UE_LOG(LogTemp,Error,TEXT("Sabarmati district review failed at the opening checks."));
+            FPlatformMisc::RequestExitWithStatus(false,1);
+            return;
+        }
+        ResumeDrive();
+        RunDistrictReview();
+        return;
+    }
     if (Screen == EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")))
     {
         RunRenderingBenchmark();
@@ -954,6 +1031,7 @@ void ARiverfrontPlayerController::LoadLocalProfile()
     if (IsValid(Saved) && Saved->Schema == URiverfrontLocalProfile::CurrentSchema)
     {
         LocalDisplayName = URiverfrontLocalProfile::CleanDisplayName(Saved->DisplayName);
+        Visited=Saved->VisitedSites; BestTrial=Saved->BestRiverRunSeconds;
     }
     bUnreadableProfile = LocalDisplayName.IsEmpty();
 }
@@ -979,6 +1057,12 @@ FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedNa
     return FText::GetEmpty();
 }
 
+void ARiverfrontPlayerController::ApplyVolume(float V)
+{
+    MasterVolume=FMath::Clamp(V,0.f,1.f);
+    if (auto Audio=GetWorld()->GetAudioDevice();Audio.IsValid()) Audio->SetTransientPrimaryVolume(MasterVolume);
+}
+
 void ARiverfrontPlayerController::SetMouseSensitivity(float Value)
 {
     if (FMath::IsFinite(Value))
@@ -986,6 +1070,17 @@ void ARiverfrontPlayerController::SetMouseSensitivity(float Value)
         MouseSensitivity = FMath::Clamp(Value, MinSensitivity, MaxSensitivity);
         bSensitivityChanged = true;
     }
+}
+
+void ARiverfrontPlayerController::CycleDistrictWeather()
+{
+    if (Screen==EScreen::Playing)
+        if (TActorIterator<ARiverfrontWorld> It(GetWorld()); It) It->CycleWeather();
+}
+void ARiverfrontPlayerController::ToggleDistrictClock()
+{
+    if (Screen==EScreen::Playing)
+        if (TActorIterator<ARiverfrontWorld> It(GetWorld()); It) It->ToggleClock();
 }
 
 void ARiverfrontPlayerController::CycleDistrictTime()
@@ -1037,6 +1132,23 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
         .UnreadableProfile(bUnreadableProfile)
         .OnCreateProfile(FCreateLocalProfile::CreateUObject(this, &ARiverfrontPlayerController::CreateLocalProfile))
         .Sensitivity(MouseSensitivity)
+        .Volume(MasterVolume)
+        .Quality(GEngine && GEngine->GetGameUserSettings()?GEngine->GetGameUserSettings()->GetOverallScalabilityLevel():-1)
+        .OnVolume(FOnFloatValueChanged::CreateLambda([this](float V)
+        {
+            ApplyVolume(V);
+            if (GConfig) {GConfig->SetFloat(LookSection,TEXT("Volume"),MasterVolume,GGameUserSettingsIni);GConfig->Flush(false,GGameUserSettingsIni);}
+        }))
+        .OnQuality(FSabarmatiQuality::CreateLambda([](int32 Q)
+        {
+            if (auto* S=GEngine?GEngine->GetGameUserSettings():nullptr)
+            {
+                // A quality change leaves the current window sizing and Retina render fraction intact.
+                const float Scale=S->GetResolutionScaleNormalized();
+                S->SetOverallScalabilityLevel(FMath::Clamp(Q,0,4));S->SetResolutionScaleNormalized(Scale);
+                S->ApplyNonResolutionSettings();S->SaveSettings();
+            }
+        }))
         .OnSensitivity(FOnFloatValueChanged::CreateUObject(this, &ARiverfrontPlayerController::SetMouseSensitivity))
         .OnContinue(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ResumeDrive))
         .OnQuit(FOnClicked::CreateUObject(this, &ARiverfrontPlayerController::QuitDrive));

@@ -8,6 +8,8 @@ class ARiverfrontCharacter;
 class UBoxComponent;
 class UCameraComponent;
 class USpotLightComponent;
+class UAudioComponent;
+class USoundWave;
 class UMaterialInstanceDynamic;
 class USpringArmComponent;
 class UMaterialInterface;
@@ -28,6 +30,19 @@ public:
     const TCHAR* GetVehicleLabel() const { return bCrossover ? TEXT("Crossover") : TEXT("Hatchback"); }
 
     void SetNightDriving(bool AtNight);
+    void OperateDoor(const FVector& User);
+    bool IsDoorOpen() const { return DoorAngle>10.f; }
+    virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& View) override;
+    void SetRoadWetness(float Amount) { Wetness = FMath::Clamp(Amount, 0.f, 1.f); }
+    int32 GetGear() const { return Speed < -15.f ? -1 : Gear; }
+    int32 GetViewMode() const { return ViewMode; }
+    float GetEngineRpm() const { return EngineRpm; }
+    bool HasFourContacts() const { return ContactCount == 4; }
+    int32 GetSignal() const { return Signal; }
+    void ServiceVehicle() { Fuel=1.f; Condition=1.f; }
+    float GetFuel() const { return Fuel; }
+    float GetCondition() const { return Condition; }
+    bool IsOccupied() const { return Driver.Get() != nullptr; }
     bool IsNearDoor(const ARiverfrontCharacter& Character) const;
     void Enter(ARiverfrontCharacter& Character);
     float GetSpeedKph() const { return FMath::Abs(Speed) * 0.036f; }
@@ -64,6 +79,36 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
     bool bNightDriving = false;
     void UpdateDrivingLights();
+    void CycleCamera();
+    void CockpitDoor();
+    void UpdateDoors(float Delta);
+    bool OpenSide(int32 Side);
+    UPROPERTY() TArray<TObjectPtr<USceneComponent>> DoorHinges;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> DoorSkins;
+    float DoorAngle=0.f, DoorHold=0.f;
+    int32 DoorSide=1;
+    bool TargetOpen=false;
+    void SignalLeft() { Signal = Signal == -1 ? 0 : -1; }
+    void SignalRight() { Signal = Signal == 1 ? 0 : 1; }
+    void Hazard() { Signal = Signal == 2 ? 0 : 2; }
+    void SoundHorn();
+    void UpdateMotorAudio();
+    UPROPERTY() TObjectPtr<UAudioComponent> MotorLoop;
+    UPROPERTY() TObjectPtr<UAudioComponent> TyreLoop;
+    UPROPERTY() TObjectPtr<USoundWave> ShiftSound;
+    UPROPERTY() TObjectPtr<USoundWave> ImpactSound;
+    float HitSoundDelay=0.f, Fuel=1.f, Condition=1.f;
+    void UpdateSignalLenses(float DeltaTime);
+    bool SampleWheels(const FVector& Centre, double Yaw, double (&Heights)[4]) const;
+    int32 Gear = 1, Signal = 0, ViewMode = 0, ContactCount = 0;
+    float EngineRpm=850.f, Wetness=0.f, TravelYaw=0.f, BodyRoll=0.f, BlinkTime=0.f, LastSpeed=0.f;
+    float ViewBlend=1.f;
+    bool HasCameraSample=false, bStopLamps=false;
+    FVector LastCameraLocation=FVector::ZeroVector, CameraFrom=FVector::ZeroVector;
+    FRotator LastCameraRotation=FRotator::ZeroRotator, RotationFrom=FRotator::ZeroRotator;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SignalLenses;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TurnMaterial;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> ReverseMaterial;
     FTransform Home;
     float Speed = 0.f;
     float Throttle = 0.f;

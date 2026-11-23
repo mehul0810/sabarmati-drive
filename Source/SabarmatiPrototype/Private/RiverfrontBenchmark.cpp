@@ -40,7 +40,9 @@ struct FBenchmarkView
 const FBenchmarkView Views[] = {
     {TEXT("atal-landing"), FVector(-3650, 2355, 94), FRotator(7, -128, 0), 80.f},
     {TEXT("shopfront"), FVector(-5450, 3790, 161), FRotator(4, 50, 0), 70.f},
-    {TEXT("parked-hatch"), FVector(-3750, 3670, 145), FRotator(-7, 147, 0), 61.f}
+    {TEXT("parked-hatch"), FVector(-3750, 3670, 145), FRotator(-7, 147, 0), 61.f},
+    {TEXT("tea-room"), FVector(-3505, 5890, 158), FRotator(-5, 118, 0), 77.f},
+    {TEXT("garden-walk"), FVector(-3050, 4170, 165), FRotator(-2, -151, 0), 76.f}
 };
 
 class FRiverfrontBenchmark
@@ -88,7 +90,7 @@ public:
         }
         auto* Viewport = World->GetGameViewport()->Viewport;
         const FIntPoint Size = Viewport->GetSizeXY();
-        FString Info = FString::Printf(TEXT("time=%s\nviewport=%dx%d\nwindowed=%d\nengine=%s\ngpu=%s\n"),
+        FString Info = FString::Printf(TEXT("format=2\ntime=%s\nviewport=%dx%d\nwindowed=%d\nengine=%s\ngpu=%s\n"),
             TimeName, Size.X, Size.Y, Viewport->GetWindowMode() == EWindowMode::Windowed,
             *FEngineVersion::Current().ToString(), *FPlatformMisc::GetPrimaryGPUBrand());
         for (const TCHAR* Key : {TEXT("r.ScreenPercentage"), TEXT("r.SecondaryScreenPercentage.GameViewport"), TEXT("r.AntiAliasingMethod"), TEXT("r.VSync"),
@@ -154,22 +156,24 @@ public:
             {
                 return Fail(TEXT("Lost possession during the drive."));
             }
-            const double Meters = FVector::Dist2D(DriveOrigin, Car->GetActorLocation()) / 100.;
-            if (Meters < 45.)
-            {
-                return true;
-            }
-            Key(EKeys::W, IE_Released);
-            FHitResult Floor;
             const FVector At = Car->GetActorLocation();
             const FCollisionQueryParams Query(SCENE_QUERY_STAT(BenchmarkRoad), false, Car.Get());
-            const bool Grounded = Player.GetWorld()->LineTraceSingleByChannel(Floor, At, At - FVector(0,0,160), ECC_Visibility, Query);
-            if (!Grounded || Floor.ImpactNormal.Z < .65 || Car->GetSpeedKph() < 5)
+            FHitResult Floor;
+            const bool Grounded = Player.GetWorld()->LineTraceSingleByChannel(Floor, At, At-FVector(0,0,140), ECC_Visibility, Query)
+                && Floor.ImpactNormal.Z > .65 && At.Z-Floor.ImpactPoint.Z < 100.;
+            if (!Grounded)
             {
-                return Fail(TEXT("The measured drive failed the road contact or speed check."));
+                return Fail(TEXT("The car lost road support during the drive."));
             }
-            const FString Drive = FString::Printf(TEXT("distance_m=%.2f\nspeed_kph=%.2f\nroad_contact=1\n"),
-                Meters, Car->GetSpeedKph());
+            const double Meters=FVector::Dist2D(DriveOrigin, At)/100.;
+            if (Meters < 45.) return true;
+            Key(EKeys::W, IE_Released);
+            if (Car->GetSpeedKph()<5 || Sample<30 || Now-Started<2.5)
+            {
+                return Fail(TEXT("The chase run was too short or the car stopped."));
+            }
+            const FString Drive=FString::Printf(TEXT("distance_m=%.2f\nspeed_kph=%.2f\nroad_contact=1\ncontact_samples=%d\nduration_s=%.3f\n"),
+                Meters, Car->GetSpeedKph(), Sample, Now-Started);
             if (!Write(TEXT("drive.txt"), Drive))
             {
                 return Fail(TEXT("Could not save driving evidence."));

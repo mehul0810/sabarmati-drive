@@ -51,6 +51,10 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<UStaticMeshComponent>> PreviewPieces;
     TArray<FColor> PreviewColors;
+    UPROPERTY() TObjectPtr<class USoundWave> StoneStep;
+    UPROPERTY() TObjectPtr<class USoundWave> GritStep;
+    float StepTravel=0;
+    int32 StepIndex=0;
     double GaitPhase = 0.0;
     bool bUsesImportedMesh = false;
 
@@ -61,6 +65,7 @@ private:
     void Sprint();
     void StopSprint();
     void EnterCar();
+    void OpenCarDoor();
     void ResetWalk();
     void ToggleStats();
 };

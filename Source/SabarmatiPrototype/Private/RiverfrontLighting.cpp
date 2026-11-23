@@ -149,6 +149,7 @@ void ARiverfrontWorld::CycleTimeOfDay()
 {
     if (!IsCityMode())
     {
+        bClock=false;
         ApplyTimeOfDay(TimeOfDay == ERiverfrontTime::Golden ? ERiverfrontTime::Night
             : TimeOfDay == ERiverfrontTime::Night ? ERiverfrontTime::Day : ERiverfrontTime::Golden);
     }
@@ -198,7 +199,10 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
     {
         It->SetNightDriving(AtNight);
     }
-    SetActorTickEnabled(AtNight || IsCityMode());
+    DrySunIntensity=Lighting.KeyIntensity;
+    DryFogDensity=Lighting.Haze;
+    ApplyWeatherLight();
+    SetActorTickEnabled(true);
     if (AtNight)
     {
         RefreshPracticalLights(true);

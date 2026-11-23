@@ -9,6 +9,7 @@
 #include "RiverfrontCharacter.h"
 #include "RiverfrontHUD.h"
 #include "RiverfrontPedestrian.h"
+#include "RiverfrontTraffic.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontWorld.h"
 
@@ -83,8 +84,12 @@ void ARiverfrontGameMode::BeginPlay()
             }
         }
     }
+    Traffic=GetWorld()->SpawnActor<ARiverfrontTraffic>();
+    if (Traffic) Traffic->Start(bCityBuilt);
     Super::BeginPlay();
 }
+
+ARiverfrontTraffic* ARiverfrontGameMode::GetTraffic() const { return Traffic.Get(); }
 
 ARiverfrontCar* ARiverfrontGameMode::SpawnCrossover(ARiverfrontWorld& WorldActor,
     const FVector& Position, const FRotator& Facing)

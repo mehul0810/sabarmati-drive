@@ -25,12 +25,12 @@ class BenchmarkTests(unittest.TestCase):
             writer.writerow(("view","frame","wall_ms","game_ms","render_ms","gpu_ms"))
             for view in ("atal-landing","shopfront","parked-hatch","driving"):
                 (self.run_dir / (view + ".png")).write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + struct.pack(">II",32,18))
-                for i in range(180 if view != "driving" else 20):
+                for i in range(180):
                     writer.writerow((view,i,16.7,1.5,2.2,10))
 
     def test_valid_run_and_nearest_rank_tail(self):
         _, _, groups = report.inspect_run(self.run_dir)
-        self.assertEqual(len(groups["driving"]), 20)
+        self.assertEqual(len(groups["driving"]), 180)
         self.assertEqual(report.percentile(range(1,101), .95), 95)
 
     def test_rejects_vehicle_or_input_failure(self):
@@ -41,6 +41,13 @@ class BenchmarkTests(unittest.TestCase):
     def test_rejects_stale_or_rescaled_capture(self):
         (self.run_dir / "shopfront.png").write_bytes(b"x"*24)
         with self.assertRaisesRegex(ValueError, "Capture size"):
+            report.inspect_run(self.run_dir)
+
+    def test_rejects_one_chase_frame(self):
+        data = self.run_dir / "frames.csv"
+        rows = data.read_text().splitlines()
+        data.write_text("\n".join(r for r in rows if not r.startswith("driving,") or r.startswith("driving,0,")) + "\n")
+        with self.assertRaisesRegex(ValueError, "Incomplete samples"):
             report.inspect_run(self.run_dir)
 
     def test_registry_paths_and_rights(self):

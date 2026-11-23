@@ -17,6 +17,9 @@ public:
     UPROPERTY(SaveGame)
     FString DisplayName;
 
+    UPROPERTY(SaveGame) TArray<FName> VisitedSites;
+    UPROPERTY(SaveGame) float BestRiverRunSeconds=0.f;
+
     UPROPERTY(SaveGame)
     int32 Schema = CurrentSchema;
 };

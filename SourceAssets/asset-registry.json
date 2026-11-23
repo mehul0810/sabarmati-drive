@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Riverfront benchmark assets. Runtime assembly and materials referenced by the four captures.",
+  "scope": "Offline riverfront rendering, driving, traffic, environment and exploration assets.",
   "assets": [
     {
       "id": "atal-bridge",
@@ -85,6 +85,90 @@
       "lod": "No separate texture residency. Uses the existing glazed instance batch.",
       "location": "Content/Sabarmati/Riverfront/M_OccupiedWindow.uasset",
       "verification": "Night shopfront capture and material usage check."
+    },
+    {
+      "id": "hinged-coachwork",
+      "category": "vehicle",
+      "source": "Split the existing adapted tevy five-door hatch along two front door seams. Preserve UVs and face normals. Scripts/prepare-riverfront-doors.py.",
+      "license": "CC0 1.0 source, https://tevy.dev/models/hatchback",
+      "geometry": "Independent cabin and two doors with hinge pivots. Four independent wheels and a right-hand-drive cockpit.",
+      "textures": "Shared original material slots.",
+      "collision": "Swept chassis and four wheel probes. Door opening checks available clearance.",
+      "lod": "Three static mesh LODs per hinged part.",
+      "location": "Content/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchCabin.uasset",
+      "verification": "Native O/E input, cockpit/bonnet/chase cameras, four contacts, gear change, braking and reverse verified."
+    },
+    {
+      "id": "district-residents",
+      "category": "character",
+      "source": "MakeHuman Community hm08 generic base topology from https://github.com/makehumancommunity/makehuman/blob/master/makehuman/data/3dobjs/base.obj. Source SHA-256 8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c. Original garment shaping, colors, rig and animation.",
+      "license": "CC0 1.0 source. The OBJ carries the 2020 CC0 notice. https://www.makehumancommunity.org/about/license.html",
+      "geometry": "Two fully clothed fictional meshes, 21,368 and 21,984 triangles, 18 joints and four authored clips each.",
+      "textures": "GlTF skin, eyes, hair and garment materials with UVs.",
+      "collision": "Checked routes and crosswalk clearance. Player capsule on the public character.",
+      "lod": "Animation update budget and distance culling.",
+      "location": "Content/Sabarmati/Riverfront/People/SK_RiverResident.uasset",
+      "verification": "Both public skeletal meshes and eight clips saved by the Unreal commandlet. One pedestrian crossed under signal control during input QA."
+    },
+    {
+      "id": "district-fleet",
+      "category": "traffic vehicles",
+      "source": "Original unbadged parametric coachwork in Scripts/make-district-fleet.py.",
+      "license": "Original project models, running wheels use the credited CC0 hatch wheel.",
+      "geometry": "Twelve silhouettes with attached rotating two-, three- or four-wheel assemblies.",
+      "textures": "Shared PBR palette, glazing and independent amber emergency beacons.",
+      "collision": "Swept near-player bodies and lane spacing at distance.",
+      "lod": "Three generated LODs per model.",
+      "location": "Content/Sabarmati/Riverfront/Vehicles/Fleet/SM_TrafficSedan.uasset",
+      "verification": "23 traffic agents on six directed riverfront circuits. Measured forward travel, stops and turning."
+    },
+    {
+      "id": "district-panoramas",
+      "category": "sky",
+      "source": "Poly Haven Kloofendal 48d Partly Cloudy Pure Sky and Industrial Sunset 02 Pure Sky; licensed photographs converted with Scripts/prepare-riverfront-skies.py.",
+      "license": "CC0 1.0 https://polyhaven.com/license",
+      "geometry": "Camera-centred dome, directional lighting independent of the panorama.",
+      "textures": "Two 2K sky panoramas, tonemapped, azimuth-aligned and cooked locally.",
+      "collision": "Decorative.",
+      "lod": "Texture mipmaps.",
+      "location": "Content/Sabarmati/Riverfront/M_DistrictSky.uasset",
+      "verification": "Golden and night captures on Metal SM5."
+    },
+    {
+      "id": "district-finishes",
+      "category": "architectural materials",
+      "source": "Project-authored glass, lathed brass, ceramic, timber, canvas and paint. Original Gujarati and English shop signs.",
+      "license": "Original work. Font software and satellite imagery are excluded.",
+      "geometry": "Separate enterable rooms, signage, shelves, merchandise, counter and clear door apertures.",
+      "textures": "Two signage textures; parameterized PBR surfaces.",
+      "collision": "Swept player capsule to the tea counter.",
+      "lod": "Instanced trim, mipmapped signage.",
+      "location": "Source/SabarmatiPrototype/Private/RiverfrontShops.cpp",
+      "verification": "Actual windowed shopfront, counter and walking evidence."
+    },
+    {
+      "id": "riverfront-foley",
+      "category": "audio",
+      "source": "Deterministic original synthesis from Scripts/make-district-audio.py.",
+      "license": "Original project audio, no recordings of people.",
+      "geometry": "Eleven mono sounds and loops.",
+      "textures": "PCM source waves and Unreal audio packages.",
+      "collision": "Proximity, location, RPM and road contact drive playback.",
+      "lod": "Ranged playback and ambience volume fades.",
+      "location": "Content/Sabarmati/Riverfront/Audio/S_River.uasset",
+      "verification": "Unreal import succeeded. Weather and horn inputs exercised. Subjective audio mix needs listening review."
+    },
+    {
+      "id": "district-road-weather",
+      "category": "road material",
+      "source": "Rain response layered on the existing credited ambientCG Asphalt 033 photogrammetry.",
+      "license": "CC0 1.0 scanned surfaces and original shader.",
+      "geometry": "World-space puddle distribution and roughness variation.",
+      "textures": "Albedo, normal and roughness at captured scale.",
+      "collision": "Dry and wet traction differ at the four wheel probes.",
+      "lod": "Shared shader and texture streaming.",
+      "location": "Content/Sabarmati/Riverfront/M_DistrictRoad.uasset",
+      "verification": "Monsoon input, wetness transition and drive on rain-soaked road verified."
     }
   ]
 }

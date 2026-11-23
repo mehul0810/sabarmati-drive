@@ -27,13 +27,11 @@ not a survey or replica of Ahmedabad's city blocks.
 [General Facilities](https://www.sabarmatiriverfront.com/general-facilities.html)
 guided the park and market form. [AMC's Ellis Bridge record](https://heritage.ahmedabadcity.gov.in/details/90/heritage_site/en)
 describes concrete road spans added beside the earlier steel bridge; the game
-keeps those functions distinct. The new crossings are deliberately flat for
-the existing physics; paired stairs route people around them on the upper
-promenade, not through low or nonexistent underpasses. No map tiles, imagery,
-third-party buildings, protected interiors, or new external assets are used.
+retains the heritage deck and its two flanking road spans. The Sardar and Ellis road decks rise on both approaches. A standing character can walk below all four bank portals and reach the stairs beyond the bridges. The native district review records the walked distance and continuous ground contact for each approach.
+
 
 Verification coordinates (centimetres, downward floor traces):
 - Both bank roads: Y 4090 and -26010, Z 0; core joins at X -7750 and +7750.
 - Both lower promenades: Y 2350 and -24270, Z -84; core joins at X -7600 and +7600.
-- Sardar and Ellis concrete spans: X -64400 and X 57890/59310 at Y -10960; Z 0.
+- Sardar and Ellis concrete spans: X -64400 and X 57890/59310 at Y -10960, raised 158 cm over the original road datum.
 - Flower Park approach: X 19600, Y 6720; market approach X 43400, Y -28700.

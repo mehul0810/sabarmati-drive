@@ -17,6 +17,8 @@ class SABARMATIPROTOTYPE_API ARiverfrontPedestrian : public AActor
 
 public:
     ARiverfrontPedestrian();
+    bool IsCrossingStreet() const { return bAtCrosswalk && bSteppingOff; }
+    int32 CrossingsCompleted() const { return Crossings; }
     static int32 SpawnRiverfrontCrowd(UWorld& World);
 
 protected:
@@ -36,4 +38,8 @@ private:
     double RouteLength = 0.0;
     double Distance = 0.0;
     double Speed = 0.0;
+    double RestAt=0., RestLeft=0.;
+    int32 Crossings=0;
+    bool bAtCrosswalk=false, bSteppingOff=false, bReturning=false;
+    void SetMoving(bool Moving);
 };

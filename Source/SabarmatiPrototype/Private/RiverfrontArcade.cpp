@@ -86,8 +86,16 @@ void ARiverfrontWorld::BuildArcadeBlock(const FVector& Plot, double Yaw, double 
         const double Mid = Side * (HalfX - WingWidth * .5);
         const double Back = HalfY - 18;
         const double UpperFace = -HalfY + 108;
-        Part(ETint::Terracotta, Mid, (ShopFace + Back) * .5, Storey * .5,
-            WingWidth, Back - ShopFace, Storey, true);
+        const double Room = FMath::Min(620., (Back - ShopFace) * .58);
+        const double RearWall = ShopFace + Room;
+        Part(ETint::Terracotta, Mid, (RearWall + Back) * .5, Storey * .5,
+            WingWidth, Back - RearWall, Storey, true);
+        for (double Edge : {-1., 1.})
+        {
+            Part(ETint::Plaster, Mid + Edge * (WingWidth*.5-8), ShopFace + Room*.5,
+                Storey*.5, 16, Room, Storey, true);
+        }
+        FitShop(WorldPoint(Mid, ShopFace, 6), Rotation, WingWidth, Room, Storey, Side > 0.);
         Part(ETint::Plaster, Mid, (UpperFace + Back) * .5, (Height + Storey) * .5,
             WingWidth, Back - UpperFace, Height - Storey, true);
         const int32 Bays = FMath::Max(2, FMath::RoundToInt(WingWidth / 385.0));
@@ -107,43 +115,33 @@ void ARiverfrontWorld::BuildArcadeBlock(const FVector& Plot, double Yaw, double 
                 continue;
             }
             const double Center = X + Bay * .5;
-            if ((I + (Side > 0 ? 1 : 3)) % 4 == 0)
+            const bool Entry = I == Bays / 2;
+#if !UE_BUILD_SHIPPING
+            if (Entry && Side>0.)
             {
-                // A closed rolling shutter, its guide channels and recessed pickup rail.
-                Part(ETint::Rail, Center, ShopFace - 5, 126, Bay * .78, 9, 244);
-                for (int32 Rib = 0; Rib < 16; ++Rib)
-                {
-                    Part(ETint::Roof, Center, ShopFace - 12, 16 + 14 * Rib, Bay * .76, 5, 3);
-                }
+                ShopPath={WorldPoint(Center,ShopFace-247,101),WorldPoint(Center,ShopFace+104,101),
+                    WorldPoint(Center,ShopFace+Room-230,101),FVector(TeaCounter.X,TeaCounter.Y,Plot.Z+101)};
+            }
+#endif
+            // Each glazed bay looks through into a real room. The central door opens
+            // onto the sidewalk with at least a full standing-capsule width.
+            Part(ETint::Timber, X + 7, ShopFace, 120, 14, 13, 240, true);
+            if (!Entry)
+            {
+                Part(ETint::Terracotta, Center, ShopFace, 29, Bay - 12, 17, 58, true);
+                Part(ETint::ClearGlass, Center, ShopFace, 152, Bay - 15, 3, 185, true);
+                Part(ETint::Timber, Center, ShopFace - 3, 103, Bay - 12, 8, 4);
             }
             else
             {
-                Window(Center, ShopFace, 0, 129, FMath::Min(Bay - 38, 290.0), 247, true);
-            }
-            if (I == Bays / 2)
-            {
-                // An under-gallery shop light is attached to a real soffit at each entrance.
-                Part(ETint::Rail, Center, ShopFace - 84, Storey - 15, 26, 45, 7);
+                Part(ETint::Timber, X + 23, ShopFace + 45, 121, 9, 90, 241, true);
+                Part(ETint::Brass, X + 16, ShopFace + 77, 103, 5, 21, 4);
                 if (!IsCityMode())
                 {
-                    AddPractical(WorldPoint(Center, ShopFace - 84, Storey - 14), Yaw - 90.);
+                    AddPractical(WorldPoint(Center, ShopFace + 58, Storey - 21), Yaw + 90.);
                 }
-                const TCHAR* Name = Side < 0 ? TEXT("PAPER & INK") : TEXT("TEA HOUSE");
-                Part(ETint::WoodDark, Center, ShopFace - 12, 279, Bay * .84, 16, 40);
-                UTextRenderComponent* Sign = NewObject<UTextRenderComponent>(this);
-                AddInstanceComponent(Sign);
-                Sign->SetupAttachment(GetRootComponent());
-                Sign->SetMobility(EComponentMobility::Static);
-                Sign->SetRelativeLocationAndRotation(WorldPoint(Center, ShopFace - 21, 286),
-                    FRotator(0, Yaw - 90, 0));
-                Sign->SetHorizontalAlignment(EHTA_Center);
-                Sign->SetVerticalAlignment(EVRTA_TextCenter);
-                Sign->SetWorldSize(21.f);
-                Sign->SetTextRenderColor(FColor(244, 230, 188));
-                Sign->SetText(FText::FromString(Name));
-                Sign->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                Sign->RegisterComponent();
             }
+            Part(ETint::Timber, Center, ShopFace, 245, Bay, 16, 12, true);
             for (int32 Floor = 1; Floor < Storeys; ++Floor)
             {
                 const double Z = Storey * Floor;
@@ -237,8 +235,8 @@ void ARiverfrontWorld::BuildArcadeBlock(const FVector& Plot, double Yaw, double 
             Grounded += bAllGround;
         }
         FHitResult WallHit;
-        const bool bWallBlocks = GetWorld()->LineTraceSingleByChannel(WallHit, WorldPoint(HalfX*.65, -Y, 110),
-            WorldPoint(HalfX*.65, 0, 110), ECC_Pawn);
+        const bool bWallBlocks = GetWorld()->LineTraceSingleByChannel(WallHit, WorldPoint(HalfX+80, 0, 110),
+            WorldPoint(HalfX-80, 0, 110), ECC_Pawn);
         UE_LOG(LogTemp, Display, TEXT("Sabarmati arcade QA: perimeter and passage clear=%d/6, supported=%d/6, facade blocks=%d."),
             Clear, Grounded, bWallBlocks);
     }

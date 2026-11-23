@@ -395,6 +395,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         BuildArcadeBlock(Plot, Yaw, FMath::Max(B.Width, B.Depth), FMath::Min(B.Width, B.Depth), B.Height);
     }
     BuildLighting();
+    BuildWeather();
     SetActorTickEnabled(true);
     OutWalkStart = Parsed->Walk;
     OutCarStart = Parsed->Car;
@@ -477,6 +478,7 @@ void ARiverfrontWorld::BuildCityForecourt(const FVector& Plot, double Yaw, doubl
 void ARiverfrontWorld::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    UpdateWeather(DeltaSeconds);
     if (IsNight())
     {
         RefreshPracticalLights(false);

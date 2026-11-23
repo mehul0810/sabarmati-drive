@@ -8,6 +8,10 @@
 #include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "RiverfrontWorld.h"
+#include "RiverfrontGameMode.h"
+#include "RiverfrontTraffic.h"
+#include "RiverfrontCar.h"
+#include "Misc/PackageName.h"
 
 namespace
 {
@@ -146,19 +150,21 @@ ARiverfrontPedestrian::ARiverfrontPedestrian()
 
 int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
 {
-    USkeletalMesh* Model = LoadObject<USkeletalMesh>(nullptr, AvatarMeshPath);
-    UAnimSequence* Walk = LoadObject<UAnimSequence>(nullptr, WalkPath);
-    UAnimSequence* WalkAlt = LoadObject<UAnimSequence>(nullptr, WalkAltPath);
-    if (!Model || !Walk || Walk->GetSkeleton() != Model->GetSkeleton())
+    const bool Public=FPackageName::DoesPackageExist(TEXT("/Game/Sabarmati/Riverfront/People/SK_RiverResident"));
+    USkeletalMesh* Model=LoadObject<USkeletalMesh>(nullptr,Public?TEXT("/Game/Sabarmati/Riverfront/People/SK_RiverResident.SK_RiverResident"):AvatarMeshPath);
+    UAnimSequence* Walk=LoadObject<UAnimSequence>(nullptr,Public?TEXT("/Game/Sabarmati/Riverfront/People/A_Walk.A_Walk"):WalkPath);
+    UAnimSequence* WalkAlt=LoadObject<UAnimSequence>(nullptr,Public?TEXT("/Game/Sabarmati/Riverfront/People/A_WalkAlt.A_WalkAlt"):WalkAltPath);
+    if (!Model || !Walk || Walk->GetSkeleton()!=Model->GetSkeleton())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: required fictional mesh or walk clip unavailable."));
+        UE_LOG(LogTemp,Warning,TEXT("Sabarmati crowd: walk mesh or clip unavailable."));
         return 0;
     }
-    if (!WalkAlt || WalkAlt->GetSkeleton() != Model->GetSkeleton())
-    {
-        WalkAlt = Walk;
-    }
+    if (!WalkAlt || WalkAlt->GetSkeleton()!=Model->GetSkeleton()) WalkAlt=Walk;
 
+    const bool HasKurta=FPackageName::DoesPackageExist(TEXT("/Game/Sabarmati/Riverfront/People/Kurta/SK_RiverResidentKurta"));
+    auto* Second=HasKurta?LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/People/Kurta/SK_RiverResidentKurta.SK_RiverResidentKurta")):nullptr;
+    auto* SecondWalk=HasKurta?LoadObject<UAnimSequence>(nullptr,TEXT("/Game/Sabarmati/Riverfront/People/Kurta/A_WalkAlt.A_WalkAlt")):nullptr;
+    const bool SecondReady=Second && SecondWalk && SecondWalk->GetSkeleton()==Second->GetSkeleton();
     // The approach in front of spawn, both banks and independently paced bridge walkers.
     // Wide loops stay away from road edges; landing bypasses fit between curb and bollards.
     const double Bridge = ARiverfrontWorld::AtalX;
@@ -201,12 +207,26 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
         if (ARiverfrontPedestrian* Walker = World.SpawnActor<ARiverfrontPedestrian>(
             GroundedStart, FRotator::ZeroRotator, Parameters))
         {
-            Walker->Configure(Model, Index % 3 == 1 ? WalkAlt : Walk, GroundedStart, GroundedEnd,
+            const bool Alternate=SecondReady && Index%3!=0;
+            Walker->Configure(Alternate?Second:Model, Alternate?SecondWalk:(Index%3==1?WalkAlt:Walk), GroundedStart, GroundedEnd,
                 Route.Radius, Route.StartFraction, Route.Speed, Index);
             ++Count;
         }
     }
 
+    // Staggered walkers start on opposite kerbs. They enter only on the walk phase.
+    for (int32 I=0;I<2;++I)
+    {
+        const FVector A(Bridge+(I?59.:-59.),I?4685.:3470.,2);
+        const FVector B(A.X,I?3470.:4685.,2);
+        if (auto* Person=World.SpawnActor<ARiverfrontPedestrian>(A,FRotator::ZeroRotator))
+        {
+            Person->Configure(I && SecondReady?Second:Model,I && SecondReady?SecondWalk:WalkAlt,A,B,1,0.,I?147.:132.,19+I);
+            Person->bAtCrosswalk=true;
+            Person->SetActorLocationAndRotation(A,FRotator(0,(B-A).Rotation().Yaw+90.,0));
+            Person->SetMoving(false);
+        }
+    }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati crowd: %d/%d animated pedestrian routes active."),
         Count, static_cast<int32>(UE_ARRAY_COUNT(Routes)));
     return Count;
@@ -244,17 +264,61 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     Mesh->PlayAnimation(Walk, true);
     Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
     Mesh->SetPlayRate(FMath::Clamp(static_cast<float>(Speed / (132.0 * BuildScale)), .75f, 1.25f));
+    RestAt=12.+(Variant*13)%34;
     UpdateRouteTransform();
 }
 
 void ARiverfrontPedestrian::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (RouteLength > UE_SMALL_NUMBER)
+    if (RouteLength<=UE_SMALL_NUMBER) return;
+    const auto* PC=GetWorld()->GetFirstPlayerController();
+    const APawn* Player=PC?PC->GetPawn():nullptr;
+    const bool Far=Player && FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(12500.);
+    SetActorTickInterval(Far?.22f:.035f);
+    if (bAtCrosswalk)
     {
-        Distance = FMath::Fmod(Distance + Speed * DeltaSeconds, RouteLength);
-        UpdateRouteTransform();
+        const auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
+        auto* Traffic=Mode?Mode->GetTraffic():nullptr;
+        if (!bSteppingOff)
+        {
+            RestLeft=FMath::Max(0.,RestLeft-DeltaSeconds);
+            if (!Traffic || !Traffic->WalkSignal() || RestLeft>0) return;
+            if (const auto* Car=Cast<ARiverfrontCar>(Player);Car && Car->GetSpeedKph()>7 &&
+                FVector::Dist2D(Car->GetActorLocation(),GetActorLocation())<1450.) return;
+            bSteppingOff=true; SetMoving(true);
+        }
+        const FVector Target=bReturning?RouteStart:RouteEnd;
+        const FVector To=Target-GetActorLocation();
+        const FVector Direction=To.GetSafeNormal2D();
+        const double Step=FMath::Min(To.Size2D(),Speed*DeltaSeconds);
+        SetActorLocationAndRotation(GetActorLocation()+Direction*Step,FRotator(0,Direction.Rotation().Yaw+90.,0));
+        if (To.Size2D()<4.)
+        {
+            bReturning=!bReturning; bSteppingOff=false; ++Crossings; RestLeft=5.; SetMoving(false);
+        }
+        return;
     }
+    if (RestLeft>0.)
+    {
+        RestLeft-=DeltaSeconds;
+        if (RestLeft<=0) SetMoving(true);
+        return;
+    }
+    RestAt-=DeltaSeconds;
+    if (RestAt<=0)
+    {
+        RestAt=31.+FMath::Fmod(Distance/17.,46.);
+        RestLeft=2.5+FMath::Fmod(Distance/109.,5.);
+        SetMoving(false); return;
+    }
+    Distance=FMath::Fmod(Distance+Speed*DeltaSeconds,RouteLength);
+    UpdateRouteTransform();
+}
+
+void ARiverfrontPedestrian::SetMoving(bool Moving)
+{
+    Mesh->SetPlayRate(Moving?FMath::Clamp(float(Speed/132.),.76f,1.26f):0.f);
 }
 
 void ARiverfrontPedestrian::UpdateRouteTransform()

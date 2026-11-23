@@ -72,7 +72,9 @@ void ARiverfrontWorld::Build()
     BuildRiverfrontCorridor();
     BuildFrontage();
     BuildStreetFurniture();
+    BuildWestBankGarden();
     BuildLighting();
+    BuildWeather();
 }
 
 void ARiverfrontWorld::LoadSurfaceMaterials()
@@ -87,7 +89,10 @@ void ARiverfrontWorld::LoadSurfaceMaterials()
         {ETint::Retaining, TEXT("M_Retaining")}, {ETint::Plaster, TEXT("M_FacadePlaster")},
         {ETint::FacadeStone, TEXT("M_FacadeSandstone")}, {ETint::Terracotta, TEXT("M_FacadeTerracotta")},
         {ETint::Glass, TEXT("M_FacadeGlazing")}, {ETint::Rail, TEXT("M_CoatedIron")},
-        {ETint::Leaf, TEXT("Foliage/M_LeafSprig")}, {ETint::RoadPaint, TEXT("M_RoadStripe")}
+        {ETint::Leaf, TEXT("Foliage/M_LeafSprig")}, {ETint::RoadPaint, TEXT("M_RoadStripe")},
+        {ETint::ClearGlass, TEXT("M_DistrictGlass")}, {ETint::Brass, TEXT("M_DistrictBrass")},
+        {ETint::Timber, TEXT("M_DistrictTimber")}, {ETint::Canvas, TEXT("M_DistrictCanvas")},
+        {ETint::Ceramic, TEXT("M_DistrictCeramic")}
     };
     for (const auto& Surface : Surfaces)
     {
@@ -114,7 +119,8 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
         FColor(229, 166, 89), FColor(40, 106, 99), FColor(193, 160, 115),
         FColor(223, 209, 183), FColor(187, 142, 98), FColor(154, 86, 60), FColor(88, 124, 57),
         FColor(213, 216, 208), FColor(105, 75, 52), FColor(170, 85, 115),
-        FColor(119, 87, 60), FColor(91, 65, 47), FColor(210, 206, 184)
+        FColor(119, 87, 60), FColor(91, 65, 47), FColor(210, 206, 184),
+        FColor(140, 176, 182), FColor(160, 119, 62), FColor(110, 68, 40), FColor(165, 107, 78), FColor(211, 204, 177)
     };
     const int32 MaterialIndex = static_cast<int32>(Tint);
     const int32 Key = MaterialIndex + static_cast<int32>(Mesh) * TintCount + (bSolid ? TintCount * static_cast<int32>(EShape::Count) : 0);
