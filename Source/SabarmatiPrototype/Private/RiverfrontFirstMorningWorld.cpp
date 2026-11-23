@@ -13,11 +13,11 @@ namespace
 // Centimetres. The facade faces the river (-Y), immediately east of the existing arcade.
 FVector At(double X, double Y, double Z) { return FVector(-2520.+X, 5670.+Y, Z); }
 constexpr double Upper = 330.;
-constexpr double Ground = 4.;
+constexpr double ApartmentGroundZ = 4.;
 constexpr double FirstRiser = -42.;
 constexpr double Tread = 30.;
 constexpr int32 Steps = 20;
-constexpr double Rise = (Upper-Ground)/Steps;
+constexpr double Rise = (Upper-ApartmentGroundZ)/Steps;
 constexpr double Landing = FirstRiser + Tread*Steps;
 
 void Lettering(ARiverfrontWorld& World, const TCHAR* Words, FVector Position, double Yaw,
@@ -133,7 +133,7 @@ void FitTextiles(ARiverfrontWorld& World)
         auto Drape=[I,X,Length](double U,double V)
         {
             return At(X+(U-.5)*37.,147.+5.5*FMath::Sin(PI*(4.*U+.12*I))*(1.-.3*V),
-                Ground+157.-Length+Length*V+2.2*FMath::Cos(5.*U+I)*(1.-V));
+                ApartmentGroundZ+157.-Length+Length*V+2.2*FMath::Cos(5.*U+I)*(1.-V));
         };
         const int32 Dye[]={Madder,Marigold,Indigo,Sage,Ivory};
         Panels[Dye[I]].Add(16,12,Drape);
@@ -210,7 +210,7 @@ void FitTextiles(ARiverfrontWorld& World)
     constexpr int32 Colors[]={Indigo,Sage,Madder,Ivory,Marigold};
     for (int32 L=0; L<3; ++L)
     {
-        const double Shelf=Ground+52.+L*56.;
+        const double Shelf=ApartmentGroundZ+52.+L*56.;
         for (int32 Group=0; Group<2; ++Group)
         {
             const int32 CountInPile=2+(L+Group)%3;
@@ -234,7 +234,7 @@ void FitTextiles(ARiverfrontWorld& World)
     auto WallCloth=[](double U,double V)
     {
         return At(-69.+126.*U,702.-2.9*FMath::Sin(PI*U*8.)-1.4*FMath::Cos(V*U*10.),
-            Ground+112.+148.*V+1.3*FMath::Cos(PI*U*6.)*(1.-V));
+            ApartmentGroundZ+112.+148.*V+1.3*FMath::Cos(PI*U*6.)*(1.-V));
     };
     Panels[Madder].Add(28,18,WallCloth);
     for (double U0 : {.035,.08,.90,.95})
@@ -275,8 +275,8 @@ void FitTextiles(ARiverfrontWorld& World)
 
 FVector FRiverfrontFirstMorningWorld::HomeStart() { return At(-40,465,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
-FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,Ground+95); }
-FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,Ground+95); }
+FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,ApartmentGroundZ+95); }
+FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,ApartmentGroundZ+95); }
 
 FTransform FRiverfrontFirstMorningWorld::WakeStartView()
 {
@@ -292,9 +292,9 @@ FTransform FRiverfrontFirstMorningWorld::WakeEndView()
 TArray<FVector> FRiverfrontFirstMorningWorld::ExitRoute()
 {
     return {HomeStart(),WardrobePoint(),At(305,638,Upper+95),At(455,638,Upper+95),
-        At(455,Landing-15.,Upper+95),At(455,FirstRiser+9.5*Tread,Ground+10*Rise+95),
-        At(455,FirstRiser-60.,Ground+95),At(455,-179,Ground+95),StreetPoint(),
-        At(-83,95,Ground+95),ShopPoint()};
+        At(455,Landing-15.,Upper+95),At(455,FirstRiser+9.5*Tread,ApartmentGroundZ+10*Rise+95),
+        At(455,FirstRiser-60.,ApartmentGroundZ+95),At(455,-179,ApartmentGroundZ+95),StreetPoint(),
+        At(-83,95,ApartmentGroundZ+95),ShopPoint()};
 }
 
 void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
@@ -336,7 +336,7 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     Part(ETint::Paving,60,-129,1,925,166,6,true);
 
     // A continuous scanned stone finish with narrow divider joints, including at the bedroom threshold.
-    for (double Base : {Ground,Upper})
+    for (double Base : {ApartmentGroundZ,Upper})
     {
         Part(ETint::Stone,0,366,Base+.35,721,717,.7);
         for (double X=-300.; X<=300.; X+=60.)
@@ -413,13 +413,13 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     Part(ETint::PaleStone,455,(Landing+741.)*.5,Upper-8,176,741.-Landing,16,true);
     for (int32 I=0; I<Steps; ++I)
     {
-        const double Y=FirstRiser+(I+.5)*Tread, Top=Ground+(I+1)*Rise;
-        Part(ETint::Retaining,455,Y,(Ground+Top)*.5,176,Tread,Top-Ground,true);
+        const double Y=FirstRiser+(I+.5)*Tread, Top=ApartmentGroundZ+(I+1)*Rise;
+        Part(ETint::Retaining,455,Y,(ApartmentGroundZ+Top)*.5,176,Tread,Top-ApartmentGroundZ,true);
         Part(ETint::PaleStone,455,Y-2.5,Top-.8,178,Tread+5,1.6);
         if (!(I%3))
             Part(ETint::Rail,537,Y,Top+49,4.5,6,98,true);
     }
-    Member(ETint::Timber,{537,FirstRiser+3,Ground+Rise+98},{537,Landing,Upper+98},6);
+    Member(ETint::Timber,{537,FirstRiser+3,ApartmentGroundZ+Rise+98},{537,Landing,Upper+98},6);
     Part(ETint::Rail,537,(Landing+741.)*.5,Upper+48,5,741.-Landing,96,true);
     Part(ETint::Timber,537,(Landing+741.)*.5,Upper+100,8,741.-Landing,6);
     Part(ETint::Rail,455,741,Upper+50,176,6,100,true);
@@ -548,51 +548,51 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     World.AddPractical(At(58,344,Upper+291),-90);
 
     // Seen from the pavement: folded bolts on shelves, fabric on a brass rail, and a clear aisle to checkout.
-    Part(ETint::Timber,-100,590,Ground+48,231,70,96,true);
-    Part(ETint::FacadeStone,-100,590,Ground+97,240,79,7);
+    Part(ETint::Timber,-100,590,ApartmentGroundZ+48,231,70,96,true);
+    Part(ETint::FacadeStone,-100,590,ApartmentGroundZ+97,240,79,7);
     for (int32 I=0; I<15; ++I)
-        Part(ETint::Timber,-207+I*15.2,553,Ground+49,7,4,81);
-    Part(ETint::Rail,-45,592,Ground+102,27,23,3);
-    Part(ETint::Brass,-160,593,Ground+103,32,20,3);
+        Part(ETint::Timber,-207+I*15.2,553,ApartmentGroundZ+49,7,4,81);
+    Part(ETint::Rail,-45,592,ApartmentGroundZ+102,27,23,3);
+    Part(ETint::Brass,-160,593,ApartmentGroundZ+103,32,20,3);
     const ETint Weave[]={ETint::Ad,ETint::Canvas,ETint::Clay,ETint::Sail,ETint::Paint};
 
     // Flanking timber shelving defines separate bays. The central textile hangs free behind the counter.
-    Part(ETint::Plaster,0,719,Ground+169,223,12,273);
-    Part(ETint::Timber,-7,705,Ground+263,153,9,5);
+    Part(ETint::Plaster,0,719,ApartmentGroundZ+169,223,12,273);
+    Part(ETint::Timber,-7,705,ApartmentGroundZ+263,153,9,5);
     for (double X : {-80.,66.})
-        Part(ETint::Brass,X,710,Ground+264,4,19,12);
+        Part(ETint::Brass,X,710,ApartmentGroundZ+264,4,19,12);
     for (const FVector2D Bay : {FVector2D(-227.,190.),FVector2D(208.,183.)})
     {
-        Part(ETint::Timber,Bay.X,697,Ground+22,Bay.Y+10,60,44);
+        Part(ETint::Timber,Bay.X,697,ApartmentGroundZ+22,Bay.Y+10,60,44);
         for (double Side : {-1.,1.})
-            Part(ETint::WoodDark,Bay.X+Side*(Bay.Y*.5),699,Ground+119,6,49,205);
+            Part(ETint::WoodDark,Bay.X+Side*(Bay.Y*.5),699,ApartmentGroundZ+119,6,49,205);
         for (int32 L=0; L<3; ++L)
         {
-            const double Z=Ground+52.+L*56.;
+            const double Z=ApartmentGroundZ+52.+L*56.;
             Part(ETint::Timber,Bay.X,693,Z,Bay.Y,58,6);
             Part(ETint::WoodDark,Bay.X,662,Z,Bay.Y+4,4,6);
         }
     }
     // Limewashed back to the cutting area over a timber dado.
-    Part(ETint::Plaster,353,420,Ground+206,5,608,224);
-    Part(ETint::Timber,350,420,Ground+98,7,607,6);
-    Part(ETint::WoodDark,-113,575,Ground+102,78,4,2);
+    Part(ETint::Plaster,353,420,ApartmentGroundZ+206,5,608,224);
+    Part(ETint::Timber,350,420,ApartmentGroundZ+98,7,607,6);
+    Part(ETint::WoodDark,-113,575,ApartmentGroundZ+102,78,4,2);
     for (int32 I=0; I<16; ++I)
-        Part(ETint::Brass,-149+I*4.7,575,Ground+103.2,.6,(I%5==0)?3.:1.5,.5);
-    Part(ETint::Roof,-46,589,Ground+108,18,13,2,false,FRotator(-10,0,0));
+        Part(ETint::Brass,-149+I*4.7,575,ApartmentGroundZ+103.2,.6,(I%5==0)?3.:1.5,.5);
+    Part(ETint::Roof,-46,589,ApartmentGroundZ+108,18,13,2,false,FRotator(-10,0,0));
     for (double X : {67.,294.})
     {
-        Shape(EShape::Cylinder,ETint::Brass,X,154,Ground+80,4,4,160);
-        Shape(EShape::Cylinder,ETint::Timber,X,154,Ground+3,23,23,6);
+        Shape(EShape::Cylinder,ETint::Brass,X,154,ApartmentGroundZ+80,4,4,160);
+        Shape(EShape::Cylinder,ETint::Timber,X,154,ApartmentGroundZ+3,23,23,6);
     }
-    Part(ETint::Brass,180,154,Ground+158,229,5,5);
-    Part(ETint::Timber,-330,200,Ground+65,48,157,9,true);
+    Part(ETint::Brass,180,154,ApartmentGroundZ+158,229,5,5);
+    Part(ETint::Timber,-330,200,ApartmentGroundZ+65,48,157,9,true);
     for (double Y : {143.,246.})
-        Part(ETint::Rail,-330,Y,Ground+32,5,7,64);
+        Part(ETint::Rail,-330,Y,ApartmentGroundZ+32,5,7,64);
     for (int32 Roll=0; Roll<5; ++Roll)
-        World.Shape(EShape::Cylinder,Weave[Roll],At(-329,147+24*Roll,Ground+80),
+        World.Shape(EShape::Cylinder,Weave[Roll],At(-329,147+24*Roll,ApartmentGroundZ+80),
             FVector(20,20,58),false,FRotator(0,0,90));
-    Mirror(284,718,Ground+146,76,173);
+    Mirror(284,718,ApartmentGroundZ+146,76,173);
     InteriorLight(World,At(-93,500,222),67,545,3800);
     World.AddPractical(At(-100,579,282),-90);
 
