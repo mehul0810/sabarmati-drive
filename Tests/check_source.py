@@ -116,6 +116,14 @@ class SourceTests(unittest.TestCase):
         self.assertNotIn("FHttpModule", source)
         self.assertNotIn("Password", storage)
 
+    def test_fullscreen_mode_fits_display_and_uses_backing_pixels(self):
+        launch = (ROOT / "Scripts" / "run-mac.sh").read_text()
+        self.assertIn("-game -fullscreen -Sabarmati4K", launch)
+        self.assertIn("bAllowHighDPIInGameMode=True", launch)
+        self.assertNotIn("-ForceRes", launch)
+        source = (PRIVATE / "RiverfrontPlayerController.cpp").read_text()
+        self.assertIn("r.SecondaryScreenPercentage.GameViewport", source)
+
     def test_glb_skin_and_motion(self):
         path = ROOT / "SourceAssets" / "fictional-rigged.glb"
         if not path.is_file():

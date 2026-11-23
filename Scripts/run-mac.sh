@@ -78,6 +78,8 @@ if [[ "$mode" == editor ]]; then
 fi
 
 if [[ "$uhd" == true ]]; then
-    exec "$editor" "$project" -game -fullscreen -Sabarmati4K -metalsm5 "$@"
+    # macOS uses logical points for window placement and backing pixels for Metal.
+    exec "$editor" "$project" -game -fullscreen -Sabarmati4K -metalsm5 \
+        '-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True' "$@"
 fi
 exec "$editor" "$project" -game -windowed -ResX=1600 -ResY=900 -metalsm5 "$@"

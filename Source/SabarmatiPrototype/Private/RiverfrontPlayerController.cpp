@@ -512,6 +512,13 @@ void ARiverfrontPlayerController::ShowTitle()
             {
                 Fraction->Set(100.f, ECVF_SetByCommandline);
             }
+            // A Retina-size drawable is intentional; Slate's scale is for UI,
+            // not a request to render the scene at half the viewport resolution.
+            if (IConsoleVariable* Secondary = Settings.FindConsoleVariable(
+                    TEXT("r.SecondaryScreenPercentage.GameViewport")))
+            {
+                Secondary->Set(100.f, ECVF_SetByCommandline);
+            }
             if (IConsoleVariable* Dynamic = Settings.FindConsoleVariable(TEXT("r.DynamicRes.OperationMode")))
             {
                 Dynamic->Set(0, ECVF_SetByCommandline);
