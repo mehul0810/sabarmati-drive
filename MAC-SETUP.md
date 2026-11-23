@@ -29,7 +29,7 @@ and [Apple's developer-directory documentation](https://developer.apple.com/docu
 
 ### Local riverfront art verification
 
-Use **Play Sabarmati Drive.command** for the normal start screen. On the
+Use **Play Sabarmati Drive.command** for the riverfront in a resizable window. The **4K** launcher opens the city in a Retina window fitted to the desktop. Use **Quit Game** on the title screen or the **Esc** menu to close the standalone game. On the
 first run, choose a local display name to unlock Start. The profile is a
 local Unreal save on this installation; no email, password or server is used.
 Start opens the current map. Choose **Explore Ahmedabad** from the title or
@@ -53,3 +53,9 @@ Add `-SabarmatiCityReview` to also exercise a profile-gated City map switch
 and capture a real road. QA uses separate `SabarmatiQA-*.sav` files, never the
 player's `SabarmatiPlayerProfileV1.sav` save. The flags inject test inputs;
 they do not replace hardware playtesting.
+
+For the street-level check, launch with `-SabarmatiArtReview -SabarmatiWalkReview`. Add `-SabarmatiCity` for the city plot. The review captures the normal player camera facing the arcade, then walks the character through its passage and around the entire perimeter using collision and movement physics. The log reports completed legs, distance and ground contact. The captures are in `Saved/ArtReview`.
+
+### Fixed-camera rendering benchmark
+
+Run `bash Scripts/benchmark-riverfront.sh all` in Terminal. Use `night`, `golden`, `day` or `reference` to measure one condition. Add `--no-build` after the condition to reuse an up-to-date editor module. Each native game window closes after its checks. The shell reports the run directory, verifies the captured dimensions and prints frame timing percentiles. The regular launcher opens a separate playable session. [Protocol and acceptance status](Docs/Riverfront-rendering.md)

@@ -80,3 +80,10 @@ vehicles use the existing arcade steering and vehicle physics.
 Rebuild the GLB with `python3 Scripts/prepare-riverfront-crossover.py`. Import
 the asset with `SABARMATI_IMPORT_CROSSOVER=1` set when running the existing
 `Scripts/import-riverfront-hatch.py` editor commandlet.
+
+
+## Walkable arcade and street materials
+
+The arcade is an original brick-and-plaster design with separate structural wings, galleries, terracotta sun-breakers, rooftop stair rooms and a public cross-passage. The flat roofs, differences in building length and space between buildings were studied in the [Atal west-bank satellite view](https://www.arcgis.com/apps/mapviewer/index.html?basemap=satellite&center=72.572,23.017&level=18). The [SRFDCL street description](https://sabarmatiriverfront.com/streets.html) informed the footpath and roadside drainage treatment. Satellite imagery is reference-only.
+
+The road uses ambientCG’s [Asphalt 033](https://ambientcg.com/view?id=Asphalt033) photogrammetry at its 2.5 m capture scale. [Bricks 051](https://ambientcg.com/view?id=Bricks051) is a 1.25 m brick scan. [Plaster 001](https://ambientcg.com/view?id=Plaster001) is a procedural stucco surface. All three are [CC0](https://docs.ambientcg.com/license/). The weathered stripe and glazing shaders are project-authored. To rebuild this set, place the 1K-JPG archives in `Saved/LookSources` as `Asphalt033.zip`, `Bricks051.zip` and `Plaster001.zip`, and run the existing look commandlet with `SABARMATI_LOOK_SCOPE=street`. `SABARMATI_LOOK_SOURCES` can point to a separate archive directory.

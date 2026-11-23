@@ -7,6 +7,8 @@
 class ARiverfrontCharacter;
 class UBoxComponent;
 class UCameraComponent;
+class USpotLightComponent;
+class UMaterialInstanceDynamic;
 class USpringArmComponent;
 class UMaterialInterface;
 
@@ -25,6 +27,7 @@ public:
     static FVector GetCrossoverBounds() { return FVector(229, 99, 53); }
     const TCHAR* GetVehicleLabel() const { return bCrossover ? TEXT("Crossover") : TEXT("Hatchback"); }
 
+    void SetNightDriving(bool AtNight);
     bool IsNearDoor(const ARiverfrontCharacter& Character) const;
     void Enter(ARiverfrontCharacter& Character);
     float GetSpeedKph() const { return FMath::Abs(Speed) * 0.036f; }
@@ -55,6 +58,12 @@ private:
     TArray<TObjectPtr<USceneComponent>> WheelPivots;
     TArray<FColor> PanelColors;
 
+    UPROPERTY() TArray<TObjectPtr<USpotLightComponent>> Headlights;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> DetailedBody;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> HeadLens;
+    UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
+    bool bNightDriving = false;
+    void UpdateDrivingLights();
     FTransform Home;
     float Speed = 0.f;
     float Throttle = 0.f;

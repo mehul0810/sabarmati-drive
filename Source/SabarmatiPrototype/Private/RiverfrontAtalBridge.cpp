@@ -92,6 +92,12 @@ void ARiverfrontWorld::BuildAtalBridge()
         const FVector NextCrest = Frame(Bay + 1, -Side, true);
         const double Y = .5 * (Crest.Y + NextCrest.Y);
         Tube(Crest, NextCrest, 23.0);
+        if (Bay % 3 == 1)
+        {
+            const FVector Housing = (Crest + NextCrest) * .5 - FVector(0,0,15);
+            Box(ETint::Rail, Housing, FVector(41,25,9));
+            AddPractical(Housing - FVector(0,0,6), Side * 20.);
+        }
         for (const double RailSide : {-1.0, 1.0})
         {
             const FVector Outer = Frame(Bay, RailSide, false);

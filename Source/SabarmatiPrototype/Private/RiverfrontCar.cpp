@@ -1,4 +1,7 @@
 #include "RiverfrontCar.h"
+#include "Components/SpotLightComponent.h"
+#include "EngineUtils.h"
+#include "RiverfrontWorld.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -99,6 +102,21 @@ ARiverfrontCar::ARiverfrontCar()
 
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
+        USpotLightComponent* Light = CreateDefaultSubobject<USpotLightComponent>(
+            Side < 0 ? TEXT("LeftDippedBeam") : TEXT("RightDippedBeam"));
+        Light->SetupAttachment(Body);
+        Light->SetRelativeLocationAndRotation(FVector(200, Side * 65, 4), FRotator(-5.5, Side * 4., 0));
+        Light->SetIntensityUnits(ELightUnits::Candelas);
+        Light->SetIntensity(685.f);
+        Light->SetUseTemperature(true);
+        Light->SetTemperature(4650.f);
+        Light->SetInnerConeAngle(10.f);
+        Light->SetOuterConeAngle(25.f);
+        Light->SetAttenuationRadius(4100.f);
+        Light->SetSourceRadius(4.f);
+        Light->SetCastShadows(false);
+        Light->SetVisibility(false);
+        Headlights.Add(Light);
         Panel(*FString::Printf(TEXT("Headlamp%d"), Side + 1), BoxMesh, Body,
             FVector(205, Side * 62, 15), FVector(17, 32, 12), Cream);
         Panel(*FString::Printf(TEXT("Taillamp%d"), Side + 1), BoxMesh, Body,
@@ -172,10 +190,11 @@ bool ARiverfrontCar::InstallDetailedVisuals()
         Part->SetCanEverAffectNavigation(false);
         Part->SetRelativeLocationAndRotation(Location, FRotator(0, Yaw, 0));
         Part->RegisterComponent();
+        return Part;
     };
 
     // Interchange maps glTF +Z to Unreal +Y. Turn that into the pawn's +X forward.
-    PlaceMesh(Chassis, Body, FVector(0, 0, ModelGroundOffset), -90.0);
+    DetailedBody = PlaceMesh(Chassis, Body, FVector(0, 0, ModelGroundOffset), -90.0);
     for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
     {
         const bool bRight = SideIndex == 1;
@@ -210,6 +229,10 @@ void ARiverfrontCar::BeginPlay()
         Arm->TargetArmLength += 26.0;
     }
     bDetailedVisuals = InstallDetailedVisuals();
+    if (TActorIterator<ARiverfrontWorld> District{GetWorld()}; District)
+    {
+        SetNightDriving(District->IsNight());
+    }
     if (!bDetailedVisuals && BaseMaterial)
     {
         for (int32 Index = 0; Index < Panels.Num(); ++Index)
@@ -221,6 +244,57 @@ void ARiverfrontCar::BeginPlay()
             }
         }
     }
+}
+
+void ARiverfrontCar::SetNightDriving(bool AtNight)
+{
+    if (bNightDriving != AtNight)
+    {
+        bNightDriving = AtNight;
+        UpdateDrivingLights();
+    }
+}
+
+void ARiverfrontCar::UpdateDrivingLights()
+{
+    const bool On = bNightDriving && IsValid(Driver);
+    for (USpotLightComponent* Light : Headlights)
+    {
+        Light->SetVisibility(On);
+    }
+    if (!DetailedBody)
+    {
+        return;
+    }
+    if (On && !HeadLens)
+    {
+        UMaterialInterface* Lens = LoadObject<UMaterialInterface>(nullptr,
+            TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens"));
+        if (!Lens)
+        {
+            return;
+        }
+        HeadLens = UMaterialInstanceDynamic::Create(Lens, this);
+        TailLens = UMaterialInstanceDynamic::Create(Lens, this);
+        HeadLens->SetVectorParameterValue(TEXT("LensTint"), FLinearColor(1.0,.83,.62));
+        TailLens->SetVectorParameterValue(TEXT("LensTint"), FLinearColor(1.0,.012,.004));
+        HeadLens->SetScalarParameterValue(TEXT("Glow"), 4.8f);
+        TailLens->SetScalarParameterValue(TEXT("Glow"), 1.8f);
+    }
+    const TArray<FName> Slots = DetailedBody->GetMaterialSlotNames();
+    for (int32 I = 0; I < Slots.Num(); ++I)
+    {
+        const FString Slot = Slots[I].ToString();
+        if (Slot.Contains(TEXT("light_front")))
+        {
+            DetailedBody->SetMaterial(I, On ? HeadLens.Get() : nullptr);
+        }
+        else if (Slot.Contains(TEXT("lamp_red")) || Slot.Contains(TEXT("light_rear")))
+        {
+            DetailedBody->SetMaterial(I, On ? TailLens.Get() : nullptr);
+        }
+    }
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati %s dipped beams: %s."), GetVehicleLabel(), On ? TEXT("on") : TEXT("off"));
 }
 
 void ARiverfrontCar::SetupPlayerInputComponent(UInputComponent* Input)
@@ -265,6 +339,7 @@ void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     Driver = &Character;
     Character.SetInCar(true);
     Player->Possess(this);
+    UpdateDrivingLights();
     Player->SetControlRotation(FRotator(-13, GetActorRotation().Yaw, 0));
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     SetHint(Mode && Mode->IsCityMode() ? TEXT("Explore the mapped Ahmedabad streets.")
@@ -314,6 +389,7 @@ void ARiverfrontCar::Exit()
         Player->Possess(Walker);
         Player->SetControlRotation(FRotator(-7, GetActorRotation().Yaw, 0));
         Driver = nullptr;
+        UpdateDrivingLights();
         Speed = Throttle = Steering = 0;
         bBraking = false;
         return;

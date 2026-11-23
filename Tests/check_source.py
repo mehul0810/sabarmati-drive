@@ -116,10 +116,14 @@ class SourceTests(unittest.TestCase):
         self.assertNotIn("FHttpModule", source)
         self.assertNotIn("Password", storage)
 
-    def test_fullscreen_mode_fits_display_and_uses_backing_pixels(self):
+    def test_game_launchers_use_a_fitted_window(self):
         launch = (ROOT / "Scripts" / "run-mac.sh").read_text()
-        self.assertIn("-game -fullscreen -Sabarmati4K", launch)
-        self.assertIn("bAllowHighDPIInGameMode=True", launch)
+        self.assertIn("-game -windowed", launch)
+        self.assertNotIn("-fullscreen", launch)
+        self.assertIn("screen.visibleFrame", launch)
+        self.assertIn("screen.backingScaleFactor", launch)
+        self.assertIn("-Sabarmati4K", launch)
+        self.assertIn("FullscreenMode=2", (ROOT / "Config/DefaultGameUserSettings.ini").read_text())
         self.assertNotIn("-ForceRes", launch)
         source = (PRIVATE / "RiverfrontPlayerController.cpp").read_text()
         self.assertIn("r.SecondaryScreenPercentage.GameViewport", source)

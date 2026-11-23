@@ -5,6 +5,7 @@
 #include "RiverfrontPlayerController.generated.h"
 
 class SWidget;
+class FReply;
 class ACameraActor;
 
 UCLASS()
@@ -45,9 +46,15 @@ private:
     bool HasLocalProfile() const { return !LocalDisplayName.IsEmpty(); }
 
     void ShowTitle();
+#if !UE_BUILD_SHIPPING
+    void RunRenderingBenchmark();
+#endif
     void TogglePauseMenu();
+    void CycleDistrictTime();
     void ShowMenu(EScreen Target);
     void ResumeDrive();
+    FReply QuitDrive();
+    void SaveLookPreference();
     void SwitchFreeRoamMap();
     void RemoveOverlay();
 };

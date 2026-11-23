@@ -6,7 +6,7 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 1. Install **Unreal Engine 5.8** from Epic Games Launcher and a compatible full **Xcode**. Open Xcode once to finish installing its SDK and components. See [Epic’s version-specific macOS and Xcode requirements](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine) before installing. Epic lists macOS 14.5 and Xcode 26.0 as minimums for UE 5.8 and recommends Xcode 26.1.1. Xcode 27 on this Mac still needs a real UE build check.
 2. Open the extracted `Sabarmati-Drive-UE58-Mac` folder and open Terminal there. Use a native Apple Silicon terminal, not a shell translated by Rosetta.
-3. Build the C++ project and launch a 1600×900 game window:
+3. Build the C++ project and launch a resizable game window up to 1600×900:
 
    ```bash
    bash Scripts/run-mac.sh
@@ -20,7 +20,13 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine Entry map may look empty in the editor; the district appears when you press **Play**. Click the viewport once if needed to capture the pointer, then look around without mouse drag. Click **Stop** (or use the keyboard shortcut shown by Unreal) to release the editor viewport. After a successful build you can launch without compiling again with `bash Scripts/run-mac.sh --no-build`. The first C++ build and shader preparation can take time.
 
-After building, **Play Sabarmati Drive 4K.command** opens Ahmedabad in borderless native fullscreen at 100% render scale. It uses the current display’s resolution, so a 4K display gets native 4K, while a smaller display never needs to crop an oversized window. For the regular window, use **Play Sabarmati Drive.command**.
+After building, **Play Sabarmati Drive.command** opens the riverfront in a titled window. **Play Sabarmati Drive 4K.command** opens Ahmedabad City in a titled Retina window with 100% render scale, up to 3840×2160 backing pixels. Both presets fit the primary display’s available desktop and leave room for the window controls.
+
+## Riverfront lighting
+
+The regular window opens the riverfront at golden hour. Press **T** during free roam to cycle through night, daylight and golden hour. Streetlights cast pools on the footpaths and carriageways. Selected apartment windows light up, and the occupied car switches its dipped beams on at night.
+
+Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison and a 45 m drive under each lighting condition. Each run writes screenshots and raw frame timings under `Saved/RenderingBenchmarks`. [Technical audit and benchmark](Docs/Riverfront-rendering.md)
 
 ## Controls
 
@@ -81,10 +87,7 @@ The title uses generated environmental concept artwork as a backdrop; it is not 
 
 The startup artwork is `Content/Splash/Splash.png`. Regenerate it on macOS with `swift Scripts/make-mac-splash.swift Content/Splash/Splash.png`.
 During play, **Esc** freezes the simulation and releases the pointer. Click
-**Resume** or press **Esc** again to resume and recapture the pointer. For normal
+**Resume** or press **Esc** again to resume and recapture the pointer. **Quit Game** closes the game from either the title or pause menu. For normal
 keyboard QA use a standalone game window; Unreal Editor can intercept Esc in PIE.
 
-The visual pass replaces the flat ground and retaining materials with
-photo-sourced 1K PBR maps and adds the lower promenades, stairs and animated
-river shading. The buildings, avatar and car remain prototype geometry. Asset
-sources and rebuilding notes: `SourceAssets/RIVERFRONT-SOURCES.md`.
+Across the street from the starting cars, a brick-and-plaster block has a shaded colonnade, a public cross-passage and a paved circuit around the back. In **Explore Ahmedabad**, a longer version occupies the mapped plot beside the starting road. Both routes are accessible on foot. The road surface uses scanned asphalt, and the central streets include worn markings, flush drains and kerbs. See [the material sources](SourceAssets/RIVERFRONT-SOURCES.md) and [city map notes](SourceAssets/AHMEDABAD-CITY-SOURCES.md).

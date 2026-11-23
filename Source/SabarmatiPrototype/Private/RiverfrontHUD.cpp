@@ -64,7 +64,8 @@ void ARiverfrontHUD::DrawHUD()
     Text(bInCar ? TEXT("WASD  drive   /   Space  brake   /   E  exit")
         : TEXT("WASD  move   /   Shift  jog   /   Space  jump"),
         Paper, Margin + 12.f, Base + 7.f, Font, bCompact ? .83f : .96f);
-    Text(TEXT("Mouse  look   /   R  reset   /   Esc  pause"),
+    Text(bCity ? TEXT("Mouse  look   /   R  reset   /   Esc  pause")
+        : TEXT("Mouse look   /   R reset   /   T time   /   Esc pause"),
         Amber, Margin + 12.f, Base + 27.f, Font, bCompact ? .81f : .88f);
 
     if (bInCar)

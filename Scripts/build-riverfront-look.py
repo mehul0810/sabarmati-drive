@@ -5,7 +5,7 @@ from zipfile import ZipFile
 import unreal as ue
 
 ROOT = Path(ue.Paths.convert_relative_path_to_full(ue.Paths.project_dir()))
-SOURCE = ROOT / "Saved/LookSources"
+SOURCE = Path(os.environ.get("SABARMATI_LOOK_SOURCES", ROOT / "Saved/LookSources"))
 DEST = "/Game/Sabarmati/Riverfront"
 EDIT = ue.MaterialEditingLibrary
 
@@ -65,7 +65,7 @@ def load_texture(asset_id, channel):
         compression = (ue.TextureCompressionSettings.TC_NORMALMAP if channel == "NormalDX"
                        else ue.TextureCompressionSettings.TC_MASKS)
         texture.set_editor_property("compression_settings", compression)
-    ue.EditorAssetLibrary.save_loaded_asset(texture, only_if_is_dirty=False)
+    ue.EditorAssetLibrary.save_loaded_asset(texture, only_if_is_dirty=True)
     return texture
 
 def finish(material):
@@ -76,7 +76,7 @@ def finish(material):
         raise RuntimeError(f"Cannot save {material.get_name()}")
     ue.log(f"SABARMATI LOOK SAVED: {material.get_path_name()}")
 
-def surface(name, asset_id, centimeters, tint, vertical=False):
+def surface(name, asset_id, centimeters, tint, vertical=False, road=False, paint=False):
     material = make_material(name)
     # World-space XY for ground; XZ for the aligned retaining walls/facades.
     position = node(material, "WorldPosition", -1000, -100)
@@ -107,7 +107,63 @@ return N.x > N.y ? P.yz : P.xz;
             tint_node = node(material, "Multiply", -130, 0)
             connect(sample, tint_node, "A", "RGB")
             connect(color(material, tint, -300, -140), tint_node, "B")
-            prop(tint_node, "BASE_COLOR")
+            if road or paint:
+                # A second, broad scan sample changes the aggregate tone over several metres.
+                macro_uv = node(material, "Multiply", -560, -380)
+                connect(axes, macro_uv, "A")
+                connect(scalar(material, 1.0 / 2380, -810, -400), macro_uv, "B")
+                broad = node(material, "TextureSample", -320, -400)
+                broad.set_editor_property("texture", sample.get_editor_property("texture"))
+                connect(macro_uv, broad, "UVs")
+                if paint:
+                    code = """
+float grain = dot(Fine, float3(.3,.59,.11));
+float coverage = smoothstep(.035, .14, grain + Broad * .20);
+return lerp(Fine * .74, float3(.65,.62,.53), .86 * coverage);
+"""
+                else:
+                    code = """
+// Recover the strip width and transverse coordinate even on a rotated bridge deck.
+float2 dx = ddx(UV), dy = ddy(UV);
+float det = max(abs(dx.x*dy.y - dx.y*dy.x), 1e-10);
+float2 widths = float2(length(ddx(P)*dy.y - ddy(P)*dx.y),
+                       length(ddy(P)*dx.x - ddx(P)*dy.x)) / det;
+float across = widths.x < widths.y ? UV.x : UV.y;
+float width = min(widths.x, widths.y);
+float lanes = clamp(round(width / 360.), 1., 4.);
+float lane = frac(across*lanes);
+float wheel = 1. - smoothstep(.045,.12, abs(abs(lane-.5)-.22));
+float dust = 1. - smoothstep(.018,.075,min(across,1.-across));
+float2 metres = P.xy * .01;
+float2 grid = metres / float2(21., 8.);
+float2 id = floor(grid);
+float hash = frac(sin(dot(id,float2(39.7,17.1))) * 13758.5);
+float2 dist = (abs(frac(grid)-.5) - float2(.15 + .10*hash,.15)) * float2(21.,8.);
+float edge = max(dist.x,dist.y) + (Broad-.15)*.55;
+float alias = max(fwidth(edge),.025);
+float repair = (1.-smoothstep(-alias,alias,edge)) * step(.57,hash);
+float tar = (1.-smoothstep(.02,.055+alias,abs(edge))) * step(.57,hash);
+float3 asphalt = lerp(Fine, Old * float3(.55,.59,.63), .31 + .25*smoothstep(.1,.26,Broad));
+asphalt *= (.86 - wheel*.14 + dust*.17) * lerp(1., .69, repair);
+return lerp(asphalt, asphalt*.42, tar*.79);
+"""
+                inputs = ("Fine", "Broad", "UV", "P", "Old") if road else ("Fine", "Broad")
+                finish_color = custom(material, "CMOT_FLOAT3", inputs, code, 40, -180)
+                connect(tint_node, finish_color, "Fine")
+                connect(broad, finish_color, "Broad", "R")
+                if road:
+                    old_uv = node(material, "Multiply", -560, 760)
+                    connect(axes, old_uv, "A")
+                    connect(scalar(material, 1.0/516, -810, 790), old_uv, "B")
+                    old_scan = node(material, "TextureSample", -300, 780)
+                    old_scan.set_editor_property("texture", load_texture("Asphalt019", "Color"))
+                    connect(old_uv, old_scan, "UVs")
+                    connect(old_scan, finish_color, "Old", "RGB")
+                    connect(node(material, "TextureCoordinate", -320, 650), finish_color, "UV")
+                    connect(position, finish_color, "P")
+                prop(finish_color, "BASE_COLOR")
+            else:
+                prop(tint_node, "BASE_COLOR")
         elif channel == "NormalDX":
             prop(sample, "NORMAL", "RGB")
         else:
@@ -139,6 +195,32 @@ def metal_or_glass(name, base, roughness, specular, reflective=False):
     prop(base_input, "BASE_COLOR")
     prop(scalar(material, roughness, -290, 290), "ROUGHNESS")
     prop(scalar(material, specular, -290, 390), "SPECULAR")
+    finish(material)
+
+def street_glazing():
+    material = make_material("M_FacadeGlazing")
+    # Opaque two-layer approximation for the SM5 path. The reveal and frames are geometry.
+    glass = custom(material, "CMOT_FLOAT3", ("UV", "Reflection", "Seed", "Eye", "N"), """
+float sky = smoothstep(-.09, .38, Reflection.z);
+float3 reflection = lerp(float3(.087,.077,.059), float3(.27,.38,.46), sky);
+float shift = clamp(dot(Eye.xy, float2(.77,.64)) * .16, -.15,.15);
+float blind = smoothstep(.012,.036, frac((UV.y + shift * .24) * 18.));
+float coverage = (1.-smoothstep(-.015,.015, UV.y - (.18 + Seed * .62) + shift));
+float curtain = .5 + .5*cos((UV.x + shift) * 38. + Seed * 18.);
+float3 room = lerp(float3(.025,.036,.035), float3(.32,.255,.165), curtain*.27 + coverage*blind*.71);
+float grazing = pow(1.-saturate(abs(dot(Eye,N))), 3.);
+return lerp(room, reflection, .26 + .52*grazing);
+""", 40, -40)
+    for port, kind in (("UV", "TextureCoordinate"), ("Reflection", "ReflectionVectorWS"),
+                       ("Seed", "PerInstanceRandom"), ("Eye", "CameraVectorWS"), ("N", "PixelNormalWS")):
+        connect(node(material, kind, -360, 0), glass, port)
+    prop(glass, "BASE_COLOR")
+    reflected_light = node(material, "Multiply", 260, 100)
+    connect(glass, reflected_light, "A")
+    connect(scalar(material, .31, 30, 180), reflected_light, "B")
+    prop(reflected_light, "EMISSIVE_COLOR")
+    prop(scalar(material, .24, -300, 250), "ROUGHNESS")
+    prop(scalar(material, .51, -300, 320), "SPECULAR")
     finish(material)
 
 def water():
@@ -179,19 +261,22 @@ return normalize(float3(slope,1));
     finish(material)
 
 scope = os.environ.get("SABARMATI_LOOK_SCOPE", "all")
-if scope not in {"all", "facades", "water"}:
+if scope not in {"all", "facades", "water", "street"}:
     raise RuntimeError(f"Unknown surface subset: {scope}")
 if scope == "all":
-    surface("M_Asphalt", "Asphalt019", 340, (.69, .72, .75))
     surface("M_Paving", "PavingStones034", 285, (.94, .87, .76))
     surface("M_Concrete", "Concrete034", 460, (.87, .82, .76))
 if scope in {"all", "water"}:
     water()
 if scope in {"all", "facades"}:
     surface("M_Retaining", "Concrete034", 380, (.96, .83, .66), vertical=True)
-    surface("M_FacadePlaster", "Concrete034", 280, (1.12, 1.04, .88), vertical=True)
     surface("M_FacadeSandstone", "Concrete034", 275, (.91, .64, .39), vertical=True)
-    surface("M_FacadeTerracotta", "Concrete034", 235, (.65, .37, .24), vertical=True)
-    metal_or_glass("M_FacadeGlazing", (.035, .046, .050), .22, .50, reflective=True)
     metal_or_glass("M_CoatedIron", (.052, .058, .061), .51, .41)
+if scope in {"all", "street"}:
+    surface("M_Asphalt", "Asphalt033", 250, (.82, .85, .87), road=True)
+    surface("M_RoadStripe", "Asphalt033", 250, (1.0, 1.0, 1.0), paint=True)
+if scope in {"all", "facades", "street"}:
+    surface("M_FacadePlaster", "Plaster001", 145, (.89, .78, .62), vertical=True)
+    surface("M_FacadeTerracotta", "Bricks051", 125, (.81, .72, .67), vertical=True)
+    street_glazing()
 ue.log("SABARMATI LOOK BUILD COMPLETE")

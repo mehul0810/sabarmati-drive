@@ -5,7 +5,8 @@ usage() {
     cat <<'USAGE'
 Usage: bash Scripts/run-mac.sh [--editor|--game|--package] [--no-build] [--4k] [-- extra UE args]
        UE_ROOT="/path/to/UE_5.8" bash Scripts/run-mac.sh
-The default is a 1600x900 game window. --4k fits the active display in native fullscreen.
+Both game presets open a resizable window. The default targets 1600x900; --4k
+uses Retina backing pixels up to 3840x2160. Both fit the desktop work area.
 --editor opens the source for Play and import.
 --package cooks a local Development .app under Saved/MacPackage (no upload or signing).
 USAGE
@@ -77,9 +78,34 @@ if [[ "$mode" == editor ]]; then
     exec "$editor" "$project" "$@"
 fi
 
+# Match Unreal's default window placement on the primary display. NSScreen reports
+# points; the high-DPI Unreal window takes a client size in backing pixels.
+dpi=False
+video_args=(-metalsm5)
 if [[ "$uhd" == true ]]; then
-    # macOS uses logical points for window placement and backing pixels for Metal.
-    exec "$editor" "$project" -game -fullscreen -Sabarmati4K -metalsm5 \
-        '-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True' "$@"
+    dpi=True
+    video_args+=(-Sabarmati4K)
 fi
-exec "$editor" "$project" -game -windowed -ResX=1600 -ResY=900 -metalsm5 "$@"
+size="$(/usr/bin/osascript -l JavaScript - "$uhd" <<'JXA' || true
+function run(args) {
+    ObjC.import('AppKit');
+    const screen = $.NSScreen.screens.firstObject;
+    const visible = screen.visibleFrame.size;
+    const retina = args[0] === 'true';
+    const scale = retina ? screen.backingScaleFactor : 1;
+    // Leave room for the title bar, window border and desktop around it.
+    const units = Math.floor(Math.min(retina ? 240 : 100,
+        (visible.width - 64) * scale / 16, (visible.height - 84) * scale / 9));
+    if (units > 0) return (16 * units) + ' ' + (9 * units);
+}
+JXA
+)"
+width=960
+height=540
+if [[ "$size" =~ ^([0-9]+)[[:space:]]([0-9]+)$ ]]; then
+    width="${BASH_REMATCH[1]}"
+    height="${BASH_REMATCH[2]}"
+fi
+exec "$editor" "$project" -game -windowed "-ResX=$width" "-ResY=$height" \
+    "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=$dpi" \
+    "${video_args[@]}" "$@"

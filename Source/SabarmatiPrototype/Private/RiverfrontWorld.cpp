@@ -1,14 +1,7 @@
 #include "RiverfrontWorld.h"
 
-#include "Components/DirectionalLightComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
-#include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Engine/DirectionalLight.h"
-#include "Engine/ExponentialHeightFog.h"
-#include "Components/ExponentialHeightFogComponent.h"
-#include "Components/SkyAtmosphereComponent.h"
-#include "Engine/SkyLight.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -94,7 +87,7 @@ void ARiverfrontWorld::LoadSurfaceMaterials()
         {ETint::Retaining, TEXT("M_Retaining")}, {ETint::Plaster, TEXT("M_FacadePlaster")},
         {ETint::FacadeStone, TEXT("M_FacadeSandstone")}, {ETint::Terracotta, TEXT("M_FacadeTerracotta")},
         {ETint::Glass, TEXT("M_FacadeGlazing")}, {ETint::Rail, TEXT("M_CoatedIron")},
-        {ETint::Leaf, TEXT("Foliage/M_LeafSprig")}
+        {ETint::Leaf, TEXT("Foliage/M_LeafSprig")}, {ETint::RoadPaint, TEXT("M_RoadStripe")}
     };
     for (const auto& Surface : Surfaces)
     {
@@ -121,7 +114,7 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
         FColor(229, 166, 89), FColor(40, 106, 99), FColor(193, 160, 115),
         FColor(223, 209, 183), FColor(187, 142, 98), FColor(154, 86, 60), FColor(88, 124, 57),
         FColor(213, 216, 208), FColor(105, 75, 52), FColor(170, 85, 115),
-        FColor(119, 87, 60), FColor(91, 65, 47)
+        FColor(119, 87, 60), FColor(91, 65, 47), FColor(210, 206, 184)
     };
     const int32 MaterialIndex = static_cast<int32>(Tint);
     const int32 Key = MaterialIndex + static_cast<int32>(Mesh) * TintCount + (bSolid ? TintCount * static_cast<int32>(EShape::Count) : 0);
@@ -138,13 +131,15 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
 
         Batch = NewObject<UInstancedStaticMeshComponent>(this);
         AddInstanceComponent(Batch);
+        // Repeat room occupancy and surface variation at the same plot on every launch.
+        Batch->InstancingRandomSeed = 18613 + Key * 31;
         Batch->SetupAttachment(GetRootComponent());
         Batch->SetStaticMesh(StaticMesh);
         Batch->SetMobility(EComponentMobility::Static);
         Batch->SetCollisionProfileName(bSolid ? FName(TEXT("BlockAll")) : FName(TEXT("NoCollision")));
         Batch->SetCanEverAffectNavigation(false);
         Batch->SetGenerateOverlapEvents(false);
-        if (Tint == ETint::Water || Tint == ETint::Ripple || Tint == ETint::Paint)
+        if (Tint == ETint::Water || Tint == ETint::Ripple || Tint == ETint::Paint || Tint == ETint::RoadPaint)
         {
             Batch->SetCastShadow(false);
         }
@@ -265,6 +260,25 @@ void ARiverfrontWorld::BuildBanks()
             }
         }
 
+        for (double X = -7500; X < 7600; X += 250)
+        {
+            if (FMath::Abs(X - BridgeX) < BridgeSide + 155)
+            {
+                continue;
+            }
+            for (const double Edge : {3593.0, 4587.0})
+            {
+                Box(ETint::Retaining, FVector(X, BankY(Bank, Edge), .1), FVector(248, 24, .5));
+            }
+        }
+        // Worn thermoplastic at the west landing. The asphalt remains at driving grade.
+        for (const double CrossingX : {AtalX, BridgeX - 915})
+        {
+            for (double Y = 3665; Y <= 4545; Y += 82)
+            {
+                Box(ETint::RoadPaint, FVector(CrossingX, BankY(Bank, Y), .55), FVector(285, 40, .8));
+            }
+        }
         for (double X = -6800; X <= 7100; X += 1197)
         {
             if (FMath::Abs(X - BridgeX) > BridgeSide + 105)
@@ -279,9 +293,10 @@ void ARiverfrontWorld::BuildBanks()
         }
         for (double X = -7350; X <= 7350; X += 275)
         {
-            if (FMath::Abs(X - BridgeX) > 590)
+            if (FMath::Abs(X - BridgeX) > 590 && FMath::Abs(X - AtalX) > 215
+                && FMath::Abs(X - (BridgeX - 915)) > 215)
             {
-                Box(ETint::Paint, FVector(X, BankY(Bank, 4090), 1.0), FVector(130, 11, 2));
+                Box(ETint::RoadPaint, FVector(X, BankY(Bank, 4090), .48), FVector(130, 11, .7));
             }
             if (FMath::Abs(X - BridgeX) < BridgeSide + 125 || FMath::Abs(X - StairX) < StairHalfWidth ||
                 FMath::Abs(X - AtalX) < AtalEndHalfWidth + 15)
@@ -344,7 +359,7 @@ void ARiverfrontWorld::BuildBridge()
     }
     for (double Y = -BridgeHalfLength + 260; Y <= BridgeHalfLength - 260; Y += 272.0)
     {
-        Box(ETint::Paint, FVector(BridgeX, ChannelCenter + Y, 0.68), FVector(10, 139, 1.1));
+        Box(ETint::RoadPaint, FVector(BridgeX, ChannelCenter + Y, 0.68), FVector(10, 139, 1.1));
     }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati riverfront: %0.1f m channel; %0.1f m road crossing."),
         ChannelWidth / 100.0, DeckLength / 100.0);
@@ -365,7 +380,10 @@ void ARiverfrontWorld::BuildFrontage()
             const int32 Floors = City.RandRange(2, 4) + (Style == 3 ? 1 : 0);
             const ETint Wall = Style == 0 ? ETint::Terracotta
                 : Style == 2 ? ETint::FacadeStone : ETint::Plaster;
-            DetailFrontage(X, FrontY, Bank, Width, Depth, Floors, Wall, Style);
+            if (Bank < 0 || Index < 2 || Index > 4)
+            {
+                DetailFrontage(X, FrontY, Bank, Width, Depth, Floors, Wall, Style);
+            }
         }
 
         for (int32 Index = 0; Index < 12; ++Index)
@@ -387,6 +405,9 @@ void ARiverfrontWorld::BuildFrontage()
             }
         }
     }
+    // A connected forecourt, both side lanes, rear lane and public arcade opposite the start.
+    BuildArcadeBlock(FVector(-4290, 6425, 0), 0, 2570, 1960, 1250);
+
 }
 
 void ARiverfrontWorld::DetailFrontage(double X, double FrontY, double Bank, double Width, double Depth,
@@ -484,16 +505,59 @@ void ARiverfrontWorld::DetailFrontage(double X, double FrontY, double Bank, doub
     }
 }
 
+UStaticMesh* ARiverfrontWorld::StreetTreeMesh()
+{
+    static const FString TreePath(TEXT("/Game/Sabarmati/Riverfront/Foliage/SM_RiverfrontBroadleaf"));
+    return FPackageName::DoesPackageExist(TreePath)
+        ? LoadObject<UStaticMesh>(nullptr, *(TreePath + TEXT(".SM_RiverfrontBroadleaf"))) : nullptr;
+}
+
+int32 ARiverfrontWorld::PlaceStreetTree(UStaticMesh& Mesh, const FVector& Base, double Height,
+    FRandomStream& AppearanceRandom)
+{
+    UStaticMeshComponent* Tree = NewObject<UStaticMeshComponent>(this);
+    AddInstanceComponent(Tree);
+    Tree->SetupAttachment(GetRootComponent());
+    Tree->SetMobility(EComponentMobility::Static);
+    Tree->SetStaticMesh(&Mesh);
+    Tree->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Tree->SetGenerateOverlapEvents(false);
+    Tree->SetCanEverAffectNavigation(false);
+    const FBoxSphereBounds Bounds = Mesh.GetBounds();
+    const double Scale = Height / FMath::Max(1.0, 2.0 * Bounds.BoxExtent.Z);
+    const double Ground = Base.Z - (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
+    const FRotator Turn(0.0, AppearanceRandom.FRandRange(-180.f, 180.f), 0.0);
+    Tree->SetRelativeTransform(FTransform(Turn, FVector(Base.X, Base.Y, Ground), FVector(Scale)));
+    Tree->RegisterComponent();
+    if (IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get()))
+    {
+        // Masked scans in a bounded volume fill out branch sprays without billboard-facing motion.
+        const FTransform TreeTransform(Turn, FVector(Base.X, Base.Y, Ground), FVector(Scale));
+        for (int32 Card = 0; Card < 64; ++Card)
+        {
+            const FVector CrownCenter(16, 68, 312);
+            const FVector Scatter = AppearanceRandom.VRand();
+            const double Reach = AppearanceRandom.FRandRange(.45, 1.0);
+            const FVector Offset = CrownCenter + Scatter * FVector(143, 159, 115) * Reach;
+            const double Width = AppearanceRandom.FRandRange(51., 91.) * Scale;
+            const double Length = Width * AppearanceRandom.FRandRange(1.24, 1.64);
+            const FRotator Angle(AppearanceRandom.FRandRange(-69, 69),
+                AppearanceRandom.FRandRange(-180, 180), AppearanceRandom.FRandRange(-65, 65));
+            Shape(EShape::Plane, ETint::Leaf, TreeTransform.TransformPosition(Offset),
+                FVector(Width, Length, 100), false, Angle);
+        }
+        return 64;
+    }
+    return 0;
+}
+
 void ARiverfrontWorld::BuildStreetFurniture()
 {
     FRandomStream TreeRandom(107);
     FRandomStream AppearanceRandom(9214);
-    static const FString TreePath(TEXT("/Game/Sabarmati/Riverfront/Foliage/SM_RiverfrontBroadleaf"));
-    UStaticMesh* DetailedTree = FPackageName::DoesPackageExist(TreePath)
-        ? LoadObject<UStaticMesh>(nullptr, *(TreePath + TEXT(".SM_RiverfrontBroadleaf"))) : nullptr;
+    UStaticMesh* DetailedTree = StreetTreeMesh();
     int32 DetailedTreeCount = 0;
     int32 LeafCardCount = 0;
-    const bool bHasLeaves = IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get());
     for (const double Bank : {-1.0, 1.0})
     {
         for (double X = -6900; X <= 6900; X += 850)
@@ -514,40 +578,8 @@ void ARiverfrontWorld::BuildStreetFurniture()
             // Keep only one street row per bank and let the renderer cull occluded meshes.
             if (DetailedTree)
             {
-                UStaticMeshComponent* Tree = NewObject<UStaticMeshComponent>(this);
-                AddInstanceComponent(Tree);
-                Tree->SetupAttachment(GetRootComponent());
-                Tree->SetMobility(EComponentMobility::Static);
-                Tree->SetStaticMesh(DetailedTree);
-                Tree->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                Tree->SetGenerateOverlapEvents(false);
-                Tree->SetCanEverAffectNavigation(false);
-                const FBoxSphereBounds Bounds = DetailedTree->GetBounds();
-                const double Scale = Height * 1.32 / FMath::Max(1.0, 2.0 * Bounds.BoxExtent.Z);
-                const double Ground = 4.4 - (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
-                const FRotator Turn(0.0, AppearanceRandom.FRandRange(-180.f, 180.f), 0.0);
-                Tree->SetRelativeTransform(FTransform(Turn, FVector(X, TreeY, Ground), FVector(Scale)));
-                Tree->RegisterComponent();
+                LeafCardCount += PlaceStreetTree(*DetailedTree, FVector(X, TreeY, 4.4), Height * 1.32, AppearanceRandom);
                 ++DetailedTreeCount;
-                if (bHasLeaves)
-                {
-                    // Masked scans in a bounded volume fill out branch sprays without billboard-facing motion.
-                    const FTransform TreeTransform(Turn, FVector(X, TreeY, Ground), FVector(Scale));
-                    for (int32 Card = 0; Card < 64; ++Card)
-                    {
-                        const FVector CrownCenter(16, 68, 312);
-                        const FVector Scatter = AppearanceRandom.VRand();
-                        const double Reach = AppearanceRandom.FRandRange(.45, 1.0);
-                        const FVector Offset = CrownCenter + Scatter * FVector(143, 159, 115) * Reach;
-                        const double Width = AppearanceRandom.FRandRange(51., 91.) * Scale;
-                        const double Length = Width * AppearanceRandom.FRandRange(1.24, 1.64);
-                        const FRotator Angle(AppearanceRandom.FRandRange(-69, 69),
-                            AppearanceRandom.FRandRange(-180, 180), AppearanceRandom.FRandRange(-65, 65));
-                        Shape(EShape::Plane, ETint::Leaf, TreeTransform.TransformPosition(Offset),
-                            FVector(Width, Length, 100), false, Angle);
-                        ++LeafCardCount;
-                    }
-                }
             }
             else
             {
@@ -571,6 +603,7 @@ void ARiverfrontWorld::BuildStreetFurniture()
             Beam(ETint::Rail, FVector(X + 325, LampY, 384),
                 FVector(X + 325, LampY - Bank * 75, 429), 10);
             Box(ETint::Paint, FVector(X + 325, LampY - Bank * 83, 429), FVector(36, 55, 15));
+            AddPractical(FVector(X + 325, LampY - Bank * 83, 420), -90. * Bank);
 
             if (FMath::Fmod(FMath::Abs(X + 6900.0), 1700.0) < 1.0)
             {
@@ -598,42 +631,4 @@ void ARiverfrontWorld::BuildStreetFurniture()
     }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati riverfront: %d detailed trees; %d masked foliage cards."),
         DetailedTreeCount, LeafCardCount);
-}
-
-void ARiverfrontWorld::BuildLighting()
-{
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
-    }
-    World->SpawnActor<ASkyAtmosphere>();
-    if (ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
-        FVector(0, 0, 16000), FRotator(-34, 104, 0)))
-    {
-        UDirectionalLightComponent* Light = Cast<UDirectionalLightComponent>(Sun->GetLightComponent());
-        if (Light)
-        {
-            Light->SetMobility(EComponentMobility::Movable);
-            Light->SetIntensity(5.05f);
-            Light->SetTemperature(5400.f);
-            Light->SetUseTemperature(true);
-            Light->SetLightSourceAngle(1.15f);
-            Light->ContactShadowLength = .045f;
-            Light->SetAtmosphereSunLight(true);
-        }
-    }
-    if (ASkyLight* SkyLight = World->SpawnActor<ASkyLight>())
-    {
-        USkyLightComponent* Light = SkyLight->GetLightComponent();
-        Light->SetMobility(EComponentMobility::Movable);
-        Light->SetIntensity(0.92f);
-        Light->SetCaptureIsDirty();
-    }
-    if (AExponentialHeightFog* Fog = World->SpawnActor<AExponentialHeightFog>(
-        FVector(0, 0, -250), FRotator::ZeroRotator))
-    {
-        Fog->GetComponent()->SetFogDensity(.008f);
-        Fog->GetComponent()->SetFogHeightFalloff(.24f);
-    }
 }

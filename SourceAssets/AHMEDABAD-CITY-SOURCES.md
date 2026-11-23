@@ -34,10 +34,10 @@ proprietary basemap style, satellite imagery or Esri rendering is embedded.
   and intersections approximated. This is a drivable geographic base,
   not a survey, photoreal city, or turn-by-turn routing system.
 - The optional **~3.3 × 3.3 km central footprint pilot** adds 1,422 exterior
-  building massing shells from 1,683 mapped footprints. The shell geometry
+  building plots from 1,683 mapped footprints. The shell geometry
   uses fitted simplified rectangles, estimated heights and existing art
   materials, with procedural glazing, roof trim and street-facing openings.
-  They are not reconstructed individual facades. No interiors are present.
+  The closest large plot to the city start has two structural wings, a sheltered colonnade and an open cross-passage. Facades, heights and openings are artistic estimates. Private interiors are outside the playable area.
   Shapes that overlap mapped roads or water are excluded. The rest of the
   city does not yet have exterior massing.
 - The verified start is on Sabarmati Riverfront Road west of Atal's
@@ -59,3 +59,8 @@ inconsistent counts or conflicting duplicate data stop extraction. Re-run
 into a fresh directory for a new snapshot. The game needs the road/water binary, plus the optional building binary.
 The companion JSON manifests provide counts and SHA-256 digests; the raw
 GeoJSON is not packaged.
+
+
+The Atal west-bank reference area shows elongated flat-roofed buildings, secondary roof volumes, and narrow access lanes beside the larger carriageways. The original arcade interprets those features using the existing OSM plot. Esri World Imagery was viewed during development. All shipped geometry and textures come from the local map data, project models and the credited surface materials. [Satellite view centred on the west approach](https://www.arcgis.com/apps/mapviewer/index.html?basemap=satellite&center=72.572,23.017&level=18)
+
+Major road sections within about 530 m of the city start receive precast kerbs, footpaths and drain grilles. The mesh builder checks adjacent mapped road widths and leaves openings at junctions. Width, drainage positions and façade details are inferred.

@@ -21,7 +21,7 @@ void Add(const FVector& Base, const FRotator& Rotation, double Width, double Dep
 
     const int32 Floors = FMath::Clamp(FMath::RoundToInt(Height / 315.0), 1, 9);
     const double Floor = Height / Floors;
-    const int32 Bays = FMath::Clamp(FMath::FloorToInt(Width / (Style == 1 ? 260.0 : 330.0)), 1, 6);
+    const int32 Bays = FMath::Clamp(FMath::FloorToInt(Width / (Style == 1 ? 260.0 : 330.0)), 1, 12);
     const double Bay = Width / Bays;
     for (int32 Side : {-1, 1})
     {
@@ -39,6 +39,13 @@ void Add(const FVector& Base, const FRotator& Rotation, double Width, double Dep
                     FVector(PaneWidth + 18.0, 15.0, 9.0));
             }
         }
+        if (Width >= 510)
+        {
+            // A full-height entry and projecting rain hood break the ground-floor rhythm.
+            const double DoorX = -Width * .5 + Bay;
+            Place(Glass, FVector(DoorX, Y + Side * 7, 107), FVector(96, 12, 212));
+            Place(Trim, FVector(DoorX, Y + Side * 30, 226), FVector(132, 63, 10));
+        }
         if (Style == 2 && Floors >= 3 && Depth > 450.0)
         {
             // Continuous weather-sheds; deliberately shallow to stay within road clearances.
@@ -55,7 +62,7 @@ void Add(const FVector& Base, const FRotator& Rotation, double Width, double Dep
     {
         for (const int32 Side : {-1, 1})
         {
-            for (int32 Storey = 1; Storey < Floors; ++Storey)
+            for (int32 Storey = 0; Storey < Floors; ++Storey)
             {
                 const double Z = Floor * (Storey + .56);
                 for (const double Y : {-Depth * .23, Depth * .23})
@@ -67,6 +74,11 @@ void Add(const FVector& Base, const FRotator& Rotation, double Width, double Dep
         }
     }
 
+    if (Width > 800 && Depth > 720 && Floors >= 2)
+    {
+        Place(Trim, FVector(Width * .17, -Depth * .13, Height + 84),
+            FVector(FMath::Min(Width * .29, 350.), FMath::Min(Depth * .3, 270.), 158));
+    }
     const double RoofZ = Height + 22.0;
     for (const int32 Side : {-1, 1})
     {

@@ -173,7 +173,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 }
                 if (!BreakForRoad(X, 120))
                 {
-                    Box(ETint::Paint, FVector(X, BankPosition(Bank, 4090), .55), FVector(182, 11, 1));
+                    Box(ETint::RoadPaint, FVector(X, BankPosition(Bank, 4090), .55), FVector(182, 11, 1));
                     if (!bAtStair)
                     {
                         Box(ETint::Rail, FVector(X, BankPosition(Bank, 2503), 54), FVector(9, 9, 108), true);
@@ -191,6 +191,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
                 Beam(ETint::Rail, FVector(X, LampY, 451),
                     FVector(X, LampY + Bank * 82, 482), 9);
                 Box(ETint::Paint, FVector(X, LampY + Bank * 84, 481), FVector(26, 45, 7));
+                AddPractical(FVector(X, LampY + Bank * 84, 476), 90. * Bank);
             }
             for (double X = Start + 800; X < End - 450; X += 2380)
             {
@@ -306,7 +307,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
             {
                 for (const double Offset : {-375.0, 0.0, 375.0})
                 {
-                    Box(ETint::Paint, FVector(X + Offset, RiverCenter + Y, .52),
+                    Box(ETint::RoadPaint, FVector(X + Offset, RiverCenter + Y, .52),
                         FVector(12, 166, 1));
                 }
             }
@@ -315,7 +316,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         {
             for (double Y = -14600; Y <= 14600; Y += 370)
             {
-                Box(ETint::Paint, FVector(X, RiverCenter + Y, .52), FVector(11, 158, 1));
+                Box(ETint::RoadPaint, FVector(X, RiverCenter + Y, .52), FVector(11, 158, 1));
             }
         }
         for (const double PierY : {-9900.0, -6600.0, -3300.0, 0.0, 3300.0, 6600.0, 9900.0})

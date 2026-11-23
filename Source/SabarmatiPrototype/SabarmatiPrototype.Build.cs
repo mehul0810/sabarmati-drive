@@ -8,6 +8,6 @@ public class SabarmatiPrototype : ModuleRules
         PublicDependencyModuleNames.AddRange(new[] {
             "Core", "CoreUObject", "Engine", "InputCore"
         });
-        PrivateDependencyModuleNames.AddRange(new[] { "Slate", "SlateCore", "ProceduralMeshComponent" });
+        PrivateDependencyModuleNames.AddRange(new[] { "Slate", "SlateCore", "ProceduralMeshComponent", "RenderCore", "RHI" });
     }
 }

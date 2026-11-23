@@ -4,11 +4,12 @@
 #include "RiverfrontCar.h"
 #include "RiverfrontLocalProfile.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 #include "Components/InputComponent.h"
+#include "EngineUtils.h"
 #if !UE_BUILD_SHIPPING
 #include "Containers/Ticker.h"
-#include "EngineUtils.h"
 #include "InputKeyEventArgs.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontPedestrian.h"
@@ -130,6 +131,7 @@ public:
         SLATE_EVENT(FCreateLocalProfile, OnCreateProfile)
         SLATE_EVENT(FOnFloatValueChanged, OnSensitivity)
         SLATE_EVENT(FSimpleDelegate, OnContinue)
+        SLATE_EVENT(FOnClicked, OnQuit)
     SLATE_END_ARGS()
 
     void Construct(const FArguments& Args)
@@ -289,19 +291,35 @@ public:
                             ]
                             + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 10.f, 0.f, 0.f)
                             [
-                                SNew(SButton)
-                                .Visibility_Lambda([this]() { return bCityAvailable && !NeedsProfile() ? EVisibility::Visible : EVisibility::Collapsed; })
-                                .ContentPadding(FMargin(12.f, 7.f))
-                                .OnClicked_Lambda([this]()
-                                {
-                                    SwitchMap.ExecuteIfBound();
-                                    return FReply::Handled();
-                                })
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
                                 [
-                                    SNew(STextBlock)
-                                    .ColorAndOpacity(Paper)
-                                    .Text(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront")
-                                        : LOCTEXT("SwitchCity", "Explore Ahmedabad"))
+                                    SNew(SButton)
+                                    .Visibility_Lambda([this]() { return bCityAvailable && !NeedsProfile() ? EVisibility::Visible : EVisibility::Collapsed; })
+                                    .ContentPadding(FMargin(12.f, 7.f))
+                                    .OnClicked_Lambda([this]()
+                                    {
+                                        SwitchMap.ExecuteIfBound();
+                                        return FReply::Handled();
+                                    })
+                                    [
+                                        SNew(STextBlock)
+                                        .ColorAndOpacity(Paper)
+                                        .Text(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront")
+                                            : LOCTEXT("SwitchCity", "Explore Ahmedabad"))
+                                    ]
+                                ]
+                                + SHorizontalBox::Slot().AutoWidth()
+                                [
+                                    SNew(SButton)
+                                    .ContentPadding(FMargin(12.f, 7.f))
+                                    .ClickMethod(EButtonClickMethod::MouseDown)
+                                    .OnClicked(Args._OnQuit)
+                                    [
+                                        SNew(STextBlock)
+                                        .ColorAndOpacity(Paper)
+                                        .Text(LOCTEXT("QuitButton", "Quit Game"))
+                                    ]
                                 ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
@@ -465,7 +483,8 @@ void ARiverfrontPlayerController::BeginPlay()
     if (IsLocalController() && FApp::CanEverRender() && GetWorld()->GetGameViewport())
     {
 #if !UE_BUILD_SHIPPING
-        if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview")))
+        if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
             FGuid TestId;
@@ -498,6 +517,7 @@ void ARiverfrontPlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
     InputComponent->BindAction(TEXT("PauseDrive"), IE_Pressed, this, &ARiverfrontPlayerController::TogglePauseMenu);
+    InputComponent->BindAction(TEXT("DistrictTime"), IE_Pressed, this, &ARiverfrontPlayerController::CycleDistrictTime);
 }
 
 void ARiverfrontPlayerController::ShowTitle()
@@ -526,8 +546,8 @@ void ARiverfrontPlayerController::ShowTitle()
         }
         const FIntPoint Output = View->Viewport->GetSizeXY();
         const IConsoleVariable* Fraction = Settings.FindConsoleVariable(TEXT("r.ScreenPercentage"));
-        UE_LOG(LogTemp, Display, TEXT("Sabarmati video: viewport=%dx%d, screen percentage=%.0f."),
-            Output.X, Output.Y, Fraction ? Fraction->GetFloat() : -1.f);
+        UE_LOG(LogTemp, Display, TEXT("Sabarmati video: viewport=%dx%d, windowed=%d, screen percentage=%.0f."),
+            Output.X, Output.Y, View->Viewport->GetWindowMode() == EWindowMode::Windowed, Fraction ? Fraction->GetFloat() : -1.f);
     }
 
     FVector ViewLocation(-3980, 2650, 356);
@@ -549,11 +569,29 @@ void ARiverfrontPlayerController::ShowTitle()
         SetViewTarget(TitleCamera.Get());
     }
 #if !UE_BUILD_SHIPPING
+    if (Screen == EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")))
+    {
+        RunRenderingBenchmark();
+        return;
+    }
     // Opt-in Metal capture for asset review. Core ticker continues while the title pauses the world.
     if (Screen == EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview")))
     {
         const FString CaptureDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ArtReview"));
         IFileManager::Get().MakeDirectory(*CaptureDir, true);
+        if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiWalkReview")))
+        {
+            // The isolated QA slot was chosen in BeginPlay.
+            if (HasLocalProfile() || CreateLocalProfile(TEXT("Street Review")).IsEmpty())
+            {
+                ResumeDrive();
+                if (TActorIterator<ARiverfrontWorld> It{GetWorld()}; It)
+                {
+                    It->ReviewArcadeWalk(*this);
+                }
+            }
+            return;
+        }
         const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
         const bool bReviewCity = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiCityReview"));
         const bool bCityWorld = Mode && Mode->IsCityMode();
@@ -950,6 +988,17 @@ void ARiverfrontPlayerController::SetMouseSensitivity(float Value)
     }
 }
 
+void ARiverfrontPlayerController::CycleDistrictTime()
+{
+    if (Screen == EScreen::Playing)
+    {
+        if (TActorIterator<ARiverfrontWorld> District{GetWorld()}; District)
+        {
+            District->CycleTimeOfDay();
+        }
+    }
+}
+
 void ARiverfrontPlayerController::TogglePauseMenu()
 {
     if (Screen == EScreen::Playing)
@@ -989,7 +1038,8 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
         .OnCreateProfile(FCreateLocalProfile::CreateUObject(this, &ARiverfrontPlayerController::CreateLocalProfile))
         .Sensitivity(MouseSensitivity)
         .OnSensitivity(FOnFloatValueChanged::CreateUObject(this, &ARiverfrontPlayerController::SetMouseSensitivity))
-        .OnContinue(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ResumeDrive));
+        .OnContinue(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ResumeDrive))
+        .OnQuit(FOnClicked::CreateUObject(this, &ARiverfrontPlayerController::QuitDrive));
     Overlay = Menu;
     Viewport->AddViewportWidgetContent(Menu, 20);
     bShowMouseCursor = true;
@@ -1040,18 +1090,32 @@ void ARiverfrontPlayerController::ResumeDrive()
         bFromTitle ? TEXT("Start") : TEXT("Resume"), IsPaused());
     RemoveOverlay();
     bShowMouseCursor = false;
-    if (GConfig && bSensitivityChanged)
-    {
-        GConfig->SetFloat(LookSection, LookPreference, MouseSensitivity, GGameUserSettingsIni);
-        GConfig->Flush(false, GGameUserSettingsIni);
-        bSensitivityChanged = false;
-    }
+    SaveLookPreference();
     FlushPressedKeys();
     // Cursor recentering as Slate hands focus back can produce a spurious relative delta.
     LookReadyAt = FPlatformTime::Seconds() + 0.25;
     FInputModeGameOnly GameInput;
     GameInput.SetConsumeCaptureMouseDown(true);
     SetInputMode(GameInput);
+}
+
+void ARiverfrontPlayerController::SaveLookPreference()
+{
+    if (GConfig && bSensitivityChanged)
+    {
+        GConfig->SetFloat(LookSection, LookPreference, MouseSensitivity, GGameUserSettingsIni);
+        GConfig->Flush(false, GGameUserSettingsIni);
+        bSensitivityChanged = false;
+    }
+}
+
+FReply ARiverfrontPlayerController::QuitDrive()
+{
+    SaveLookPreference();
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati menu: Quit Game from %s."),
+        Screen == EScreen::Paused ? TEXT("pause") : TEXT("title"));
+    UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+    return FReply::Handled();
 }
 
 void ARiverfrontPlayerController::SwitchFreeRoamMap()
