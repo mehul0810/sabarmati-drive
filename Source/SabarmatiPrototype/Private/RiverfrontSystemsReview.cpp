@@ -102,6 +102,11 @@ public:
         case 11:
             if (FVector::Dist2D(Car->GetActorLocation(),Origin)<5200 && Age<14.) return true;
             if (Car->GetGear()<2 || !Car->HasFourContacts() || Car->GetSpeedKph()<12) return Fail(TEXT("four wheel drive and gear change"));
+            Shot(TEXT("driving-instruments"));
+            if (!Write(TEXT("driving-instruments.csv"), FString::Printf(
+                TEXT("speed_kmh,gear,engine_rpm,fuel_percent\n%.2f,%d,%.0f,%.2f\n"),
+                Car->GetSpeedKph(),Car->GetGear(),Car->GetEngineRpm(),100.f*Car->GetFuel())))
+                return Fail(TEXT("driving instrument readings"));
             Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);break;
         case 12:
             if (Car->GetSpeedKph()>1.f && Age<8.) return true;

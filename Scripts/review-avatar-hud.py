@@ -116,7 +116,7 @@ def main():
             home = root / case
             play(args.game, home, case, ["-SabarmatiSystemsReview"], "Sabarmati systems review complete:", args.size)
             report, = (home / "Saved/SystemsReviews").glob("*/systems.txt")
-            check_images(report.parent, ["door", "cockpit", "tea-visit"], args.size)
+            check_images(report.parent, ["door", "cockpit", "driving-instruments", "tea-visit"], args.size)
     print(f"Passed. Evidence directory {root}", flush=True)
 
 
