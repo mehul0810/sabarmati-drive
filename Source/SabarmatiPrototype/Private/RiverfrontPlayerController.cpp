@@ -35,6 +35,7 @@
 #include "Misc/ConfigCacheIni.h"
 #include "Styling/CoreStyle.h"
 #include "TimerManager.h"
+#include "Widgets/Colors/SComplexGradient.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
@@ -139,6 +140,54 @@ DECLARE_DELEGATE_RetVal_OneParam(FText, FCreateLocalProfile, const FString&);
 
 DECLARE_DELEGATE_OneParam(FSabarmatiQuality,int32);
 
+const FLinearColor MenuInk(FColor(17, 25, 22));
+const FLinearColor MenuGold(FColor(243, 187, 114));
+const FLinearColor MenuIvory(FColor(246, 241, 232));
+
+class SRiverfrontMenuAction : public SButton
+{
+public:
+    SLATE_BEGIN_ARGS(SRiverfrontMenuAction) : _ClickMethod(EButtonClickMethod::DownAndUp) {}
+        SLATE_ATTRIBUTE(FText, Label)
+        SLATE_ARGUMENT(EButtonClickMethod::Type, ClickMethod)
+        SLATE_EVENT(FOnClicked, OnClicked)
+    SLATE_END_ARGS()
+
+    void Construct(const FArguments& Args)
+    {
+        SButton::Construct(SButton::FArguments()
+            .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+            .HAlign(HAlign_Fill).ContentPadding(0)
+            .ClickMethod(Args._ClickMethod)
+            .OnClicked(Args._OnClicked)
+            [
+                SNew(SOverlay)
+                + SOverlay::Slot()
+                [
+                    SNew(SComplexGradient).Orientation(Orient_Vertical)
+                    .GradientColors(TArray<FLinearColor>{MenuGold.CopyWithNewOpacity(.20f), MenuGold.CopyWithNewOpacity(0.f)})
+                    .Visibility_Lambda([this]{ return IsSelected() ? EVisibility::HitTestInvisible : EVisibility::Hidden; })
+                ]
+                + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
+                [
+                    SNew(SBox).WidthOverride(3.f).HeightOverride(21.f)
+                    [
+                        SNew(SImage).Image(FCoreStyle::Get().GetBrush("WhiteBrush")).ColorAndOpacity(MenuGold)
+                        .Visibility_Lambda([this]{ return IsSelected() ? EVisibility::HitTestInvisible : EVisibility::Hidden; })
+                    ]
+                ]
+                + SOverlay::Slot().VAlign(VAlign_Center).Padding(16.f, 6.f, 8.f, 6.f)
+                [
+                    SNew(STextBlock).Text(Args._Label)
+                    .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 19))
+                    .ColorAndOpacity_Lambda([this]{ return FSlateColor(IsSelected() ? MenuGold : MenuIvory); })
+                ]
+            ]);
+    }
+private:
+    bool IsSelected() const { return IsHovered() || HasKeyboardFocus(); }
+};
+
 class SRiverfrontMenu : public SCompoundWidget
 {
 public:
@@ -180,9 +229,11 @@ public:
             ProfileError = LOCTEXT("ProfileUnreadable", "The saved profile could not be opened. No data was overwritten.");
         }
         SensitivityChanged = Args._OnSensitivity;
-        const FLinearColor Paper(.96f, .92f, .85f, 1.f);
-        const FLinearColor Muted(.76f, .72f, .67f, 1.f);
-        const FLinearColor Accent(.88f, .68f, .43f, 1.f);
+        const FLinearColor Paper = MenuIvory;
+        const FLinearColor Muted(FColor(205, 211, 200));
+        const FLinearColor Accent = MenuGold;
+        FSlateFontInfo PlaceFont = FCoreStyle::GetDefaultFontStyle("Bold", 11);
+        PlaceFont.LetterSpacing = 125;
         const FString TitleArt = FPaths::ConvertRelativePathToFull(
             FPaths::Combine(FPaths::ProjectContentDir(), TEXT("TitleArtwork/SabarmatiDusk.png")));
         if (!bIsPause && IFileManager::Get().FileExists(*TitleArt))
@@ -202,48 +253,39 @@ public:
             ]
             + SOverlay::Slot()
             [
-                SNew(SBorder)
-                .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(FLinearColor(.012f, .022f, .026f, bIsPause ? .54f : .16f))
+                SNew(SComplexGradient).Orientation(Orient_Vertical).Visibility(EVisibility::HitTestInvisible)
+                .GradientColors(TArray<FLinearColor>{
+                    MenuInk.CopyWithNewOpacity(.97f), MenuInk.CopyWithNewOpacity(.92f),
+                    MenuInk.CopyWithNewOpacity(.77f), MenuInk.CopyWithNewOpacity(.36f),
+                    MenuInk.CopyWithNewOpacity(bIsPause ? .15f : .04f), MenuInk.CopyWithNewOpacity(bIsPause ? .12f : .02f)})
             ]
             + SOverlay::Slot()
-            .HAlign(bIsPause ? HAlign_Center : HAlign_Left).VAlign(VAlign_Center).Padding(38.f, 22.f)
+            .HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(48.f, 22.f)
             [
                 SNew(SScaleBox).Stretch(EStretch::ScaleToFit).StretchDirection(EStretchDirection::DownOnly)
                 [
-                    SNew(SBox).WidthOverride(540.f)
+                    SNew(SBox).WidthOverride(445.f)
                     [
-                        SNew(SBorder)
-                        .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                        .BorderBackgroundColor(FLinearColor(.021f, .025f, .025f, bIsPause ? .95f : .87f))
-                        .Padding(FMargin(37.f, 33.f))
-                        [
                             SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
                             [
                                 SNew(STextBlock)
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 13))
-                                .ColorAndOpacity(Accent)
+                                .Font(PlaceFont).ColorAndOpacity(Accent)
                                 .Text(bIsCity ? LOCTEXT("CityPlace", "AHMEDABAD  /  CITY FREE ROAM")
                                     : LOCTEXT("Place", "AHMEDABAD  /  SABARMATI RIVERFRONT"))
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
                             [
                                 SNew(STextBlock)
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 44))
+                                .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 55))
                                 .ColorAndOpacity(Paper)
-                                .Text(bIsPause ? LOCTEXT("Paused", "Drive paused") : LOCTEXT("Title", "Sabarmati Drive"))
+                                .Text(bIsPause ? LOCTEXT("Paused", "Paused") : LOCTEXT("Title", "Sabarmati Drive"))
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 26.f)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SNew(STextBlock)
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
-                                .ColorAndOpacity(Muted)
-                                .AutoWrapText(true)
-                                .Text(bIsPause ? LOCTEXT("PausedHelp", "Pick up where you left off.")
-                                    : bCityFailed ? LOCTEXT("CityUnavailable", "The offline city data could not be loaded. The riverfront is available.")
-                                    : bIsCity ? LOCTEXT("CityHelp", "Drive Ahmedabad’s mapped roads. Scenery and terrain are simplified.")
-                                    : LOCTEXT("TitleHelp", "Wake up at Kesar Apartments, walk down to Sutra Cloth House, or take your car along the riverfront."))
+                                SNew(STextBlock).Visibility(bCityFailed ? EVisibility::Visible : EVisibility::Collapsed)
+                                .AutoWrapText(true).Margin(FMargin(0.f, 0.f, 0.f, 14.f)).ColorAndOpacity(Muted)
+                                .Text(LOCTEXT("CityUnavailable", "The offline city data could not be loaded. The riverfront is available."))
                             ]
                             + SVerticalBox::Slot().AutoHeight()
                             [
@@ -254,14 +296,14 @@ public:
                                     SNew(STextBlock)
                                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 15))
                                     .ColorAndOpacity(Paper)
-                                    .Text(LOCTEXT("ProfileLabel", "Create local player profile"))
+                                    .Text(LOCTEXT("ProfileLabel", "New player"))
                                 ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 9.f)
                                 [
                                     SNew(STextBlock)
                                     .ColorAndOpacity(Muted)
                                     .AutoWrapText(true)
-                                    .Text(LOCTEXT("ProfilePrivacy", "Choose a display name to unlock Start. It stays on this Mac. No email or password."))
+                                    .Text(LOCTEXT("ProfilePrivacy", "Your name and progress are saved on this Mac."))
                                 ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 9.f)
                                 [
@@ -283,18 +325,11 @@ public:
                                 ]
                                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
                                 [
-                                    SNew(SButton)
+                                    SNew(SRiverfrontMenuAction)
                                     .Tag(TEXT("MorningCreateProfile"))
                                     .IsEnabled(!bUnreadableProfile)
-                                    .ContentPadding(FMargin(22.f, 10.f))
-                                    .ButtonColorAndOpacity(FLinearColor(.46f, .29f, .13f))
+                                    .Label(LOCTEXT("CreateProfileButton", "Create profile"))
                                     .OnClicked(this, &SRiverfrontMenu::OnCreateClicked)
-                                    [
-                                        SNew(STextBlock)
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
-                                        .ColorAndOpacity(Paper)
-                                        .Text(LOCTEXT("CreateProfileButton", "Create profile"))
-                                    ]
                                 ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 10.f)
@@ -302,69 +337,32 @@ public:
                                 SNew(STextBlock)
                                 .Visibility_Lambda([this]() { return !bIsPause && !PlayerName.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
                                 .ColorAndOpacity(Accent)
-                                .Text_Lambda([this]() { return FText::Format(LOCTEXT("LocalPlayerName", "Local player: {0}"), FText::FromString(PlayerName)); })
+                                .Text_Lambda([this]() { return FText::FromString(PlayerName); })
                             ]
-                            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SAssignNew(PrimaryButton, SButton)
-                                .Tag(TEXT("MorningStart"))
+                                SAssignNew(PrimaryButton, SRiverfrontMenuAction).Tag(TEXT("MorningStart"))
                                 .Visibility_Lambda([this]() { return NeedsProfile() ? EVisibility::Collapsed : EVisibility::Visible; })
-                                .ContentPadding(FMargin(32.f, 11.f))
-                                .HAlign(HAlign_Center)
-                                .ButtonColorAndOpacity(FLinearColor(.46f, .29f, .13f))
+                                .Label(bIsPause ? LOCTEXT("Resume", "Resume") : Args._HasCheckpoint ? LOCTEXT("ContinueHome", "Continue") : LOCTEXT("Start", "Start"))
                                 .ClickMethod(EButtonClickMethod::MouseDown)
                                 .OnClicked(this, &SRiverfrontMenu::OnPrimaryClicked)
-                                [
-                                    SNew(STextBlock)
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 20))
-                                    .ColorAndOpacity(Paper)
-                                    .Text(bIsPause ? LOCTEXT("Resume", "Resume") : Args._HasCheckpoint ? LOCTEXT("ContinueHome", "Continue") : LOCTEXT("Start", "Start"))
-                                ]
                             ]
-                            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 10.f, 0.f, 0.f)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SNew(SHorizontalBox)
-                                + SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
-                                [
-                                    SNew(SButton)
-                                    .Visibility_Lambda([this]() { return bCityAvailable && !NeedsProfile() ? EVisibility::Visible : EVisibility::Collapsed; })
-                                    .ContentPadding(FMargin(12.f, 7.f))
-                                    .OnClicked_Lambda([this]()
-                                    {
-                                        SwitchMap.ExecuteIfBound();
-                                        return FReply::Handled();
-                                    })
-                                    [
-                                        SNew(STextBlock)
-                                        .ColorAndOpacity(Paper)
-                                        .Text(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront")
-                                            : LOCTEXT("SwitchCity", "Explore Ahmedabad"))
-                                    ]
-                                ]
-                                + SHorizontalBox::Slot().AutoWidth()
-                                [
-                                    SNew(SButton)
-                                    .ContentPadding(FMargin(12.f, 7.f))
-                                    .ClickMethod(EButtonClickMethod::MouseDown)
-                                    .Tag(TEXT("MorningQuit"))
-                                    .OnClicked(Args._OnQuit)
-                                    [
-                                        SNew(STextBlock)
-                                        .ColorAndOpacity(Paper)
-                                        .Text(LOCTEXT("QuitButton", "Quit Game"))
-                                    ]
-                                ]
+                                SNew(SRiverfrontMenuAction)
+                                .Visibility_Lambda([this]() { return bCityAvailable && !NeedsProfile() ? EVisibility::Visible : EVisibility::Collapsed; })
+                                .Label(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront") : LOCTEXT("SwitchCity", "Explore Ahmedabad"))
+                                .OnClicked_Lambda([this]{ SwitchMap.ExecuteIfBound(); return FReply::Handled(); })
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SNew(STextBlock)
-                                .Visibility(bIsCity ? EVisibility::Visible : EVisibility::Collapsed)
-                                .ColorAndOpacity(Muted)
-                                .Text(LOCTEXT("CityCredit", "© OpenStreetMap contributors  /  www.openstreetmap.org/copyright"))
+                                SNew(SRiverfrontMenuAction).Tag(TEXT("DriveSettings"))
+                                .Label_Lambda([this]{ return bSettingsOpen ? LOCTEXT("HideSettings", "Close settings") : LOCTEXT("OpenSettings", "Settings"); })
+                                .OnClicked_Lambda([this]{ bSettingsOpen = !bSettingsOpen; return FReply::Handled(); })
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.f, 17.f, 0.f, 0.f)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SNew(SHorizontalBox)
+                                SNew(SHorizontalBox).Visibility_Lambda([this]{ return bSettingsOpen ? EVisibility::Visible : EVisibility::Collapsed; })
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 12.f, 0.f)
                                 [
                                     SNew(STextBlock)
@@ -396,13 +394,13 @@ public:
                                     ]
                                 ]
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0,8,0,0)
+                            + SVerticalBox::Slot().AutoHeight()
                             [
-                                SNew(SHorizontalBox)
+                                SNew(SHorizontalBox).Visibility_Lambda([this]{ return bSettingsOpen ? EVisibility::Visible : EVisibility::Collapsed; })
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,12,0)
                                 [ SNew(STextBlock).ColorAndOpacity(Paper).Text(LOCTEXT("Volume","Master volume")) ]
                                 + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
-                                [ SNew(SSlider).MinValue(0.f).MaxValue(1.f).StepSize(.05f)
+                                [ SNew(SSlider).RequiresControllerLock(false).MinValue(0.f).MaxValue(1.f).StepSize(.05f)
                                   .Value_Lambda([this]{return Volume;})
                                   .OnValueChanged_Lambda([this](float V){Volume=V;AudioChanged.ExecuteIfBound(V);}) ]
                                 + SHorizontalBox::Slot().AutoWidth().Padding(12,0,0,0)
@@ -413,16 +411,29 @@ public:
                                   })
                                   .OnClicked_Lambda([this]{Quality=(Quality+1)%5;QualityChanged.ExecuteIfBound(Quality);return FReply::Handled();}) ]
                             ]
+                            + SVerticalBox::Slot().AutoHeight()
+                            [
+                                SNew(SRiverfrontMenuAction).Tag(TEXT("MorningQuit"))
+                                .Label(LOCTEXT("QuitButton", "Quit Game"))
+                                .ClickMethod(EButtonClickMethod::MouseDown)
+                                .OnClicked(Args._OnQuit)
+                            ]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
+                            [
+                                SNew(STextBlock)
+                                .Visibility(bIsCity ? EVisibility::Visible : EVisibility::Collapsed)
+                                .ColorAndOpacity(Muted)
+                                .Text(LOCTEXT("CityCredit", "© OpenStreetMap contributors  /  www.openstreetmap.org/copyright"))
+                            ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 0.f)
                             [
                                 SNew(STextBlock)
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 13))
                                 .ColorAndOpacity(Muted)
                                 .Margin(FMargin(0.f, 18.f, 0.f, 0.f))
-                                .Text(bIsPause ? LOCTEXT("ResumeHint", "Esc to resume")
-                                    : LOCTEXT("StartHint", "WASD to move   |   Mouse to look   |   Esc to pause"))
+                                .Text(bIsPause ? LOCTEXT("ResumeHint", "Esc   Resume")
+                                    : LOCTEXT("StartHint", "WASD   Move       Mouse   Look       Esc   Pause"))
                             ]
-                        ]
                     ]
                 ]
             ]
@@ -499,6 +510,7 @@ private:
     }
 
     bool bIsPause = false;
+    bool bSettingsOpen = false;
     float LookSensitivity = .30f, Volume=1.f;
     int32 Quality=-1;
     FOnFloatValueChanged AudioChanged;
