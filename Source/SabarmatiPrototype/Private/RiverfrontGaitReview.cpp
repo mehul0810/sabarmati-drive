@@ -42,6 +42,11 @@ struct FGaitFrame
     double Elbows[2]{};
 };
 
+struct FGaitBones
+{
+    FName Thigh, Calf, Ankle, Ball, UpperArm, Forearm, Hand;
+};
+
 struct FGaitStrip
 {
     int32 Mode = 0;
@@ -174,7 +179,7 @@ void ARiverfrontPlayerController::RunGaitReview()
     }
     ResumeDrive();
     auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
-    if (!Walker || !Walker->GetMesh() || !Walker->GetMesh()->GetSkeletalMeshAsset())
+    if (!Walker || !Walker->GetAvatarMesh() || !Walker->GetAvatarMesh()->GetSkeletalMeshAsset())
     {
         UE_LOG(LogTemp,Error,TEXT("Gait review did not find the playable skeletal mesh."));
         FPlatformMisc::RequestExitWithStatus(false,1);
@@ -209,19 +214,43 @@ void ARiverfrontPlayerController::RunGaitReview()
         }
     }
     auto State=MakeShared<FGaitStrip>();
-    auto* Skin=Walker->GetMesh();
-    const auto& Rig=Skin->GetSkeletalMeshAsset()->GetRefSkeleton();
+    auto* Skin = Walker->GetAvatarMesh();
+    const auto* Mesh = Skin->GetSkeletalMeshAsset();
+    const auto& Rig = Mesh->GetRefSkeleton();
+    const bool bEpicRig = Rig.FindBoneIndex(TEXT("foot_l")) != INDEX_NONE;
+    const TArray<FGaitBones> Bones = bEpicRig ? TArray<FGaitBones>{
+        {TEXT("thigh_l"), TEXT("calf_l"), TEXT("foot_l"), TEXT("ball_l"), TEXT("upperarm_l"), TEXT("lowerarm_l"), TEXT("hand_l")},
+        {TEXT("thigh_r"), TEXT("calf_r"), TEXT("foot_r"), TEXT("ball_r"), TEXT("upperarm_r"), TEXT("lowerarm_r"), TEXT("hand_r")}}
+        : TArray<FGaitBones>{
+        {TEXT("Hipl"), TEXT("Kneel"), TEXT("Footl"), NAME_None, TEXT("Shoulderl"), TEXT("Elbowl"), TEXT("Handl")},
+        {TEXT("Hipr"), TEXT("Kneer"), TEXT("Footr"), NAME_None, TEXT("Shoulderr"), TEXT("Elbowr"), TEXT("Handr")}};
     TArray<FVector> SoleOffsets,HeelOffsets,ToeOffsets;
-    for (const FName Name: {FName(TEXT("Footl")),FName(TEXT("Footr"))})
+    for (const FGaitBones& Side : Bones)
     {
-        const int32 Bone=Rig.FindBoneIndex(Name);
-        if (Bone==INDEX_NONE)
+        for (const FName Name : {Side.Thigh, Side.Calf, Side.Ankle, Side.Ball, Side.UpperArm, Side.Forearm, Side.Hand})
         {
-            UE_LOG(LogTemp,Error,TEXT("Missing gait review foot bone %s"),*Name.ToString());
-            FPlatformMisc::RequestExitWithStatus(false,1); return;
+            if (!Name.IsNone() && Rig.FindBoneIndex(Name) == INDEX_NONE)
+            {
+                UE_LOG(LogTemp, Error, TEXT("Missing gait review bone %s"), *Name.ToString());
+                FPlatformMisc::RequestExitWithStatus(false, 1);
+                return;
+            }
+        }
+        const FTransform Ref = Rig.GetBoneAbsoluteTransform(Rig.FindBoneIndex(Side.Ankle));
+        if (bEpicRig)
+        {
+            const double Floor = Mesh->GetImportedBounds().GetBox().Min.Z;
+            const FVector Ball = Rig.GetBoneAbsoluteTransform(Rig.FindBoneIndex(Side.Ball)).GetLocation();
+            const FVector Forward = (Ball - Ref.GetLocation()).GetSafeNormal2D();
+            // Project the anatomical points onto the assembled mesh's reference floor.
+            const FVector Sole(Ball.X, Ball.Y, Floor);
+            const FVector Heel(Ref.GetLocation().X, Ref.GetLocation().Y, Floor);
+            SoleOffsets.Add(Ref.InverseTransformPosition(Sole));
+            HeelOffsets.Add(Ref.InverseTransformPosition(Heel - Forward * 4.));
+            ToeOffsets.Add(Ref.InverseTransformPosition(Sole + Forward * 4.));
+            continue;
         }
         // Ball of the leather shoe, expressed from the reference ankle in mesh centimetres.
-        const FTransform Ref=Rig.GetBoneAbsoluteTransform(Bone);
         const double Inward=Ref.GetLocation().X>0.?-1.:1.;
         SoleOffsets.Add(Ref.InverseTransformVector(FVector(4.*Inward,10.5,-8.0)));
         HeelOffsets.Add(Ref.InverseTransformVector(FVector(4.*Inward,-3.5,-7.3)));
@@ -263,7 +292,7 @@ void ARiverfrontPlayerController::RunGaitReview()
     { FPlatformMisc::RequestExitWithStatus(false,1); return; }
     State->Started=GetWorld()->GetTimeSeconds();
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,bReviewTraversal,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
+        [this,State,Folder,Bones,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,bReviewTraversal,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
          WallStart=FPlatformTime::Seconds(),bPassed=true](float) mutable
         {
             if (!Who.IsValid() || GetPawn()!=Who.Get() || !State->Lens.IsValid() || FPlatformTime::Seconds()-WallStart>180.)
@@ -279,7 +308,7 @@ void ARiverfrontPlayerController::RunGaitReview()
             };
             const auto ActiveClip=[&]() -> FName
             {
-                const auto* Instance=Who->GetMesh()->GetAnimInstance();
+                const auto* Instance=Who->GetAvatarMesh()->GetAnimInstance();
                 const auto* Montage=Instance?Instance->GetCurrentActiveMontage():nullptr;
                 if (Montage && !Montage->SlotAnimTracks.IsEmpty() && !Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.IsEmpty())
                 {
@@ -365,9 +394,8 @@ void ARiverfrontPlayerController::RunGaitReview()
                         FVector Palm,Elbow;
                         if (Who->GetTraversalHandContact(Side!=0,Palm,Elbow)>.86f)
                         {
-                            const auto Name=Side?TEXT("Handr"):TEXT("Handl");
                             State->PalmErrors[Side]=FMath::Min(State->PalmErrors[Side],
-                                FVector::Dist(Palm,Who->GetMesh()->GetSocketLocation(Name)));
+                                FVector::Dist(Palm,Who->GetAvatarMesh()->GetSocketLocation(Bones[Side].Hand)));
                             if (State->PalmErrors[Side]<11. && !State->bPhotographed)
                             {
                                 FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,Image),false,false);
@@ -475,20 +503,18 @@ void ARiverfrontPlayerController::RunGaitReview()
             Frame.Seconds=Now;
             Frame.Centre=Here;
             Frame.Speed=Who->GetVelocity().Size2D();
-            auto* Body=Who->GetMesh();
+            auto* Body=Who->GetAvatarMesh();
             for (int32 Side=0;Side<2;++Side)
             {
-                const FName Hip=Side==0?TEXT("Hipl"):TEXT("Hipr");
-                const FName Knee=Side==0?TEXT("Kneel"):TEXT("Kneer");
-                const FName Foot=Side==0?TEXT("Footl"):TEXT("Footr");
-                const FVector H=Body->GetSocketLocation(Hip),K=Body->GetSocketLocation(Knee);
-                const FTransform F=Body->GetSocketTransform(Foot);
+                const FGaitBones& Joint = Bones[Side];
+                const FVector H=Body->GetSocketLocation(Joint.Thigh),K=Body->GetSocketLocation(Joint.Calf);
+                const FTransform F=Body->GetSocketTransform(Joint.Ankle);
                 Frame.Legs[Side].Flex=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
                     FVector::DotProduct((K-H).GetSafeNormal(),(F.GetLocation()-K).GetSafeNormal()),-1.,1.)));
                 Frame.Legs[Side].Sole=F.TransformPosition(SoleOffsets[Side]);
-                const FVector Shoulder=Body->GetSocketLocation(Side?TEXT("Shoulderr"):TEXT("Shoulderl"));
-                const FVector Elbow=Body->GetSocketLocation(Side?TEXT("Elbowr"):TEXT("Elbowl"));
-                const FVector Hand=Body->GetSocketLocation(Side?TEXT("Handr"):TEXT("Handl"));
+                const FVector Shoulder=Body->GetSocketLocation(Joint.UpperArm);
+                const FVector Elbow=Body->GetSocketLocation(Joint.Forearm);
+                const FVector Hand=Body->GetSocketLocation(Joint.Hand);
                 Frame.Hands[Side]=(Hand-Shoulder).Dot(Who->GetActorForwardVector());
                 Frame.Elbows[Side]=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
                     (Elbow-Shoulder).GetSafeNormal().Dot((Hand-Elbow).GetSafeNormal()),-1.,1.)));
