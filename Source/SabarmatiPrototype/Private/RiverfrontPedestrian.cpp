@@ -120,22 +120,24 @@ bool ValidateCircuit(UWorld& World, const FPedestrianRoute& Route, double& Groun
     return true;
 }
 
-UMaterialInstanceDynamic* ApplyClothingColor(USkeletalMeshComponent& Mesh, const TCHAR* SlotName, FColor Color)
+// Variants persist across city tile reloads. Use a separate seeded draw for the
+// body so clothing, walking speed and social roles can all appear with either rig.
+ERiverfrontGender GenderForVariant(int32 Variant)
 {
-    const int32 Slot = Mesh.GetMaterialIndex(FName(SlotName));
-    if (Slot == INDEX_NONE)
-    {
-        return nullptr;
-    }
-    UMaterialInstanceDynamic* Material = Mesh.CreateDynamicMaterialInstance(Slot);
-    if (Material)
-    {
-        // This is the color parameter on the imported glTF garment material.
-        Material->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Color));
-    }
-    return Material;
+    const FRandomStream Casting(Variant * 17 + 1);
+    return Casting.FRand() < .5f ? ERiverfrontGender::Female : ERiverfrontGender::Male;
 }
 } // namespace
+
+void ARiverfrontPedestrian::SetGarmentColor(FName SlotName, FColor Color, UMaterialInterface* Parent)
+{
+    const int32 Slot = Mesh->GetMaterialIndex(SlotName);
+    if (Slot != INDEX_NONE)
+    {
+        if (auto* Material = Mesh->CreateDynamicMaterialInstance(Slot, Parent))
+            Material->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Color));
+    }
+}
 
 ARiverfrontPedestrian::ARiverfrontPedestrian()
 {
@@ -211,13 +213,13 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
         {
             const bool Alternate=SecondReady && Index%3!=0;
             Walker->Configure(Alternate?Second:Model, Alternate?SecondWalk:(Index%3==1?WalkAlt:Walk), GroundedStart, GroundedEnd,
-                Route.Radius, Route.StartFraction, Route.Speed, Index);
+                Route.Radius, Route.StartFraction, Route.Speed, Index, Alternate);
             if (Index == 0 && Public)
             {
                 Walker->bSightseeing = true;
                 Walker->RestAt = 4.5;
                 Walker->Tags.Add(TEXT("SightseeingVisitor"));
-                Walker->DressCloseResident(FColor(174, 128, 102), FLinearColor(.74f, .9f, 1.08f), true);
+                Walker->DressCloseResident(FLinearColor(1.04f, .97f, .91f), FLinearColor(.74f, .9f, 1.08f), true);
                 Walker->EquipVisitorCamera();
             }
             ++Count;
@@ -237,14 +239,14 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
             if (auto* Customer=World.SpawnActor<ARiverfrontPedestrian>(Path[0],FRotator::ZeroRotator))
             {
                 const bool Alternate=SecondReady;
-                Customer->Configure(Alternate?Second:Model,Alternate?SecondWalk:Walk,Path[0],Path.Last(),1.,0.,Tea?102.:116.,Tea?12:7);
+                Customer->Configure(Alternate?Second:Model,Alternate?SecondWalk:Walk,Path[0],Path.Last(),1.,0.,Tea?102.:116.,Tea?12:7,Alternate);
                 if (!Tea && Public)
                 {
                     Customer->bVisitingPrintmaker = true;
                     Customer->Tags.Add(TEXT("VisitingPrintmaker"));
-                    Customer->DressCloseResident(FColor(126, 88, 66), FLinearColor(.82f, 1.f, 1.14f), false);
+                    Customer->DressCloseResident(FLinearColor(.73f, .67f, .62f), FLinearColor(.82f, 1.f, 1.14f), false);
                     Customer->EquipPrintPortfolio();
-                    ApplyClothingColor(*Customer->Mesh, TEXT("scarf"), FColor(108, 120, 131));
+                    Customer->SetGarmentColor(TEXT("scarf"), FColor(108, 120, 131));
                 }
                 Customer->Errand=Path; Customer->ErrandStep=1;
                 Customer->SetActorLocation(Path[0]); Customer->RestLeft=Tea?1.8:7.2; Customer->SetMoving(false);
@@ -257,7 +259,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
         const FVector B(A.X,3470.,2.);
         if (auto* Person=World.SpawnActor<ARiverfrontPedestrian>(A,FRotator::ZeroRotator))
         {
-            Person->Configure(Model,WalkAlt,A,B,1,0.,139.,19);
+            Person->Configure(Model,WalkAlt,A,B,1,0.,139.,19,false);
             Person->bAtCrosswalk=true;
             Person->SetActorLocationAndRotation(A,FRotator(0,(B-A).Rotation().Yaw+Person->MeshYawToForward,0));
             Person->SetMoving(false);
@@ -270,7 +272,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
 
 void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     const FVector& StartTurn, const FVector& EndTurn, double Radius, double StartFraction,
-    double SpeedCmPerSecond, int32 Variant)
+    double SpeedCmPerSecond, int32 Variant, bool bKurta)
 {
     RouteStart = StartTurn;
     RouteEnd = EndTurn;
@@ -279,6 +281,21 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     Distance = RouteLength * StartFraction;
     Speed = SpeedCmPerSecond;
 
+    const bool bResidentGait = Walk->GetOutermost()->GetName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
+    if (bResidentGait)
+    {
+        const ERiverfrontGender CastGender = GenderForVariant(Variant);
+        auto* Outfit = RiverfrontResident::LoadOutfitMesh(CastGender, bKurta);
+        if (Outfit && Outfit->GetSkeleton() == Walk->GetSkeleton())
+        {
+            AvatarGender = CastGender;
+            Model = Outfit;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Sabarmati crowd: missing or incompatible outfit for pedestrian variant %d."), Variant);
+        }
+    }
     Mesh->SetSkeletalMesh(Model);
     MeshYawToForward=RiverfrontResident::YawToActorForward(*Model);
     const double HeightScale = .90 + ((Variant * 7) % 17) * .01;
@@ -294,9 +311,34 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
         FColor(56, 66, 76), FColor(85, 77, 69), FColor(47, 53, 59), FColor(108, 109, 97)
     };
     const FColor Shirt = Shirts[Variant % UE_ARRAY_COUNT(Shirts)];
-    ApplyClothingColor(*Mesh, TEXT("top_teal_woven"), Shirt);
-    ApplyClothingColor(*Mesh, TEXT("top_seams"), FColor(Shirt.R * 83 / 100, Shirt.G * 83 / 100, Shirt.B * 83 / 100));
-    ApplyClothingColor(*Mesh, TEXT("bottom_denim"), Trousers[(Variant / 3) % UE_ARRAY_COUNT(Trousers)]);
+    auto* Cotton = bResidentGait && bKurta ? LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_ResidentCotton.M_ResidentCotton")) : nullptr;
+    SetGarmentColor(TEXT("top_teal_woven"), Shirt, Cotton);
+    SetGarmentColor(TEXT("top_seams"), FColor(Shirt.R * 83 / 100, Shirt.G * 83 / 100, Shirt.B * 83 / 100), Cotton);
+    SetGarmentColor(TEXT("bottom_denim"), Trousers[(Variant / 3) % UE_ARRAY_COUNT(Trousers)], Cotton);
+    if (bKurta) SetGarmentColor(TEXT("scarf"), Shirts[(Variant + 4) % UE_ARRAY_COUNT(Shirts)], Cotton);
+
+    if (bResidentGait)
+    {
+        const FLinearColor SkinTints[] = {FLinearColor::White, FLinearColor(.73f,.67f,.62f),
+            FLinearColor(1.12f,1.05f,.98f), FLinearColor(.89f,.83f,.78f)};
+        auto* SkinParent = RiverfrontResident::LoadSkinMaterial(AvatarGender);
+        const int32 SkinSlot = Mesh->GetMaterialIndex(TEXT("skin"));
+        if (SkinParent && SkinSlot != INDEX_NONE)
+        {
+            if (auto* Skin = Mesh->CreateDynamicMaterialInstance(SkinSlot, SkinParent))
+            {
+                Skin->SetVectorParameterValue(TEXT("BaseColorFactor"), SkinTints[Variant % UE_ARRAY_COUNT(SkinTints)]);
+                Mesh->SetMaterialByName(TEXT("lips"), Skin);
+            }
+        }
+        if (auto* Eyes = LoadObject<UMaterialInterface>(nullptr,
+            TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverEyes.M_RiverEyes")))
+        {
+            Mesh->SetMaterialByName(TEXT("iris"), Eyes);
+            Mesh->SetMaterialByName(TEXT("sclera"), Eyes);
+        }
+    }
 
     Gait=Walk;
     const FString IdlePath=FPackageName::GetLongPackagePath(Walk->GetOutermost()->GetName())+TEXT("/A_Idle.A_Idle");
@@ -305,7 +347,6 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     Mesh->PlayAnimation(Walk, true);
     Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
     // The horizontal mesh scale changes the distance covered by a planted foot.
-    const bool bResidentGait = Walk->GetOutermost()->GetName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
     const double ClipSpeed = bResidentGait ? (Walk->GetFName() == TEXT("A_WalkAlt") ? 123. : 145.) : 132.;
     WalkingPlayRate = Speed / (ClipSpeed * BuildScale);
     Mesh->SetPlayRate(WalkingPlayRate);
@@ -402,7 +443,7 @@ ARiverfrontPedestrian* ARiverfrontPedestrian::SpawnStreetWalker(UWorld& World,co
     if (!Model || !Clip || Clip->GetSkeleton()!=Model->GetSkeleton()) return nullptr;
     const FVector Start(A.X,A.Y,Ground),End(B.X,B.Y,Ground);
     auto* Walker=World.SpawnActor<ARiverfrontPedestrian>(Start,(B-A).Rotation());
-    if (Walker) Walker->Configure(Model,Clip,Start,End,Route.Radius,Route.StartFraction,Route.Speed,Variant);
+    if (Walker) Walker->Configure(Model,Clip,Start,End,Route.Radius,Route.StartFraction,Route.Speed,Variant,Kurta);
     return Walker;
 }
 

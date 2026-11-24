@@ -112,14 +112,6 @@ USplineComponent* MakeFamilyRoute(ARiverfrontWorld& District, int32 Rank)
 bool ARiverfrontPedestrian::SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel,
     UAnimSequence& FirstWalk, USkeletalMesh& SecondModel, UAnimSequence& SecondWalk)
 {
-    auto* FittedKurta = LoadObject<USkeletalMesh>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Tailored/SK_FittedKurta.SK_FittedKurta"));
-    const bool bFitted = FittedKurta && FittedKurta->GetSkeleton() == SecondWalk.GetSkeleton();
-    auto* Cotton = LoadObject<UMaterialInterface>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_ResidentCotton.M_ResidentCotton"));
-    auto* ShirtPanels = LoadObject<UMaterialInterface>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverTailoredCloth.M_RiverTailoredCloth"));
-    USkeletalMesh* ElderMesh = bFitted ? FittedKurta : &SecondModel;
     const FColor ShirtDyes[] = {FColor(143, 150, 100), FColor(139, 79, 64), FColor(151, 179, 192)};
     const FColor TrouserDyes[] = {FColor(69, 72, 65), FColor(183, 174, 148), FColor(65, 73, 85)};
     TArray<USplineComponent*> Routes;
@@ -135,39 +127,19 @@ bool ARiverfrontPedestrian::SpawnFamilyOuting(ARiverfrontWorld& District, USkele
         Walkers.Add(Person);
         const double Paces[] = {126., 118., 123.};
         const bool bElder = Rank == 1;
-        Person->Configure(bElder ? ElderMesh : &FirstModel, bElder ? &SecondWalk : &FirstWalk,
-            Start, Route->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World), 1., 0., Paces[Rank], 27 + Rank);
-        // The fitted kurta separates the hem, trouser and scarf geometry. The short shirts
-        // share a painted UV boundary across all three original body material sections.
-        int32 GarmentSlots = 0;
-        auto Garment = [&](FName Name, UMaterialInterface* Parent, FColor Dye)
-        {
-            const int32 Slot = Person->Mesh->GetMaterialIndex(Name);
-            if (Slot == INDEX_NONE || !Parent) return;
-            if (auto* Material = Person->Mesh->CreateDynamicMaterialInstance(Slot, Parent))
-            {
-                Material->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Dye));
-                if (Parent == ShirtPanels)
-                    Material->SetVectorParameterValue(TEXT("TrouserDye"), FLinearColor(TrouserDyes[Rank]));
-                ++GarmentSlots;
-            }
-        };
-        auto* Cloth = bElder ? Cotton : ShirtPanels;
-        Garment(TEXT("top_teal_woven"), Cloth, ShirtDyes[Rank]);
-        Garment(TEXT("top_seams"), Cloth, bElder ? FColor(107, 59, 49) : ShirtDyes[Rank]);
-        Garment(TEXT("bottom_denim"), Cloth, bElder ? TrouserDyes[Rank] : ShirtDyes[Rank]);
-        if (bElder)
-        {
-            Garment(TEXT("scarf"), Cotton, FColor(170, 144, 96));
-            UE_LOG(LogTemp, Display, TEXT("Sabarmati family elder: fitted=%d mesh=%s slots=%d walk=%s."),
-                bFitted, *GetNameSafe(ElderMesh), GarmentSlots, *SecondWalk.GetName());
-        }
+        Person->Configure(bElder ? &SecondModel : &FirstModel, bElder ? &SecondWalk : &FirstWalk,
+            Start, Route->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World), 1., 0., Paces[Rank], 27 + Rank, bElder);
+        Person->SetGarmentColor(TEXT("top_teal_woven"), ShirtDyes[Rank]);
+        Person->SetGarmentColor(TEXT("top_seams"), ShirtDyes[Rank]);
+        Person->SetGarmentColor(TEXT("bottom_denim"), TrouserDyes[Rank]);
+        if (bElder) Person->SetGarmentColor(TEXT("scarf"), FColor(170, 144, 96));
         Person->SetActorLocation(Start);
         Person->FamilyRoute = Route;
         Person->Tags.Add(TEXT("RiverfrontFamily"));
         Person->SetMoving(false);
         Person->SetActorTickEnabled(Rank == 0);
-        const FColor SkinTones[] = {FColor(155, 107, 80), FColor(170, 122, 96), FColor(133, 93, 70)};
+        const FLinearColor SkinTones[] = {FLinearColor(.85f,.76f,.70f),
+            FLinearColor(1.08f,1.00f,.94f), FLinearColor(.75f,.69f,.65f)};
         // The elder's silver threads retain the luminance variation in the original fibre map.
         const FLinearColor HairTints[] = {FLinearColor(.86f, .90f, .94f),
             FLinearColor(5.5f, 8.8f, 12.8f), FLinearColor(1.30f, 1.06f, .91f)};
@@ -349,43 +321,17 @@ void ARiverfrontPedestrian::EquipPrintPortfolio()
     Part(*Trim, FVector(0.,0.,19.4), FVector(1.7,12.7,1.25));
 }
 
-// The five residents the player can meet share the public player's calibrated face/eye UVs.
-// Appearance is assigned once; distant ambient walkers retain their existing material budget.
-void ARiverfrontPedestrian::DressCloseResident(FColor Complexion, FLinearColor FibreTint, bool bSweptHair)
+// The family and the two visitors get an individual haircut and complexion.
+void ARiverfrontPedestrian::DressCloseResident(FLinearColor ComplexionTint, FLinearColor FibreTint, bool bSweptHair)
 {
     auto* Model = Mesh->GetSkeletalMeshAsset();
     if (!Model || !Model->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"))) return;
-    auto* Skin = LoadObject<UMaterialInterface>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_ResidentSkin.M_ResidentSkin"));
-    auto* Eyes = LoadObject<UMaterialInterface>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverEyes.M_RiverEyes"));
+    const int32 SkinSlot = Mesh->GetMaterialIndex(TEXT("skin"));
+    if (SkinSlot != INDEX_NONE)
+        if (auto* Skin = Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(SkinSlot)))
+            Skin->SetVectorParameterValue(TEXT("BaseColorFactor"), ComplexionTint);
     auto* Fibre = LoadObject<UMaterialInterface>(nullptr,
         TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverSweptHair.M_RiverSweptHair"));
-    auto Dye = [this](FName Name, UMaterialInterface* Parent, FLinearColor Tint)
-    {
-        const int32 Slot = Mesh->GetMaterialIndex(Name);
-        if (Slot == INDEX_NONE) return false;
-        if (auto* Material = Mesh->CreateDynamicMaterialInstance(Slot, Parent))
-        {
-            Material->SetVectorParameterValue(TEXT("BaseColorFactor"), Tint);
-            return true;
-        }
-        return false;
-    };
-    const bool bSkin = Skin && Dye(TEXT("skin"), Skin, FLinearColor(Complexion));
-    const FColor LipTone(Complexion.R * .86f, Complexion.G * .74f, Complexion.B * .79f);
-    Dye(TEXT("lips"), nullptr, FLinearColor(LipTone));
-    int32 EyeSlots = 0;
-    for (FName Name : {FName(TEXT("iris")), FName(TEXT("sclera"))})
-    {
-        const int32 Index = Mesh->GetMaterialIndex(Name);
-        if (Eyes && Index != INDEX_NONE)
-        {
-            Mesh->SetMaterial(Index, Eyes);
-            ++EyeSlots;
-        }
-    }
-
     bool bStyled = false;
     const int32 HairSlot = Mesh->GetMaterialIndex(TEXT("hair"));
     const FName HeadBone(TEXT("Head"));
@@ -414,7 +360,7 @@ void ARiverfrontPedestrian::DressCloseResident(FColor Complexion, FLinearColor F
             bStyled = true;
         }
     }
-    if (!bStyled && Fibre) bStyled = Dye(TEXT("hair"), Fibre, FibreTint);
-    UE_LOG(LogTemp, Display, TEXT("Sabarmati close resident %s: face=%d eye_sections=%d hair=%d."),
-        *GetName(), bSkin, EyeSlots, bStyled);
+    if (!bStyled && Fibre && HairSlot != INDEX_NONE)
+        if (auto* Hair = Mesh->CreateDynamicMaterialInstance(HairSlot, Fibre))
+            Hair->SetVectorParameterValue(TEXT("BaseColorFactor"), FibreTint);
 }

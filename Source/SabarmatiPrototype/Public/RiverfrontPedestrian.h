@@ -2,10 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "RiverfrontResidentAppearance.h"
 #include "RiverfrontPedestrian.generated.h"
 
 class ARiverfrontWorld;
 class USplineComponent;
+class UMaterialInterface;
 class UAnimSequence;
 class USkeletalMesh;
 class USkeletalMeshComponent;
@@ -19,6 +21,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontPedestrian : public AActor
 
 public:
     ARiverfrontPedestrian();
+    ERiverfrontGender GetAvatarGender() const { return AvatarGender; }
     bool IsCrossingStreet() const { return bAtCrosswalk && bSteppingOff; }
     int32 ShopVisits() const {return CounterVisits;}
     int32 CrossingsCompleted() const { return Crossings; }
@@ -37,7 +40,9 @@ private:
     TObjectPtr<USkeletalMeshComponent> Mesh;
 
     void Configure(USkeletalMesh* Model, UAnimSequence* Walk, const FVector& StartTurn, const FVector& EndTurn,
-        double Radius, double StartFraction, double SpeedCmPerSecond, int32 Variant);
+        double Radius, double StartFraction, double SpeedCmPerSecond, int32 Variant, bool bKurta);
+    void SetGarmentColor(FName SlotName, FColor Color, UMaterialInterface* Parent = nullptr);
+    ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     void UpdateRouteTransform();
 
     FVector RouteStart = FVector::ZeroVector;
@@ -58,7 +63,7 @@ private:
     static bool SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel, UAnimSequence& FirstWalk,
         USkeletalMesh& SecondModel, UAnimSequence& SecondWalk);
     void TickFamily(float Delta);
-    void DressCloseResident(FColor Complexion, FLinearColor FibreTint, bool bSweptHair);
+    void DressCloseResident(FLinearColor ComplexionTint, FLinearColor FibreTint, bool bSweptHair);
     void EquipVisitorCamera();
     void EquipPrintPortfolio();
     void LookTowards(const FVector& Point, float Delta);
