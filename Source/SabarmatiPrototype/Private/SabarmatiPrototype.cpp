@@ -8,6 +8,11 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#if WITH_EDITOR
+#include "Engine/World.h"
+void PrepareRiverfrontSampleApartment(const FActorsInitializedParams& Params);
+#endif
+
 namespace
 {
 TAtomic<int32> ReadySteps(0);
@@ -22,12 +27,24 @@ void Reached(int Completed) { ReadySteps.Store(FMath::Clamp(Completed,0,TotalSte
 class FSabarmatiModule final : public FDefaultGameModuleImpl
 {
     FDelegateHandle MapLoad;
+#if WITH_EDITOR
+    FDelegateHandle SampleApartment;
+#endif
 public:
     void StartupModule() override
     {
         MapLoad=FCoreUObjectDelegates::PreLoadMap.AddRaw(this,&FSabarmatiModule::ShowLoad);
+#if WITH_EDITOR
+        SampleApartment = FWorldDelegates::OnWorldInitializedActors.AddStatic(&PrepareRiverfrontSampleApartment);
+#endif
     }
-    void ShutdownModule() override { FCoreUObjectDelegates::PreLoadMap.Remove(MapLoad); }
+    void ShutdownModule() override
+    {
+        FCoreUObjectDelegates::PreLoadMap.Remove(MapLoad);
+#if WITH_EDITOR
+        FWorldDelegates::OnWorldInitializedActors.Remove(SampleApartment);
+#endif
+    }
     void ShowLoad(const FString&)
     {
         DistrictLoadProgress::Reached(0);

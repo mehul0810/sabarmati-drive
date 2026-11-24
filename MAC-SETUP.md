@@ -66,6 +66,10 @@ they do not replace hardware playtesting.
 
 For the street-level check, launch with `-SabarmatiArtReview -SabarmatiWalkReview`. Add `-SabarmatiCity` for the city plot. The review captures the normal player camera facing the arcade, then walks the character through its passage and around the entire perimeter using collision and movement physics. The log reports completed legs, distance and ground contact. The captures are in `Saved/ArtReview`.
 
+### Game Animation Sample apartment playtest
+
+Once the licensed sample content and its dependencies are available locally, run the editor in Standalone Play with a separate `-UserDir`. Open `/Engine/Maps/Entry?game=<sample GameMode generated class path>?SabarmatiSampleApartment` in the play-world console using the `open` command. Replace the placeholder with the full class path ending in `_C` from the installed sample. The editor builds the riverfront and places the Player Start in Flat 2B before the sample game mode spawns its character. Verify the possessed pawn, walk down the stairs, and test the low vault and physical recovery in play.
+
 ### Fixed-camera rendering benchmark
 
 Run `bash Scripts/benchmark-riverfront.sh all` in Terminal. Use `night`, `golden`, `day` or `reference` to measure one condition. Add `--no-build` after the condition to reuse an up-to-date editor module. Each native game window closes after its checks. The shell reports the run directory, verifies the captured dimensions and prints frame timing percentiles. The regular launcher opens a separate playable session. [Protocol and acceptance status](Docs/Riverfront-rendering.md)
