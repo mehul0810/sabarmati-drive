@@ -8,7 +8,9 @@ source=Path(os.environ["SABARMATI_DOOR_SOURCE"])
 assets=ue.EditorAssetLibrary
 original=assets.load_asset(folder+"/SM_SabarmatiHatch")
 slots={str(s.get_editor_property("material_slot_name")).lower():s.get_editor_property("material_interface") for s in original.get_editor_property("static_materials")}
-for name in ("SM_HatchCabin","SM_HatchDoorL","SM_HatchDoorR"):
+for name in ("SM_HatchCabin","SM_HatchDoorL","SM_HatchDoorR","SM_HatchCockpit","SM_HatchSteering"):
+    if not (source/(name+".glb")).is_file():
+        continue
     path=folder+"/Coachwork/"+name
     if assets.does_asset_exist(path): mesh=assets.load_asset(path)
     else:

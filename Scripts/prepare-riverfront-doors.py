@@ -9,6 +9,7 @@ import json
 import math
 import runpy
 import struct
+import tempfile
 from pathlib import Path
 
 def divide(poly, plane):
@@ -87,9 +88,28 @@ def store_mesh(name, primitives, materials, pivot, dest):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__); parser.add_argument("hatch",type=Path); parser.add_argument("out",type=Path)
+    parser.add_argument("--split-steering", action="store_true",
+                        help="Use the right-hand-drive source GLB and export its separate steering wheel.")
     args=parser.parse_args(); args.out.mkdir(parents=True,exist_ok=True)
     helpers=runpy.run_path(str(Path(__file__).with_name("prepare-riverfront-hatch.py")))
-    j,data=helpers["read_glb"](args.hatch); read=lambda i:list(helpers["vectors"](j,data,i))
+    j,data=helpers["read_glb"](args.hatch)
+    cabin_name = "SM_HatchCabin"
+    if args.split_steering:
+        cabin_name = "SM_HatchCockpit"
+        by_name = {node["name"]: index for index, node in enumerate(j["nodes"])}
+        body = j["nodes"][by_name["hatchback"]]
+        pivot = by_name["steering_wheel"]
+        wheel = j["nodes"][pivot]
+        wheel_child, = wheel["children"]
+        body_nodes = [(index, ()) for index in body["children"] if "mesh" in j["nodes"][index]]
+        wheel["translation"] = [0., 0., 0.]
+        helpers["write_parts"](j, data, [(wheel_child, (pivot,))], "SM_HatchSteering",
+                               args.out / "SM_HatchSteering.glb")
+        with tempfile.TemporaryDirectory() as directory:
+            flattened = Path(directory) / "cabin.glb"
+            helpers["write_parts"](j, data, body_nodes, cabin_name, flattened)
+            j,data=helpers["read_glb"](flattened)
+    read=lambda i:list(helpers["vectors"](j,data,i))
     panels=[collections.defaultdict(list) for _ in range(3)]
     for prim in j["meshes"][0]["primitives"]:
         mat=prim["material"]; attrib=prim["attributes"]
@@ -105,7 +125,7 @@ def main():
             door,body=cut(tri,side)
             panels[0][mat].extend(body)
             if door: panels[1 if side==1 else 2][mat].append(door)
-    result=[("SM_HatchCabin",(0,0,0)),("SM_HatchDoorL",(.79,.79,.62)),("SM_HatchDoorR",(-.79,.79,.62))]
+    result=[(cabin_name,(0,0,0)),("SM_HatchDoorL",(.79,.79,.62)),("SM_HatchDoorR",(-.79,.79,.62))]
     for parts,(name,pivot) in zip(panels,result):
         store_mesh(name,parts,j["materials"],pivot,args.out)
         print(name,sum(len(x) for x in parts.values()),"panels")

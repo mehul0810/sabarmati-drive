@@ -83,6 +83,7 @@ private:
 
     UPROPERTY() TArray<TObjectPtr<USpotLightComponent>> Headlights;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> DetailedBody;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> CockpitWheel;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> HeadLens;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
     bool bNightDriving = false;

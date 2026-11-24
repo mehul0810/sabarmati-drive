@@ -111,6 +111,18 @@
       "verification": "Native O/E input, cockpit/bonnet/chase cameras, four contacts, gear change, braking and reverse verified."
     },
     {
+      "id": "hatch-cockpit-steering",
+      "category": "vehicle",
+      "source": "The right-hand-drive adaptation of tevy's Five-Door Hatchback, with the wheel detached at its source pivot by Scripts/prepare-riverfront-doors.py.",
+      "license": "CC0 1.0 source, https://tevy.dev/models/hatchback",
+      "geometry": "720 source triangles for the detached steering wheel. Its parent cabin retains the two independent doors.",
+      "textures": "Shared leather and interior material slots from the hatchback.",
+      "collision": "Decorative steering assembly. Chaos drives the front axle and collision.",
+      "lod": "Three static mesh LODs for the cabin and wheel.",
+      "location": "Content/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchSteering.uasset",
+      "verification": "The M2 Air gameplay review captured left and right steering and measured the wheel's motion over successive frames."
+    },
+    {
       "id": "district-residents",
       "category": "character",
       "source": "MakeHuman Community hm08 generic base topology from https://github.com/makehumancommunity/makehuman/blob/master/makehuman/data/3dobjs/base.obj. Source SHA-256 8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c. Original garment shaping, colors, rig and animation.",

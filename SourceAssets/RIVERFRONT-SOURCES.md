@@ -27,6 +27,13 @@ bakes the non-rotating parts, and isolates the rolling wheel meshes. Run from ro
 `python3 Scripts/prepare-riverfront-hatch.py SourceAssets/Sabarmati-Right-Hand-Drive-Hatchback.glb Saved/LookSources/hatch`.
 Then run `Scripts/import-riverfront-hatch.py` as an Unreal editor Python commandlet.
 
+The hinged cockpit separates the steering wheel at its original column pivot.
+Run `Scripts/prepare-riverfront-doors.py` with the right-hand-drive source GLB,
+an output directory and `--split-steering`. Use that directory for
+`SABARMATI_DOOR_SOURCE` when running `Scripts/import-riverfront-doors.py` in
+Unreal Editor. The wheel uses the original CC0 surfaces and turns with the
+front axle.
+
 ## Realism pass: two-bank street and crossing
 
 Public dimensions and form were referenced from the SRFDCL [master plan](https://www.sabarmatiriverfront.com/srfdcl-master-plan.html) (263 m channel), [promenade](https://www.sabarmatiriverfront.com/river-promenade.html) (two levels), and [street overview](https://sabarmatiriverfront.com/streets.html). The deck, private streetscape, facades, and scenery are original, simplified geometry, not surveys or literal recreations of named buildings or bridges. No photographs or map-service imagery were included.

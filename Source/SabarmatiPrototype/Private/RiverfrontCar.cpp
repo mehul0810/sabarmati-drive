@@ -214,16 +214,26 @@ bool ARiverfrontCar::InstallDetailedVisuals()
     UStaticMesh* Articulated=nullptr;
     UStaticMesh* LeftDoor=nullptr;
     UStaticMesh* RightDoor=nullptr;
+    UStaticMesh* SteeringMesh=nullptr;
     if (!bCrossover && FPackageName::DoesPackageExist(TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchCabin")))
     {
         Articulated=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchCabin.SM_HatchCabin"));
         LeftDoor=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchDoorL.SM_HatchDoorL"));
         RightDoor=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchDoorR.SM_HatchDoorR"));
+        if (FPackageName::DoesPackageExist(TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchCockpit")))
+        {
+            auto* Cockpit=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchCockpit.SM_HatchCockpit"));
+            SteeringMesh=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchSteering.SM_HatchSteering"));
+            if (Cockpit && SteeringMesh) Articulated=Cockpit;
+            else SteeringMesh=nullptr;
+        }
     }
     const bool Hinged=Articulated && LeftDoor && RightDoor;
     DetailedBody=PlaceMesh(Hinged?Articulated:Chassis,Body,FVector(0,0,ModelGroundOffset),-90.);
     if (Hinged)
     {
+        if (SteeringMesh)
+            CockpitWheel=PlaceMesh(SteeringMesh,Body,FVector(12.,37.,94.+ModelGroundOffset),-90.);
         if (auto* Trim=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/SM_HatchTrim.SM_HatchTrim")))
             PlaceMesh(Trim,Body,FVector(0,0,ModelGroundOffset),-90.);
         FitInstruments();
@@ -765,6 +775,14 @@ void ARiverfrontCar::CalcCamera(float Dt,FMinimalViewInfo& View)
 
 void ARiverfrontCar::UpdateSignalLenses(float Dt)
 {
+    if (CockpitWheel)
+    {
+        // The baked wheel faces back toward the driver with a 20 degree column tilt.
+        // Animate around that column using the measured front axle steering angle.
+        const FVector Column(-.93969262, 0., .34202014);
+        const FQuat Turn(Column, FMath::DegreesToRadians(double(TurnAngle) * 13.5));
+        CockpitWheel->SetRelativeRotation(Turn * FRotator(0., -90., 0.).Quaternion());
+    }
     BlinkTime=FMath::Fmod(BlinkTime+Dt, .82f);
     for (int32 I=0;I<SignalLenses.Num();++I)
     {
