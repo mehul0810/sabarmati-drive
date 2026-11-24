@@ -1,7 +1,7 @@
 """Fit two MakeHuman CC0 system hairstyles to the playable hm08 head.
 
 Usage: python make-resident-hair.py BASE_OBJ SYSTEM_PACK_DIRECTORY OUTPUT_DIRECTORY
-Keep the official short02/short04 OBJ UVs and use their mhclo barycentric
+Keep the official short01/short04 OBJ UVs and use their mhclo barycentric
 bindings: the source OBJs were sculpted on differently proportioned heads.
 """
 import argparse
@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 
 SCRIPTS = Path(__file__).resolve().parent
-STYLES = {"Sweep": "short02", "Crop": "short04"}
+STYLES = {"Sweep": "short01", "Crop": "short04"}
 
 
 def read_obj(path):
@@ -80,6 +80,62 @@ def triangles(vertices, normal, uvs, faces, pivot):
     return [[(*positions[i], *normal[i], *uvs[t]) for i, t in face] for face in faces]
 
 
+def forehead_wisps(head, skin_faces, cards, card_faces, atlas, pivot):
+    """Fit tapered transitional hairs between the denser cut and the bare forehead."""
+    rng = np.random.default_rng(2271)
+    triangles3 = np.array([[cards[i[0]] for i in (f[0], f[j], f[j+1])]
+                           for f in card_faces for j in range(1,len(f)-1)])
+    starts = triangles3[:,[0,1,2],:]
+    ends = triangles3[:,[1,2,0],:]
+    skin = np.array([[head[i[0]] for i in (f[0],f[j],f[j+1])]
+                     for f in skin_faces for j in range(1,len(f)-1)])
+    skin = skin[(skin[:,:,1].max(1) > 7.1) & (skin[:,:,2].max(1) > .9)]
+    a, b, c = skin[:,0], skin[:,1]-skin[:,0], skin[:,2]-skin[:,0]
+    determinant = b[:,0]*c[:,1]-b[:,1]*c[:,0]
+    valid = abs(determinant) > 1e-7
+    divisor = np.where(valid,determinant,1.)
+    ys, xs = np.nonzero((atlas[::8,::8,3]>235) & (atlas[::8,::8,0]>18) & (atlas[::8,::8,0]<71))
+    def forehead(x,y):
+        dx,dy=x-a[:,0],y-a[:,1]
+        s,t=(dx*c[:,1]-dy*c[:,0])/divisor,(b[:,0]*dy-b[:,1]*dx)/divisor
+        hits=valid & (s>=-.001) & (t>=-.001) & (s+t<=1.001)
+        if not np.any(hits):
+            return None
+        return np.max((a[:,2]+s*b[:,2]+t*c[:,2])[hits])
+
+    strands=[]
+    for x in np.linspace(-.61,.61,330) + rng.uniform(-.0016,.0016,330):
+        # Locate the lower edge of the forward-facing style at this temple angle.
+        delta = ends[:,:,0]-starts[:,:,0]
+        frac = (x-starts[:,:,0])/np.where(abs(delta)>1.e-7,delta,1.)
+        cross = starts + frac[:,:,None]*(ends-starts)
+        hit = (abs(delta)>1.e-7)&(frac>=0)&(frac<=1)&(cross[:,:,2]>1.27-.60*x*x)
+        if not np.any(hit):
+            continue
+        edge = np.min(cross[:,:,1][hit])
+        # As the scalp curves towards each temple, the hairs sweep outward.
+        drift = .015 + .040*x + rng.uniform(-.010,.010)
+        length = rng.uniform(.022,.061)
+        width = rng.uniform(.0018,.0048)
+        height = edge + .010*np.sin(38*x+.8) + .008*np.sin(91*x)
+        sample = rng.integers(len(xs))
+        uv = ((8*xs[sample]+.5)/atlas.shape[1],(8*ys[sample]+.5)/atlas.shape[0])
+        layers=[]
+        for t, taper in [(0.,.06),(.3,.57),(.64,1.),(1.,.6)]:
+            cx=x+drift*t
+            y=height-length*(1-t)+.036*t
+            z=forehead(cx,y)
+            if z is None: break
+            z+=.0024+.007*t
+            normal=np.array([cx*.85,.22,.98])
+            normal/=np.linalg.norm(normal)
+            layers.append([(*((np.array([cx+side*width*taper*.5,y,z])-pivot)*.102),*normal,*uv)
+                           for side in [-1.,1.]])
+        for lower,upper in zip(layers,layers[1:]):
+            strands.append([lower[0],lower[1],upper[1],upper[0]])
+    return strands
+
+
 def prepare(base, pack, out):
     head, uvs, groups = read_obj(base)
     # The old public body has a single 'hair' section containing both a
@@ -91,7 +147,8 @@ def prepare(base, pack, out):
         x, y, z = head[[i for i, _ in face]].mean(axis=0)
         if y > 7.92 + .55 * np.clip(z - .5, -1., 1.):
             crown.append(face)
-    scalp = triangles(head, normals(head, groups["body"]), uvs, crown, pivot)
+    skin_faces = groups["body"]
+    scalp = triangles(head, normals(head, skin_faces), uvs, crown, pivot)
     out.mkdir(parents=True, exist_ok=True)
     write_glb = runpy.run_path(str(SCRIPTS / "prepare-riverfront-doors.py"))["store_mesh"]
     materials = [{"name": "scalp"}, {"name": "strands", "doubleSided": True}]
@@ -101,13 +158,15 @@ def prepare(base, pack, out):
         faces = [face for group in groups.values() for face in group]
         wrapped = wrap_hair(folder / (name + ".mhclo"), head, len(rest))
         cards = triangles(wrapped, normals(wrapped, faces), coordinates, faces, pivot)
-        write_glb("SM_Resident" + style, {0: scalp, 1: cards}, materials, (0, 0, 0), out)
         # Preserve the authored wisps and alpha. Grade the two cuts into
         # the same near-black brown, retaining the variation along fibres.
         rgba = np.array(Image.open(folder / (name + "_diffuse.png")).convert("RGBA"))
+        if style == "Sweep":
+            cards.extend(forehead_wisps(head, skin_faces, wrapped, faces, rgba, pivot))
+        write_glb("SM_Resident" + style, {0: scalp, 1: cards}, materials, (0, 0, 0), out)
         light = rgba[:, :, :3] @ np.array([.2126, .7152, .0722])
         if style == "Sweep":
-            light *= .62
+            light *= 1.37
         rgba[:, :, :3] = np.clip(light[:, :, None] * [1., .86, .76], 0, 255).astype("uint8")
         Image.fromarray(rgba).save(out / ("T_Resident" + style + ".png"))
         print(style, len(rest), "card vertices,", sum(len(f)-2 for f in cards), "card triangles,",
