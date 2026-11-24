@@ -14,6 +14,7 @@ class UStaticMeshComponent;
 class UAnimSequence;
 class UBlendSpace1D;
 class UMaterialInterface;
+class URiverfrontAvatarMotion;
 class URiverfrontLocalProfile;
 
 UCLASS()
@@ -38,6 +39,7 @@ public:
     FName GetWardrobeAccessory() const { return WardrobeAccessory; }
     bool GetWardrobeShirtColor(FLinearColor& Out) const;
     bool HasWristwatchVisible() const;
+    USkeletalMeshComponent* GetAvatarMesh() const;
     float GetTraversalHandContact(bool bRight, FVector& OutPalm, FVector& OutElbow) const;
 
 protected:
@@ -47,6 +49,11 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category="Avatar", meta=(EditCondition="bUseBlueprintAvatar"))
     bool bSupportsBlueprintHaircuts = false;
+
+    // Tag the assembled body RiverfrontAvatarBody when it lives in a child actor.
+    // An empty asset lets the Blueprint supply its own animation graph.
+    UPROPERTY(EditDefaultsOnly, Category="Avatar", meta=(EditCondition="bUseBlueprintAvatar"))
+    TObjectPtr<URiverfrontAvatarMotion> AuthoredAvatarMotion;
 
     // Delivered on spawn, profile restoration and temporary wardrobe previews.
     UFUNCTION(BlueprintImplementableEvent, Category="Avatar", meta=(DisplayName="Apply Avatar Appearance"))
@@ -65,6 +72,8 @@ protected:
 
 private:
     bool bBlueprintAvatarActive = false;
+    UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> AuthoredMotionBody;
+    void BindAuthoredAvatarMotion(USkeletalMeshComponent* Body);
     void JumpOrTraverse();
     bool TryStreetTraversal();
     void UpdateTraversal();

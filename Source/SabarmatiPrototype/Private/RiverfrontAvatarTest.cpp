@@ -1,7 +1,13 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "RiverfrontAvatarMotion.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLocalProfile.h"
+#include "RiverfrontLocomotionInstance.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/BlendSpace1D.h"
+#include "Animation/SkeletalMeshActor.h"
+#include "Components/ChildActorComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -53,6 +59,70 @@ bool FSabarmatiAuthoredAvatar::RunTest(const FString& Parameters)
     TestTrue(TEXT("Entering a vehicle hides the player"), Character->IsHidden());
     Character->SetInCar(false);
     TestFalse(TEXT("Leaving a vehicle reveals the player"), Character->IsHidden());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSabarmatiAssembledAvatarMotion,
+    "Sabarmati.Player.AssembledAvatarMotion",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FSabarmatiAssembledAvatarMotion::RunTest(const FString& Parameters)
+{
+    UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+    if (!TestNotNull(TEXT("Isolated game world"), World)) return false;
+    ON_SCOPE_EXIT { World->DestroyWorld(false); };
+    auto* Player = World->SpawnActor<ARiverfrontCharacter>();
+    auto* Motion = NewObject<URiverfrontAvatarMotion>(Player);
+    const FString People = TEXT("/Game/Sabarmati/Riverfront/People/");
+    auto* Model = LoadObject<USkeletalMesh>(nullptr, *(People + TEXT("SK_RiverResident.SK_RiverResident")));
+    if (!TestNotNull(TEXT("Player"), Player) || !TestNotNull(TEXT("Fixture rig"), Model)) return false;
+    Motion->Gait = LoadObject<UBlendSpace1D>(nullptr, *(People + TEXT("BS_ResidentGait.BS_ResidentGait")));
+    Motion->FittingIdle = LoadObject<UAnimSequence>(nullptr, *(People + TEXT("A_Idle.A_Idle")));
+    const auto LoadMotion = [&](const TCHAR* Name)
+    {
+        return LoadObject<UAnimSequence>(nullptr, *(People + TEXT("Motion/Everyday/") + Name + TEXT(".") + Name));
+    };
+    Motion->Takeoff = LoadMotion(TEXT("MM_Jump"));
+    Motion->Fall = LoadMotion(TEXT("MM_Fall_Loop"));
+    Motion->Landing = LoadMotion(TEXT("MM_Land"));
+    Motion->FenceVault = LoadMotion(TEXT("A_FenceVault"));
+    Motion->WallMantle = LoadMotion(TEXT("A_WallMantle"));
+
+    auto* Slot = NewObject<UChildActorComponent>(Player);
+    Player->AddInstanceComponent(Slot);
+    Slot->SetupAttachment(Player->GetRootComponent());
+    Slot->SetChildActorClass(ASkeletalMeshActor::StaticClass());
+    Slot->RegisterComponent();
+    auto* Assembly = Cast<ASkeletalMeshActor>(Slot->GetChildActor());
+    if (!TestNotNull(TEXT("Child avatar assembly"), Assembly)) return false;
+    auto* Body = Assembly->GetSkeletalMeshComponent();
+    Body->SetSkeletalMesh(Model);
+    Body->ComponentTags.Add(TEXT("RiverfrontAvatarBody"));
+    const auto* OptIn = FindFProperty<FBoolProperty>(ARiverfrontCharacter::StaticClass(), TEXT("bUseBlueprintAvatar"));
+    const auto* MotionProperty = FindFProperty<FObjectProperty>(ARiverfrontCharacter::StaticClass(), TEXT("AuthoredAvatarMotion"));
+    if (!TestNotNull(TEXT("Appearance opt-in"), OptIn) || !TestNotNull(TEXT("Motion property"), MotionProperty)) return false;
+    OptIn->SetPropertyValue_InContainer(Player, true);
+    MotionProperty->SetObjectPropertyValue_InContainer(Player, Motion);
+    Player->DispatchBeginPlay();
+
+    TestEqual(TEXT("The child body drives native animation"), Player->GetAvatarMesh(), Body);
+    TestFalse(TEXT("Only the player capsule owns collision"), Assembly->GetActorEnableCollision());
+    TestNotNull(TEXT("The child uses the native gait and montage graph"),
+        Cast<URiverfrontLocomotionInstance>(Body->GetAnimInstance()));
+    auto* Profile = NewObject<URiverfrontLocalProfile>();
+    Profile->EquippedOutfit = TEXT("shirt-indigo");
+    Profile->EquippedAccessory = TEXT("watch");
+    Player->ApplyProfileAppearance(*Profile);
+    TestEqual(TEXT("The saved outfit reaches the assembly"), Player->GetWardrobeOutfit(), FName(TEXT("shirt-indigo")));
+    TestTrue(TEXT("The saved wristwatch follows the child rig"), Player->HasWristwatchVisible());
+    Player->SetFittingPose(true);
+    TestEqual(TEXT("The assembled body enters fitting pose"), Body->GetAnimationMode(), EAnimationMode::AnimationSingleNode);
+    Player->SetFittingPose(false);
+    TestNotNull(TEXT("Fitting restores locomotion"), Cast<URiverfrontLocomotionInstance>(Body->GetAnimInstance()));
+    Player->SetInCar(true);
+    TestTrue(TEXT("Car possession hides the assembly"), Assembly->IsHidden());
+    Player->SetInCar(false);
+    TestFalse(TEXT("Exiting the car reveals the assembly"), Assembly->IsHidden());
     return true;
 }
 

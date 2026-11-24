@@ -1,10 +1,12 @@
 #include "RiverfrontCharacter.h"
+#include "RiverfrontAvatarMotion.h"
 #include "RiverfrontLocalProfile.h"
 #include "RiverfrontLocomotionInstance.h"
 #include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
 #include "Kismet/GameplayStatics.h"
 
+#include "Algo/AllOf.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/BlendSpace1D.h"
@@ -171,7 +173,15 @@ void ARiverfrontCharacter::BeginPlay()
         {
             PreviewRig->SetVisibility(false, true);
             PreviewRig->SetHiddenInGame(true, true);
-            ReceiveAvatarAppearance(WardrobeOutfit, WardrobeAccessory, WardrobeTone, bCroppedHair);
+            if (AuthoredAvatarMotion)
+            {
+                auto* TaggedBody = Bodies.FindByPredicate([](const USkeletalMeshComponent* Body)
+                {
+                    return Body && Body->ComponentHasTag(TEXT("RiverfrontAvatarBody"));
+                });
+                BindAuthoredAvatarMotion(TaggedBody ? *TaggedBody : GetMesh());
+            }
+            ApplyWardrobeLook(WardrobeOutfit, WardrobeAccessory, WardrobeTone);
             return;
         }
         UE_LOG(LogTemp, Warning, TEXT("Sabarmati avatar %s has no assembled skeletal mesh; loading the riverfront character."),
@@ -217,6 +227,44 @@ void ARiverfrontCharacter::BeginPlay()
             }
         }
     }
+}
+
+USkeletalMeshComponent* ARiverfrontCharacter::GetAvatarMesh() const
+{
+    return AuthoredMotionBody ? AuthoredMotionBody.Get() : GetMesh();
+}
+
+void ARiverfrontCharacter::BindAuthoredAvatarMotion(USkeletalMeshComponent* Body)
+{
+    const USkeletalMesh* Mesh = Body ? Body->GetSkeletalMeshAsset() : nullptr;
+    const auto* Skeleton = Mesh ? Mesh->GetSkeleton() : nullptr;
+    const auto* Motion = AuthoredAvatarMotion.Get();
+    const UAnimSequence* Clips[] = {Motion->FittingIdle, Motion->Takeoff, Motion->Fall,
+        Motion->Landing, Motion->FenceVault, Motion->WallMantle};
+    if (!Skeleton || !Motion->Gait || Motion->Gait->GetSkeleton() != Skeleton ||
+        !Algo::AllOf(Clips, [Skeleton](const UAnimSequence* Clip)
+        {
+            return Clip && Clip->GetSkeleton() == Skeleton && Clip->GetPlayLength() > 0.f;
+        }))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Sabarmati avatar: %s needs a compatible body and complete retargeted motion set."),
+            *GetClass()->GetPathName());
+        return;
+    }
+
+    AuthoredMotionBody = Body;
+    LocomotionBlend = Motion->Gait;
+    AirClips = {Motion->Takeoff, Motion->Fall, Motion->Landing};
+    FenceVault = Motion->FenceVault;
+    WallMantle = Motion->WallMantle;
+    Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+    Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    if (Body->GetOwner() != this) Body->GetOwner()->SetActorEnableCollision(false);
+    Wristwatch->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/SM_RiverWristwatch/StaticMeshes/SM_RiverWristwatch.SM_RiverWristwatch")));
+    StartResidentGait();
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati avatar: native movement bound to %s with %s."),
+        *Mesh->GetPathName(), *Motion->GetPathName());
 }
 
 void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
@@ -282,21 +330,22 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 void ARiverfrontCharacter::StartResidentGait()
 {
     bWasAirborne = bPlayedFall = false;
+    auto* Body = GetAvatarMesh();
     if (AirClips.Num() == 3 || FenceVault || WallMantle)
     {
-        GetMesh()->SetAnimInstanceClass(URiverfrontLocomotionInstance::StaticClass());
-        if (auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance()))
+        Body->SetAnimInstanceClass(URiverfrontLocomotionInstance::StaticClass());
+        if (auto* Instance = Cast<URiverfrontLocomotionInstance>(Body->GetAnimInstance()))
         {
-            Instance->SetGait(LocomotionBlend);
+            Instance->SetGait(LocomotionBlend, this);
             return;
         }
     }
-    GetMesh()->PlayAnimation(LocomotionBlend, true);
+    Body->PlayAnimation(LocomotionBlend, true);
 }
 
 void ARiverfrontCharacter::UpdateAirAnimation()
 {
-    auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
+    auto* Instance = Cast<URiverfrontLocomotionInstance>(GetAvatarMesh()->GetAnimInstance());
     if (!Instance || IsHidden() || TraversalSource || AirClips.Num() != 3) return;
 
     const bool bAirborne = GetCharacterMovement()->IsFalling();
@@ -380,6 +429,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     if (bBlueprintAvatarActive)
     {
         ReceiveAvatarAppearance(WardrobeOutfit, WardrobeAccessory, WardrobeTone, bCroppedHair);
+        if (AuthoredMotionBody) UpdateWatchAttachment();
         return;
     }
     if (!DefaultAvatarMesh) return;
@@ -485,9 +535,9 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
         bInFittingPose = false;
         Movement->bOrientRotationToMovement = bOrientBeforeFitting;
         if (bBlueprintAvatarActive) ReceiveAvatarFittingPose(false);
-        else if (LocomotionBlend)
+        if (LocomotionBlend)
             StartResidentGait();
-        else
+        else if (!bBlueprintAvatarActive)
             GetMesh()->SetPlayRate(1.f);
         return;
     }
@@ -500,14 +550,16 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
     if (bBlueprintAvatarActive)
     {
         ReceiveAvatarFittingPose(true);
-        return;
+        if (!AuthoredMotionBody) return;
     }
-    if (!AnimationClips.IsValidIndex(0) || !AnimationClips[0]) return;
+    UAnimSequence* Idle = AuthoredMotionBody ? AuthoredAvatarMotion->FittingIdle.Get()
+        : AnimationClips.IsValidIndex(0) ? AnimationClips[0].Get() : nullptr;
+    if (!Idle) return;
 
     // Menus can pause the world before the next animation tick. Evaluate a
     // neutral stance now so the fitting view cannot inherit a frozen footstep.
-    auto* Body = GetMesh();
-    ActiveSequence = AnimationClips[0];
+    auto* Body = GetAvatarMesh();
+    ActiveSequence = Idle;
     Body->PlayAnimation(ActiveSequence, true);
     Body->SetPosition(ActiveSequence->GetPlayLength() * .25f, false);
     Body->SetPlayRate(0.f);
@@ -521,7 +573,8 @@ void ARiverfrontCharacter::UpdateWatchAttachment()
 {
     Wristwatch->SetVisibility(false);
     if (WardrobeAccessory != TEXT("watch") || !Wristwatch->GetStaticMesh()) return;
-    const USkeletalMesh* Model = GetMesh()->GetSkeletalMeshAsset();
+    auto* Body = GetAvatarMesh();
+    const USkeletalMesh* Model = Body->GetSkeletalMeshAsset();
     if (!Model) return;
     const FReferenceSkeleton& Skeleton = Model->GetRefSkeleton();
     int32 Wrist = Skeleton.FindBoneIndex(TEXT("Handl"));
@@ -533,9 +586,9 @@ void ARiverfrontCharacter::UpdateWatchAttachment()
     // stays around the wrist throughout locomotion on either supported rig.
     const FTransform Hand = Skeleton.GetBoneAbsoluteTransform(Wrist);
     const FVector Axis = (Hand.GetLocation() - Skeleton.GetBoneAbsoluteTransform(Elbow).GetLocation()).GetSafeNormal();
-    const FVector Outside = GetMesh()->GetRelativeRotation().UnrotateVector(FVector::LeftVector);
+    const FVector Outside = Body->GetComponentTransform().InverseTransformVectorNoScale(-GetActorRightVector());
     const FTransform Fit(FRotationMatrix::MakeFromZX(Axis, Outside).ToQuat(), Hand.GetLocation()-Axis*2.7);
-    Wristwatch->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Skeleton.GetBoneName(Wrist));
+    Wristwatch->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Skeleton.GetBoneName(Wrist));
     Wristwatch->SetRelativeTransform(Fit.GetRelativeTransform(Hand));
     Wristwatch->SetVisibility(true);
 }
@@ -560,21 +613,22 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
     if (bInFittingPose) return;
     UpdateTraversal();
     const float FlatSpeed = GetVelocity().Size2D();
+    const auto* Body = GetAvatarMesh();
     UpdateAirAnimation();
     if (!IsHidden() && FlatSpeed > 12.f && GetCharacterMovement()->IsMovingOnGround())
     {
         bool bContact = false;
         FVector Foot = GetActorLocation() - FVector(0,0,87);
-        const auto* Resident = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
-        if (LocomotionBlend && (Resident || GetMesh()->GetSingleNodeInstance()))
+        const auto* Resident = Cast<URiverfrontLocomotionInstance>(Body->GetAnimInstance());
+        if (!AuthoredMotionBody && LocomotionBlend && (Resident || Body->GetSingleNodeInstance()))
         {
             // Unreal advances blend spaces in normalized time. The clips strike
             // left at 0 and right at 0.5 throughout the walk-to-run transition.
-            const float Phase = Resident ? Resident->GetGaitPhase() : GetMesh()->GetPosition();
+            const float Phase = Resident ? Resident->GetGaitPhase() : Body->GetPosition();
             const int32 ContactHalf = Phase < .5f ? 0 : 1;
             bContact = LastContactHalf != INDEX_NONE && ContactHalf != LastContactHalf;
             LastContactHalf = ContactHalf;
-            if (bContact) Foot = GetMesh()->GetSocketLocation(ContactHalf ? TEXT("Footr") : TEXT("Footl"));
+            if (bContact) Foot = Body->GetSocketLocation(ContactHalf ? TEXT("Footr") : TEXT("Footl"));
         }
         else
         {
@@ -714,6 +768,8 @@ void ARiverfrontCharacter::SetInCar(bool bInCar)
 {
     FinishTraversal(true);
     SetActorHiddenInGame(bInCar);
+    if (AuthoredMotionBody && AuthoredMotionBody->GetOwner() != this)
+        AuthoredMotionBody->GetOwner()->SetActorHiddenInGame(bInCar);
     if (bBlueprintAvatarActive) ReceiveAvatarInCar(bInCar);
     SetActorEnableCollision(!bInCar);
     SetActorTickEnabled(!bInCar);

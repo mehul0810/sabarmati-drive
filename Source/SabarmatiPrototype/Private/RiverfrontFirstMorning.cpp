@@ -167,7 +167,7 @@ bool ARiverfrontPlayerController::SetFittingPortraitView(bool bPortrait)
 
     if (bPortrait)
     {
-        const USkeletalMeshComponent* Body = Walker->GetMesh();
+        const USkeletalMeshComponent* Body = Walker->GetAvatarMesh();
         const FVector Face = Body && Body->DoesSocketExist(TEXT("Head"))
             ? Body->GetSocketLocation(TEXT("Head")) + FVector(0,0,2)
             : Walker->GetPawnViewLocation();

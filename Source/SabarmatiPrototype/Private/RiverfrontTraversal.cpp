@@ -22,7 +22,7 @@ struct FTraversalKey
 bool ARiverfrontCharacter::TryStreetTraversal()
 {
     auto* Move = GetCharacterMovement();
-    auto* Anim = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
+    auto* Anim = Cast<URiverfrontLocomotionInstance>(GetAvatarMesh()->GetAnimInstance());
     if (!Anim || !Move->IsMovingOnGround() || IsHidden() || (!FenceVault && !WallMantle)) return false;
 
     const auto* Capsule = GetCapsuleComponent();
@@ -198,7 +198,7 @@ void ARiverfrontCharacter::FinishTraversal(bool bInterrupted)
     }
     bWasAirborne = bPlayedFall = false;
     if (bInterrupted)
-        if (auto* Anim = GetMesh()->GetAnimInstance())
+        if (auto* Anim = GetAvatarMesh()->GetAnimInstance())
             Anim->StopSlotAnimation(.14f, TEXT("DefaultSlot"));
 }
 
