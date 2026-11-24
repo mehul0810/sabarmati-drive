@@ -35,18 +35,20 @@ constexpr float WalkSpeed = 145.f;
 constexpr float SprintSpeed = 335.f;
 const TCHAR* AvatarRoot = TEXT("/Game/Sabarmati/Avatar/");
 
-template <typename Type>
-Type* LoadOptionalAvatarAsset(const TCHAR* Name)
+USkeletalMesh* LoadPlayerMesh()
 {
-    FString Package=FString(AvatarRoot)+Name;
-    if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiPublicAvatar")) || !FPackageName::DoesPackageExist(Package))
+    const bool bPrivate = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiPrivateAvatar"));
+    const bool bForcePublic = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiPublicAvatar"));
+    if (bPrivate && !bForcePublic && FPackageName::DoesPackageExist(FString(AvatarRoot) + TEXT("SK_Sabarmati")))
     {
-        const FString PublicName=FCString::Strcmp(Name,TEXT("SK_Sabarmati"))==0?TEXT("SK_RiverResident"):Name;
-        Package=FString(TEXT("/Game/Sabarmati/Riverfront/People/"))+PublicName;
-        return FPackageName::DoesPackageExist(Package)?LoadObject<Type>(nullptr,*(Package+TEXT(".")+PublicName)):nullptr;
+        if (auto* Local = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Sabarmati/Avatar/SK_Sabarmati.SK_Sabarmati")))
+            return Local;
     }
-    return FPackageName::DoesPackageExist(Package)
-        ? LoadObject<Type>(nullptr, *(Package + TEXT(".") + Name)) : nullptr;
+
+    if (auto* Everyday = LoadObject<USkeletalMesh>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Everyday/SK_RiverEveryday.SK_RiverEveryday")))
+        return Everyday;
+    return LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Sabarmati/Riverfront/People/SK_RiverResident.SK_RiverResident"));
 }
 }
 
@@ -176,7 +178,7 @@ void ARiverfrontCharacter::BeginPlay()
     }
 
     // A cooked Unreal Skeletal Mesh, not a runtime read of the raw GLB.
-    if (USkeletalMesh* ImportedMesh = LoadOptionalAvatarAsset<USkeletalMesh>(TEXT("SK_Sabarmati")))
+    if (USkeletalMesh* ImportedMesh = LoadPlayerMesh())
     {
         DefaultAvatarMesh = ImportedMesh;
         CottonMaterial = LoadObject<UMaterialInterface>(nullptr,
@@ -184,15 +186,17 @@ void ARiverfrontCharacter::BeginPlay()
         const bool bPublic = ImportedMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
         if (bPublic)
         {
-            Hair->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,
-                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/SM_RiverSweptHair/StaticMeshes/SM_RiverSweptHair.SM_RiverSweptHair")));
+            SweptHaircut = LoadObject<UStaticMesh>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentSweep.SM_ResidentSweep"));
+            CroppedHaircut = LoadObject<UStaticMesh>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentCrop.SM_ResidentCrop"));
             EyeMaterial = LoadObject<UMaterialInterface>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverEyes.M_RiverEyes"));
             TailoredCloth = LoadObject<UMaterialInterface>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverTailoredCloth.M_RiverTailoredCloth"));
+            FaceMaterial = LoadObject<UMaterialInterface>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Hero/M_HeroSkin.M_HeroSkin"));
         }
-        FaceMaterial = LoadObject<UMaterialInterface>(nullptr,
-            TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_ResidentSkin.M_ResidentSkin"));
         Wristwatch->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,
             TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/SM_RiverWristwatch/StaticMeshes/SM_RiverWristwatch.SM_RiverWristwatch")));
         PreviewRig->SetVisibility(false, true);
@@ -227,7 +231,6 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
     ActiveSequence = nullptr;
     AnimationClips.Reset(3);
     const bool bPublic = Model->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
-    UpdateHair();
     const FString ClipFolder = bPublic ? (bKurta ? TEXT("/Game/Sabarmati/Riverfront/People/Kurta/")
         : TEXT("/Game/Sabarmati/Riverfront/People/")) : AvatarRoot;
     for (const TCHAR* Clip : {TEXT("A_Idle"), TEXT("A_Walk"), TEXT("A_Jog")})
@@ -255,7 +258,7 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 bool ARiverfrontCharacter::SupportsPublicHaircut() const
 {
     if (bBlueprintAvatarActive) return bSupportsBlueprintHaircuts;
-    return DefaultAvatarMesh && Hair->GetStaticMesh() &&
+    return DefaultAvatarMesh && SweptHaircut && CroppedHaircut &&
         DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
 }
 
@@ -286,11 +289,15 @@ void ARiverfrontCharacter::UpdateHair()
         const FTransform MeshAxesAtHead(FQuat::Identity, Head.GetLocation());
         Hair->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Head"));
         Hair->SetRelativeTransform(MeshAxesAtHead.GetRelativeTransform(Head));
-        Hair->SetVisibility(!bCroppedHair);
+        Hair->SetStaticMesh(bCroppedHair ? CroppedHaircut.Get() : SweptHaircut.Get());
+        const int32 SkinSlot = GetMesh()->GetMaterialIndex(TEXT("skin"));
+        if (SkinSlot != INDEX_NONE)
+            Hair->SetMaterialByName(TEXT("scalp"), GetMesh()->GetMaterial(SkinSlot));
+        Hair->SetVisibility(true);
         const int32 HairSlot = GetMesh()->GetMaterialIndex(TEXT("hair"));
         if (HairSlot != INDEX_NONE)
             for (int32 LOD = 0; LOD < GetMesh()->GetNumLODs(); ++LOD)
-                GetMesh()->ShowMaterialSection(HairSlot, INDEX_NONE, bCroppedHair, LOD);
+                GetMesh()->ShowMaterialSection(HairSlot, INDEX_NONE, false, LOD);
     }
 }
 
@@ -323,7 +330,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
-    auto SetSurface = [this, Shirt, Trousers](FName SlotName, UMaterialInterface* Surface, const FColor& Colour)
+    auto SetSurface = [this, Shirt, Trousers](FName SlotName, UMaterialInterface* Surface, const FLinearColor& Colour)
     {
         const int32 Index = GetMesh()->GetMaterialIndex(SlotName);
         if (Index == INDEX_NONE) return;
@@ -339,25 +346,30 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         }
         else
         {
-            MID->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(Colour));
+            MID->SetVectorParameterValue(TEXT("BaseColorFactor"), Colour);
         }
     };
-    auto* Cloth = bPublic && !bKurta && TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
+    // The everyday shirt and jeans have their own complete clothing UV atlas and normal maps.
+    // Passing a null override keeps the material assigned to each skeletal mesh section.
+    UMaterialInterface* Cloth = nullptr;
+    if (GetMesh()->GetSkeletalMeshAsset()->GetFName() != TEXT("SK_RiverEveryday"))
+        Cloth = bPublic && !bKurta && TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
     SetSurface(TEXT("bottom_denim"), Cloth, Trousers);
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)
     {
-        const FColor Complexion = Tone == TEXT("umber") ? FColor(116,78,61) : Tone == TEXT("warm")
-            ? FColor(174,119,87) : FColor(156,108,82);
+        // The albedo already contains the resident's complexion and lip colour.
+        const FLinearColor Complexion = Tone == TEXT("umber") ? FLinearColor(.72f, .65f, .62f)
+            : Tone == TEXT("warm") ? FLinearColor(1.15f, 1.06f, .98f) : FLinearColor::White;
         SetSurface(TEXT("skin"), FaceMaterial, Complexion);
+        SetSurface(TEXT("lips"), FaceMaterial, Complexion);
         SetSurface(TEXT("hair"), nullptr, FColor(34,25,21));
         const int32 HairSlot = GetMesh()->GetMaterialIndex(TEXT("hair"));
         if (HairSlot != INDEX_NONE)
             if (auto* Material = Cast<UMaterialInstanceDynamic>(GetMesh()->GetMaterial(HairSlot)))
                 Material->SetScalarParameterValue(TEXT("RoughnessFactor"), .68f);
-        SetSurface(TEXT("lips"), nullptr, FColor(Complexion.R*.86f, Complexion.G*.74f, Complexion.B*.79f));
         if (EyeMaterial)
             for (FName Name : {FName(TEXT("iris")), FName(TEXT("sclera"))})
             {
@@ -375,6 +387,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         else
             SetSurface(SkinSlot, nullptr, Skin);
     }
+    UpdateHair();
     UpdateWatchAttachment();
     if (bInFittingPose) SetFittingPose(true);
 }
@@ -474,24 +487,6 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
             LastContactHalf = ContactHalf;
             if (bContact) Foot = GetMesh()->GetSocketLocation(ContactHalf ? TEXT("Footr") : TEXT("Footl"));
         }
-    }
-    if (bBlueprintAvatarActive) return;
-    if (bUsesImportedMesh)
-    {
-        if (LocomotionBlend)
-        {
-            if (auto* Player = GetMesh()->GetSingleNodeInstance())
-                Player->SetBlendSpacePosition(FVector(FlatSpeed,0,0));
-            return;
-        }
-        const int32 State = FlatSpeed < 9 ? 0 : FlatSpeed < (WalkSpeed + SprintSpeed) * .5f ? 1 : 2;
-        UAnimSequence* Sequence = AnimationClips[State].Get();
-        if (!Sequence)
-        {
-            Sequence = AnimationClips[0].Get();
-        }
-        if (Sequence && Sequence != ActiveSequence.Get())
-        {
         else
         {
             StepTravel += FlatSpeed * DeltaSeconds;
@@ -510,6 +505,24 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
     {
         LastContactHalf = INDEX_NONE;
         StepTravel = 0.f;
+    }
+    if (bBlueprintAvatarActive) return;
+    if (bUsesImportedMesh)
+    {
+        if (LocomotionBlend)
+        {
+            if (auto* Player = GetMesh()->GetSingleNodeInstance())
+                Player->SetBlendSpacePosition(FVector(FlatSpeed,0,0));
+            return;
+        }
+        const int32 State = FlatSpeed < 9 ? 0 : FlatSpeed < (WalkSpeed + SprintSpeed) * .5f ? 1 : 2;
+        UAnimSequence* Sequence = AnimationClips[State].Get();
+        if (!Sequence)
+        {
+            Sequence = AnimationClips[0].Get();
+        }
+        if (Sequence && Sequence != ActiveSequence.Get())
+        {
             ActiveSequence = Sequence;
             GetMesh()->PlayAnimation(Sequence, true);
         }
