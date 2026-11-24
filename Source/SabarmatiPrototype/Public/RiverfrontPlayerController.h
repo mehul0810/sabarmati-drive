@@ -30,6 +30,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerControl
 
 public:
     bool IsShowingMenu() const { return Screen != EScreen::Playing; }
+    bool SetFittingPortraitView(bool bPortrait);
 
     void InteractWithPlace();
     FString PlacePrompt() const;
@@ -102,6 +103,7 @@ private:
     FVector LastLifeLocation = FVector::ZeroVector;
     float LastLifeYaw = 0.f;
     FRotator BeforeFittingRotation = FRotator::ZeroRotator;
+    FTransform FullOutfitView;
     FTimerHandle WakeupTimer, LifeSaveTimer;
     TWeakObjectPtr<ACameraActor> LifeCamera;
     TWeakObjectPtr<ALevelSequenceActor> WakeupSequence;

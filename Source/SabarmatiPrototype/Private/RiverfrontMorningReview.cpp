@@ -17,6 +17,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -38,7 +39,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit
 };
 
 struct FMorningEvidence
@@ -360,9 +361,11 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const bool Cropped=State->Step==EMorningStep::Cropped;
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 const auto* Hair=Cast<UStaticMeshComponent>(Walker->GetDefaultSubobjectByName(TEXT("SweptHair")));
+                const FName ExpectedCut(Cropped ? TEXT("SM_ResidentCrop") : TEXT("SM_ResidentSweep"));
                 if (!Saved || Saved->bCroppedHair!=Cropped || !Hair || !Hair->GetStaticMesh()
-                    || Hair->IsVisible()==Cropped || (!Cropped && Hair->GetAttachSocketName()!=TEXT("Head")))
-                    return Fail(Cropped ? TEXT("persisted cropped choice or actual hair component visibility") : TEXT("persisted swept choice or attached visible hair mesh"));
+                    || !Hair->IsVisible() || Hair->GetAttachSocketName()!=TEXT("Head")
+                    || Hair->GetStaticMesh()->GetFName()!=ExpectedCut)
+                    return Fail(TEXT("persisted haircut or fitted mesh on head"));
                 if (Cropped)
                 {
                     if (!State->Pictures.Contains(TEXT("02a-cropped-hair.png"))) { Shot(TEXT("02a-cropped-hair"),true); return true; }
@@ -372,7 +375,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 }
                 else
                 {
-                    State->Results+=TEXT("cropped_hair_saved=1\ncropped_hides_swept_mesh=1\nswept_hair_saved=1\nswept_mesh_visible_on_head=1\n");
+                    State->Results+=TEXT("cropped_hair_saved=1\ncropped_mesh_visible_on_head=1\nswept_hair_saved=1\nswept_mesh_visible_on_head=1\n");
                     Next(EMorningStep::Tone);
                 }
                 break;
@@ -381,11 +384,62 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (Age < .6) return true;
                 if (!State->Pictures.Contains(TEXT("02-wardrobe.png"))) { Shot(TEXT("02-wardrobe"),true); return true; }
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAvatarPortraitReview")))
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || !LifeCamera.IsValid()
+                        || LifeCamera->GetCameraComponent()->FieldOfView >= 50.f)
+                        return Fail(TEXT("wardrobe face button or close camera"));
+                    Next(EMorningStep::Portrait);
+                    break;
+                }
                 if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("wardrobe close"));
                 if (const auto* P=RiverfrontLife::Load(ProfileSlot); !P || P->AppearanceTone!=TEXT("warm") || P->CashRupees!=100000)
                     return Fail(TEXT("persisted free appearance change"));
                 WalkAgain();
                 break;
+            case EMorningStep::Portrait:
+                if (Age < 1.) return true;
+                if (!State->Pictures.Contains(TEXT("02b-avatar-face.png")))
+                {
+                    const auto* Body = Walker->GetMesh();
+                    const auto Size = GetWorld()->GetGameViewport()->Viewport->GetSizeXY();
+                    const FVector Face = Body->DoesSocketExist(TEXT("Head")) ? Body->GetSocketLocation(TEXT("Head")) : Walker->GetPawnViewLocation();
+                    FVector2D Pixel, Top, Bottom;
+                    const FVector HeadExtent(0.,0.,12.);
+                    if (Size.X <= 0 || Size.Y <= 0 || !ProjectWorldLocationToScreen(Face,Pixel,true)
+                        || !ProjectWorldLocationToScreen(Face+HeadExtent,Top,true)
+                        || !ProjectWorldLocationToScreen(Face-HeadExtent,Bottom,true)
+                        || Pixel.X < Size.X*.05 || Pixel.X > Size.X*.75 || Top.Y < Size.Y*.02 || Bottom.Y > Size.Y*.98)
+                        return Fail(TEXT("face outside portrait framing"));
+                    State->Results += FString::Printf(TEXT("portrait_camera=%s\nportrait_fov=%.1f\nhead_screen_xy=%.3f,%.3f\nmesh=%s\n"),
+                        *LifeCamera->GetActorLocation().ToString(),LifeCamera->GetCameraComponent()->FieldOfView,
+                        Pixel.X / Size.X,Pixel.Y / Size.Y,*GetPathNameSafe(Body->GetSkeletalMeshAsset()));
+                    Shot(TEXT("02b-avatar-face"));
+                    return true;
+                }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || !LifeCamera.IsValid()
+                    || LifeCamera->GetCameraComponent()->FieldOfView <= 50.f)
+                    return Fail(TEXT("wardrobe full outfit button or restored camera"));
+                Next(EMorningStep::RestoreOutfit);
+                break;
+            case EMorningStep::RestoreOutfit:
+            {
+                if (Age < 1.) return true;
+                if (!State->Pictures.Contains(TEXT("02c-avatar-outfit.png"))) { Shot(TEXT("02c-avatar-outfit")); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (const FString Error = VerifyFittingView(TEXT("restored")); !Error.IsEmpty()) return Fail(Error);
+                for (const auto& File : State->Pictures)
+                {
+                    if (IFileManager::Get().FileSize(*FPaths::Combine(Folder,File)) <= 0)
+                        return Fail(FString::Printf(TEXT("missing screenshot %s"), *File));
+                }
+                if (!FFileHelper::SaveStringToFile(State->Results,*FPaths::Combine(Folder,TEXT("portrait.txt"))))
+                    return Fail(TEXT("portrait camera record"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati avatar portrait review complete: %s"),*Folder);
+                FPlatformMisc::RequestExitWithStatus(false, 0);
+                return false;
+            }
             case EMorningStep::Store:
                 if (Screen!=EScreen::Life || !PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo")))
                     return Fail(TEXT("shop shirt preview"));

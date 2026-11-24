@@ -1,4 +1,5 @@
 #include "RiverfrontLifeMenu.h"
+#include "RiverfrontPlayerController.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLifeProfile.h"
 
@@ -126,6 +127,24 @@ public:
             ];
             if (bWardrobe)
             {
+                Body->AddSlot().AutoHeight().Padding(0,6,0,1)
+                [
+                    SNew(SButton).Tag(TEXT("LifePortrait")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
+                    .ContentPadding(FMargin(9,7)).HAlign(HAlign_Center)
+                    .OnClicked_Lambda([this]
+                    {
+                        auto* Controller = Cast<ARiverfrontPlayerController>(UGameplayStatics::GetPlayerController(AudioWorld.Get(),0));
+                        if (Controller && Controller->SetFittingPortraitView(!bPortrait))
+                            bPortrait = !bPortrait;
+                        else
+                            Feedback = Copy(TEXT("There isn't room for a close-up here."));
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
+                        .Text_Lambda([this]{ return Copy(bPortrait ? TEXT("View full outfit") : TEXT("Inspect face")); })
+                    ]
+                ];
                 AddCaption(Body,TEXT("Skin tone"));
                 Body->AddSlot().AutoHeight()
                 [
@@ -234,6 +253,7 @@ private:
     int32 Deliveries = 0;
     bool bAvailable = false, bDeliveryActive = false;
     bool bCroppedHair = false;
+    bool bPortrait = false;
     FText Feedback;
     TWeakObjectPtr<UWorld> AudioWorld;
     TStrongObjectPtr<USoundBase> SelectionTick, CounterBell;

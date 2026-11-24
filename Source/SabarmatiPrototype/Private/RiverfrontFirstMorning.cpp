@@ -11,6 +11,7 @@
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -150,6 +151,7 @@ void ARiverfrontPlayerController::PrepareFittingCamera()
         Walker->SetActorRotation(FRotator(0,Best.Rotation().Yaw,0));
         View->GetCameraComponent()->SetFieldOfView(70);
         LifeCamera=View;
+        FullOutfitView = View->GetActorTransform();
         SetViewTarget(View);
         if (PlayerCameraManager)
         {
@@ -157,6 +159,45 @@ void ARiverfrontPlayerController::PrepareFittingCamera()
             PlayerCameraManager->UpdateCamera(0.f);
         }
     }
+}
+
+bool ARiverfrontPlayerController::SetFittingPortraitView(bool bPortrait)
+{
+    ACameraActor* View = LifeCamera.Get();
+    auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
+    if (!View || !Walker) return false;
+
+    if (bPortrait)
+    {
+        const USkeletalMeshComponent* Body = Walker->GetMesh();
+        const FVector Face = Body && Body->DoesSocketExist(TEXT("Head"))
+            ? Body->GetSocketLocation(TEXT("Head")) + FVector(0,0,2)
+            : Walker->GetPawnViewLocation();
+        const FVector Forward = Walker->GetActorForwardVector();
+        const FVector Right = FVector::CrossProduct(FVector::UpVector, -Forward);
+        const FVector Desired = Face + Forward * 80. + FVector(0,0,1.5);
+        FHitResult Hit;
+        const FCollisionQueryParams Query(SCENE_QUERY_STAT(WardrobePortrait), false, Walker);
+        const bool bObstructed = GetWorld()->SweepSingleByChannel(Hit, Face, Desired, FQuat::Identity,
+            ECC_Camera, FCollisionShape::MakeSphere(6), Query);
+        if (bObstructed && Hit.Distance < 40.) return false;
+        const FVector Eye = bObstructed ? Hit.Location : Desired;
+        const double Distance = FVector::Distance(Face, Eye);
+        // Leave the right-hand side clear for the wardrobe controls.
+        View->SetActorLocationAndRotation(Eye, (Face + Right * (Distance * .105) - Eye).Rotation());
+        View->GetCameraComponent()->SetFieldOfView(46.f);
+    }
+    else
+    {
+        View->SetActorTransform(FullOutfitView);
+        View->GetCameraComponent()->SetFieldOfView(70.f);
+    }
+    if (PlayerCameraManager)
+    {
+        PlayerCameraManager->SetGameCameraCutThisFrame();
+        PlayerCameraManager->UpdateCamera(0.f);
+    }
+    return true;
 }
 
 void ARiverfrontPlayerController::OpenWallet()
