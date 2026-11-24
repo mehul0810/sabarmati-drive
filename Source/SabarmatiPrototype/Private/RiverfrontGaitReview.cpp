@@ -2,6 +2,7 @@
 
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCharacter.h"
+#include "RiverfrontLifeProfile.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -168,10 +169,28 @@ void ARiverfrontPlayerController::RunGaitReview()
         FPlatformMisc::RequestExitWithStatus(false,1);
         return;
     }
+    const bool bFemale = FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitFemale"));
+    if (bFemale)
+    {
+        const FText Error = RiverfrontLife::SetAvatarGender(ProfileSlot, ERiverfrontGender::Female);
+        if (!Error.IsEmpty())
+        {
+            UE_LOG(LogTemp,Error,TEXT("Gait review could not select female avatar: %s"),*Error.ToString());
+            FPlatformMisc::RequestExitWithStatus(false,1);
+            return;
+        }
+        RefreshLifeAppearance();
+        if (Walker->GetMesh()->GetSkeletalMeshAsset()->GetFName() != TEXT("SK_FemaleEveryday"))
+        {
+            UE_LOG(LogTemp,Error,TEXT("Gait review could not load female everyday mesh."));
+            FPlatformMisc::RequestExitWithStatus(false,1);
+            return;
+        }
+    }
     if (FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitKurta")))
     {
         Walker->ApplyWardrobeLook(TEXT("kurta"),NAME_None);
-        if (Walker->GetMesh()->GetSkeletalMeshAsset()->GetFName() != TEXT("SK_FittedKurta"))
+        if (Walker->GetMesh()->GetSkeletalMeshAsset()->GetFName() != (bFemale ? TEXT("SK_FemaleKurta") : TEXT("SK_FittedKurta")))
         {
             UE_LOG(LogTemp,Error,TEXT("Gait review could not switch to the fitted kurta."));
             FPlatformMisc::RequestExitWithStatus(false,1);
