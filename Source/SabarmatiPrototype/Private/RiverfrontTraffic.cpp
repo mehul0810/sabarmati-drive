@@ -10,6 +10,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Dom/JsonObject.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -21,6 +22,11 @@
 
 namespace
 {
+// The pedestrian crossing covers both lanes of the 10.2 m riverfront road.
+constexpr double CrossingHalfRoadWidth = 510.;
+constexpr double CrossingHalfStripeWidth = 142.5;
+constexpr double CrossingClearance = CrossingHalfStripeWidth + 16.;
+
 struct FVehicleShape { const TCHAR* Name; float Length, Width, Wheel, Axle, Track; int32 WheelCount; };
 const FVehicleShape Bodies[]={
     {TEXT("Rickshaw"),257,141,22,77,53,3},{TEXT("Scooter"),188,52,22,63,0,2},
@@ -353,7 +359,30 @@ int32 ARiverfrontTraffic::Phase() const
     const double P=FMath::Fmod(Elapsed,43.f);
     return P<16?0:P<19?1:P<20?2:P<28?3:P<30?4:5;
 }
-bool ARiverfrontTraffic::WalkSignal() const { return Phase()==5 && FMath::Fmod(Elapsed,43.f)<32.f; }
+bool ARiverfrontTraffic::WalkSignal() const
+{
+    if (bCity || Phase() != 5 || FMath::Fmod(Elapsed,43.f) >= 32.f) return false;
+
+    // Let the vehicle that was already in the crossing clear it before anyone steps off.
+    FCollisionObjectQueryParams VehicleObjects(ECC_WorldDynamic);
+    VehicleObjects.AddObjectTypesToQuery(ECC_Vehicle);
+    TArray<FOverlapResult> Occupants;
+    GetWorld()->OverlapMultiByObjectType(Occupants, PedestrianCrossing + FVector(0.,0.,55.),
+        FQuat::Identity, VehicleObjects, FCollisionShape::MakeBox(FVector(
+            CrossingClearance, CrossingHalfRoadWidth, 65.)),
+        FCollisionQueryParams(SCENE_QUERY_STAT(RiverfrontCrosswalkClearance), false));
+    for (const FOverlapResult& Occupant : Occupants)
+    {
+        const AActor* Actor = Occupant.GetActor();
+        if (Actor && (Actor->IsA<ARiverfrontRoadAgent>() || Actor->IsA<ARiverfrontCar>()))
+        {
+            UE_LOG(LogTemp, VeryVerbose, TEXT("Atal crossing occupied by %s at %s."), *Actor->GetName(),
+                *Actor->GetActorLocation().ToCompactString());
+            return false;
+        }
+    }
+    return true;
+}
 void ARiverfrontTraffic::SetUpSignals()
 {
     if (!Junctions.Num()) return;
@@ -385,15 +414,17 @@ void ARiverfrontTraffic::SetUpSignals()
         for (int32 C=0;C<3;++C) Part(Ball,Signals[(Axis>=2?3:0)+C],Pole-D*15+FVector(0,0,320-C*25),FVector(9,20,20),R);
     }
 }
-float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double Length,bool& Obstacle,int32 Index)
+float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double Length,bool& Obstacle,
+    int32 Index,TConstArrayView<FVector> CrossingWalkers)
 {
     double Limit=1.e7; Obstacle=false;
     const int32 H=Phase(); const bool Along=FMath::Abs(D.X)>FMath::Abs(D.Y);
     for (int32 J=0;J<Junctions.Num();++J)
     {
+        if (!bCity && J == 0) continue;
         const bool Red=Along?H!=0:H!=3;
         const FVector V=Junctions[J]-At;
-        if (Red && Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295 && V.Dot(D)>0 && V.Dot(D)<2350)
+        if (Red && Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295. && V.Dot(D)>0 && V.Dot(D)<2350)
             Limit=FMath::Min(Limit,V.Dot(D)-Length-337.);
     }
     auto Ahead=[&](FVector P,double OtherLength,double OtherWidth)
@@ -414,8 +445,21 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
         }
     if (const auto* PC=GetWorld()->GetFirstPlayerController())
         if (const APawn* Pawn=PC->GetPawn();Pawn && !Cast<ARiverfrontCar>(Pawn)) Ahead(Pawn->GetActorLocation(),36,37);
-    for (TActorIterator<ARiverfrontPedestrian> It(GetWorld());It;++It)
-        if (It->IsCrossingStreet()) Ahead(It->GetActorLocation(),33,38);
+    for (const FVector& Walker : CrossingWalkers) Ahead(Walker,33,38);
+    if (!bCity && Along)
+    {
+        const FVector Crossing = PedestrianCrossing - At;
+        const double Forward = Crossing.Dot(D);
+        if (FMath::Abs(Crossing.X * D.Y - Crossing.Y * D.X) < CrossingHalfRoadWidth
+            && Forward > Length + CrossingClearance && Forward < 2350.)
+        {
+            // Leave space for the whole vehicle after the stripes before committing
+            // to the crossing. A vehicle already across the line keeps clearing it.
+            const double DistanceToClear = Forward + Length + CrossingClearance;
+            if (H != 0 || Limit < DistanceToClear)
+                Limit = FMath::Min(Limit, Forward - Length - 337.);
+        }
+    }
     return Limit;
 }
 void ARiverfrontTraffic::UpdateJunctionClearance(FSabarmatiLane& Driver,const ARiverfrontRoadAgent& Agent,
@@ -433,6 +477,7 @@ void ARiverfrontTraffic::UpdateJunctionClearance(FSabarmatiLane& Driver,const AR
     if (Signal!=(bAlong?0:3)) return;
     for (int32 J=0;J<Junctions.Num();++J)
     {
+        if (!bCity && J == 0) continue;
         const FVector To=Junctions[J]-Here;
         const double Ahead=To.Dot(Heading);
         if (Ahead>0. && Ahead<Agent.HalfLength+310. &&
@@ -471,6 +516,10 @@ void ARiverfrontTraffic::Tick(float Dt)
         NearLamps.Sort([](const auto& A,const auto& B){return A.Key<B.Key;});
         if (NearLamps.Num()>4) NearLamps.SetNum(4,EAllowShrinking::No);
     }
+    TArray<FVector,TInlineAllocator<4>> CrossingWalkers;
+    if (!bCity)
+        for (TActorIterator<ARiverfrontPedestrian> It(GetWorld()); It; ++It)
+            if (It->IsCrossingStreet()) CrossingWalkers.Add(It->GetActorLocation());
     for (int32 I=0;I<Agents.Num();++I)
     {
         auto* A=Agents[I].Get(); auto& L=Drivers[I]; auto* R=Routes[L.Route].Get();
@@ -480,7 +529,7 @@ void ARiverfrontTraffic::Tick(float Dt)
         const FVector D=R->GetDirectionAtDistanceAlongSpline(L.At,ESplineCoordinateSpace::World).GetSafeNormal2D();
         UpdateJunctionClearance(L,*A,D,H);
         bool ParkedAhead=false;
-        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I);
+        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I,CrossingWalkers);
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
         bool Passing=ParkedAhead;
         if (Passing)

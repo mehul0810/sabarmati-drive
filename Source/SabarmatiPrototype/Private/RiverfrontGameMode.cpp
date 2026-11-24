@@ -98,8 +98,11 @@ void ARiverfrontGameMode::BeginPlay()
     if (IsValid(Car) && IsValid(River) && FPackageName::DoesPackageExist(
         TEXT("/Game/Sabarmati/Riverfront/Vehicles/SM_SabarmatiCrossover")))
     {
-        // Find a straight, free patch behind the first car without blocking its way out.
-        for (const double Distance : {900.0, 1160.0, 1460.0})
+        // The Atal zebra crossing sits 11.7 m behind the hatch. Keep the second car's
+        // rear clear of the stripes as well as leaving room to exit the first car.
+        const double RiverfrontSpacings[] = {620., 705., 765.};
+        const double CitySpacings[] = {900., 1160., 1460.};
+        for (const double Distance : bCityBuilt ? CitySpacings : RiverfrontSpacings)
         {
             if (ARiverfrontCar* Parked = SpawnCrossover(*River, CarSpawn - CarFacing.Vector() * Distance, CarFacing))
             {
