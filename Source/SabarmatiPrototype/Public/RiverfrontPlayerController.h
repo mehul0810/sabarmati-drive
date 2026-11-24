@@ -124,6 +124,7 @@ private:
     bool HasLocalProfile() const { return !LocalDisplayName.IsEmpty(); }
 
     void ShowTitle();
+    void ApplyGraphicsPreset(int32 Quality, bool bSave);
 #if !UE_BUILD_SHIPPING
     void RunMorningReview();
     void RunRenderingBenchmark();
@@ -131,6 +132,7 @@ private:
     void RunGaitReview();
     void RunSystemsReview();
     void RunNeighbourhoodReview();
+    int32 ReviewGraphicsPreset = INDEX_NONE;
     double LastStreetTravelMs=0.;
 #endif
     void TogglePauseMenu();

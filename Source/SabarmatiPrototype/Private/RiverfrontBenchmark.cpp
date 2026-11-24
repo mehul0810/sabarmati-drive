@@ -24,7 +24,10 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "PipelineFileCache.h"
+#include "PipelineStateCache.h"
 #include "RenderTimer.h"
+#include "ShaderPipelineCache.h"
 #include "UnrealClient.h"
 
 namespace
@@ -52,7 +55,7 @@ class FRiverfrontBenchmark
 public:
     explicit FRiverfrontBenchmark(ARiverfrontPlayerController& InPlayer) : Player(InPlayer) {}
 
-    bool Start()
+    bool Start(int32 GraphicsPreset)
     {
         UWorld* World = Player.GetWorld();
         const auto* Mode = World->GetAuthGameMode<ARiverfrontGameMode>();
@@ -80,9 +83,10 @@ public:
         }
         const TCHAR* TimeName = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiLightingReference"))
             ? TEXT("reference") : District->TimeName();
-        // Normalize resolution and pacing in this standalone QA process only.
+        // The standard run uses native pixels. An opted-in preset uses the same
+        // scene scale as the Graphics menu while keeping the drawable and HUD fixed.
         for (const TPair<const TCHAR*,int32>& Setting : {
-            TPair<const TCHAR*,int32>{TEXT("r.ScreenPercentage"), 100}, {TEXT("r.SecondaryScreenPercentage.GameViewport"), 100},
+            TPair<const TCHAR*,int32>{TEXT("r.SecondaryScreenPercentage.GameViewport"), 100},
             {TEXT("r.DynamicRes.OperationMode"), 0}, {TEXT("r.VSync"), 0}, {TEXT("t.IdleWhenNotForeground"), 0}})
         {
             if (auto* Variable = IConsoleManager::Get().FindConsoleVariable(Setting.Key))
@@ -90,15 +94,26 @@ public:
                 Variable->Set(Setting.Value, ECVF_SetByCode);
             }
         }
+        if (GraphicsPreset == INDEX_NONE)
+        {
+            if (auto* Scale = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage")))
+                Scale->Set(100, ECVF_SetByCode);
+        }
         auto* Viewport = World->GetGameViewport()->Viewport;
         const FIntPoint Size = Viewport->GetSizeXY();
         FString Info = FString::Printf(TEXT("format=3\ntime=%s\nviewport=%dx%d\nwindowed=%d\nengine=%s\ngpu=%s\n"),
             TimeName, Size.X, Size.Y, Viewport->GetWindowMode() == EWindowMode::Windowed,
             *FEngineVersion::Current().ToString(), *FPlatformMisc::GetPrimaryGPUBrand());
         Info += FString::Printf(TEXT("frame_smoothing=%d\n"), GEngine && GEngine->IsAllowedFramerateSmoothing());
+        Info += FString::Printf(TEXT("graphics_preset=%d\n"), GraphicsPreset);
+        Info += FString::Printf(TEXT("pso_precache_supported=%d\npso_precache_enabled=%d\npso_file_cache_supported=%d\n")
+            TEXT("pso_file_cache_enabled=%d\npso_precompiles_outstanding=%u\n"),
+            GRHISupportsPSOPrecaching, PipelineStateCache::IsPSOPrecachingEnabled(),
+            GRHISupportsPipelineFileCache, FPipelineFileCacheManager::IsPipelineFileCacheEnabled(),
+            FShaderPipelineCache::NumPrecompilesRemaining());
         for (const TCHAR* Key : {TEXT("r.ScreenPercentage"), TEXT("r.SecondaryScreenPercentage.GameViewport"), TEXT("r.AntiAliasingMethod"), TEXT("r.VSync"),
             TEXT("r.DynamicRes.OperationMode"), TEXT("r.ReflectionMethod"), TEXT("r.DynamicGlobalIlluminationMethod"),
-            TEXT("sg.ShadowQuality"), TEXT("sg.PostProcessQuality"), TEXT("t.MaxFPS"), TEXT("t.IdleWhenNotForeground")})
+            TEXT("sg.ShadowQuality"), TEXT("sg.PostProcessQuality"), TEXT("sg.ReflectionQuality"), TEXT("t.MaxFPS"), TEXT("t.IdleWhenNotForeground")})
         {
             if (const IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(Key))
             {
@@ -338,7 +353,7 @@ void ARiverfrontPlayerController::RunRenderingBenchmark()
     }
     ResumeDrive();
     TSharedRef<FRiverfrontBenchmark> Run = MakeShared<FRiverfrontBenchmark>(*this);
-    if (Run->Start())
+    if (Run->Start(ReviewGraphicsPreset))
     {
         FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [Run](float)
         {

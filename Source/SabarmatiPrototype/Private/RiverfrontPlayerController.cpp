@@ -628,8 +628,38 @@ void ARiverfrontPlayerController::SetupInputComponent()
     InputComponent->BindAction(TEXT("DistrictClock"),IE_Pressed,this,&ARiverfrontPlayerController::ToggleDistrictClock);
 }
 
+void ARiverfrontPlayerController::ApplyGraphicsPreset(int32 Quality, bool bSave)
+{
+    if (auto* Settings = GEngine ? GEngine->GetGameUserSettings() : nullptr)
+    {
+        const float SavedScale = Settings->GetResolutionScaleNormalized();
+        Settings->SetOverallScalabilityLevel(FMath::Clamp(Quality, 0, 4));
+        if (FParse::Param(FCommandLine::Get(), TEXT("Sabarmati4K")))
+        {
+            // The explicit Retina profile always renders at the drawable's full resolution.
+            Settings->SetResolutionScaleNormalized(SavedScale);
+        }
+        Settings->ApplyNonResolutionSettings();
+        if (bSave) Settings->SaveSettings();
+    }
+}
+
 void ARiverfrontPlayerController::ShowTitle()
 {
+#if !UE_BUILD_SHIPPING
+    if ((FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark"))
+        || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")))
+        && FParse::Value(FCommandLine::Get(), TEXT("SabarmatiReviewPreset="), ReviewGraphicsPreset))
+    {
+        if (ReviewGraphicsPreset < 0 || ReviewGraphicsPreset > 4)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Sabarmati review expects a graphics preset between 0 and 4."));
+            FPlatformMisc::RequestExitWithStatus(false, 1);
+            return;
+        }
+        ApplyGraphicsPreset(ReviewGraphicsPreset, false);
+    }
+#endif
     if (const UGameViewportClient* View = GetWorld()->GetGameViewport(); View && View->Viewport)
     {
         IConsoleManager& Settings = IConsoleManager::Get();
@@ -1212,15 +1242,9 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
             ApplyVolume(V);
             if (GConfig) {GConfig->SetFloat(LookSection,TEXT("Volume"),MasterVolume,GGameUserSettingsIni);GConfig->Flush(false,GGameUserSettingsIni);}
         }))
-        .OnQuality(FSabarmatiQuality::CreateLambda([](int32 Q)
+        .OnQuality(FSabarmatiQuality::CreateLambda([this](int32 Q)
         {
-            if (auto* S=GEngine?GEngine->GetGameUserSettings():nullptr)
-            {
-                // A quality change leaves the current window sizing and Retina render fraction intact.
-                const float Scale=S->GetResolutionScaleNormalized();
-                S->SetOverallScalabilityLevel(FMath::Clamp(Q,0,4));S->SetResolutionScaleNormalized(Scale);
-                S->ApplyNonResolutionSettings();S->SaveSettings();
-            }
+            ApplyGraphicsPreset(Q, true);
         }))
         .OnSensitivity(FOnFloatValueChanged::CreateUObject(this, &ARiverfrontPlayerController::SetMouseSensitivity))
         .OnContinue(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ResumeDrive))
