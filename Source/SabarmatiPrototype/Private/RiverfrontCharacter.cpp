@@ -4,6 +4,8 @@
 #include "Kismet/GameplayStatics.h"
 
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/BlendSpace1D.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -29,8 +31,8 @@
 
 namespace
 {
-constexpr float WalkSpeed = 228.f;
-constexpr float SprintSpeed = 463.f;
+constexpr float WalkSpeed = 145.f;
+constexpr float SprintSpeed = 335.f;
 const TCHAR* AvatarRoot = TEXT("/Game/Sabarmati/Avatar/");
 
 template <typename Type>
@@ -58,8 +60,8 @@ ARiverfrontCharacter::ARiverfrontCharacter()
     Movement->bOrientRotationToMovement = true;
     Movement->RotationRate = FRotator(0, 585, 0);
     Movement->MaxWalkSpeed = WalkSpeed;
-    Movement->MaxAcceleration = 1560.f;
-    Movement->BrakingDecelerationWalking = 1530.f;
+    Movement->MaxAcceleration = 850.f;
+    Movement->BrakingDecelerationWalking = 900.f;
     Movement->JumpZVelocity = 440.f;
     Movement->AirControl = .36f;
 
@@ -235,7 +237,13 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
             ? LoadObject<UAnimSequence>(nullptr, *(Package + TEXT(".") + Clip)) : nullptr;
         AnimationClips.Add(Sequence && Sequence->GetSkeleton() == Model->GetSkeleton() ? Sequence : nullptr);
     }
-    if (AnimationClips[0])
+    const FString BlendPath = ClipFolder + TEXT("BS_ResidentGait");
+    LocomotionBlend = bPublic && FPackageName::DoesPackageExist(BlendPath)
+        ? LoadObject<UBlendSpace1D>(nullptr, *(BlendPath + TEXT(".BS_ResidentGait"))) : nullptr;
+    if (LocomotionBlend && LocomotionBlend->GetSkeleton() != Model->GetSkeleton()) LocomotionBlend = nullptr;
+    if (LocomotionBlend)
+        GetMesh()->PlayAnimation(LocomotionBlend, true);
+    else if (AnimationClips[0])
     {
         ActiveSequence = AnimationClips[0];
         GetMesh()->PlayAnimation(ActiveSequence, true);
@@ -380,7 +388,10 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
         bInFittingPose = false;
         Movement->bOrientRotationToMovement = bOrientBeforeFitting;
         if (bBlueprintAvatarActive) ReceiveAvatarFittingPose(false);
-        else GetMesh()->SetPlayRate(1.f);
+        else if (LocomotionBlend)
+            GetMesh()->PlayAnimation(LocomotionBlend, true);
+        else
+            GetMesh()->SetPlayRate(1.f);
         return;
     }
     if (!bInFittingPose) bOrientBeforeFitting = Movement->bOrientRotationToMovement;
@@ -449,23 +460,31 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (bInFittingPose) return;
-    if (!IsHidden() && GetCharacterMovement()->IsMovingOnGround())
+    const float FlatSpeed = GetVelocity().Size2D();
+    if (!IsHidden() && FlatSpeed > 12.f && GetCharacterMovement()->IsMovingOnGround())
     {
-        const float Rate=GetVelocity().Size2D();
-        StepTravel+=Rate*DeltaSeconds;
-        if (StepTravel>=FMath::Lerp(69.f,112.f,FMath::Clamp(Rate/600.f,0.f,1.f)))
+        bool bContact = false;
+        FVector Foot = GetActorLocation() - FVector(0,0,87);
+        if (LocomotionBlend && GetMesh()->GetSingleNodeInstance())
         {
-            StepTravel=0; ++StepIndex;
-            const FVector Foot=GetActorLocation()-FVector(0,0,87);
-            USoundWave* Step=StepIndex%3==0?GritStep.Get():StoneStep.Get();
-            if (Step) UGameplayStatics::PlaySoundAtLocation(this,Step,Foot,.18f+FMath::Min(Rate/1600.f,.3f),.94f+(StepIndex%4)*.042f);
+            // Unreal advances blend spaces in normalized time. The clips strike
+            // left at 0 and right at 0.5 throughout the walk-to-run transition.
+            const int32 ContactHalf = GetMesh()->GetPosition() < .5f ? 0 : 1;
+            bContact = LastContactHalf != INDEX_NONE && ContactHalf != LastContactHalf;
+            LastContactHalf = ContactHalf;
+            if (bContact) Foot = GetMesh()->GetSocketLocation(ContactHalf ? TEXT("Footr") : TEXT("Footl"));
         }
     }
     if (bBlueprintAvatarActive) return;
-    const double FlatSpeed = GetVelocity().Size2D();
     if (bUsesImportedMesh)
     {
-        const int32 State = FlatSpeed < 9 ? 0 : FlatSpeed < 315 ? 1 : 2;
+        if (LocomotionBlend)
+        {
+            if (auto* Player = GetMesh()->GetSingleNodeInstance())
+                Player->SetBlendSpacePosition(FVector(FlatSpeed,0,0));
+            return;
+        }
+        const int32 State = FlatSpeed < 9 ? 0 : FlatSpeed < (WalkSpeed + SprintSpeed) * .5f ? 1 : 2;
         UAnimSequence* Sequence = AnimationClips[State].Get();
         if (!Sequence)
         {
@@ -473,6 +492,24 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
         }
         if (Sequence && Sequence != ActiveSequence.Get())
         {
+        else
+        {
+            StepTravel += FlatSpeed * DeltaSeconds;
+            const float StepLength = FMath::Lerp(69.f,112.f,FMath::Clamp(FlatSpeed/600.f,0.f,1.f));
+            bContact = StepTravel >= StepLength;
+            if (bContact) StepTravel = FMath::Fmod(StepTravel,StepLength);
+        }
+        if (bContact)
+        {
+            ++StepIndex;
+            USoundWave* Step = StepIndex % 3 == 0 ? GritStep.Get() : StoneStep.Get();
+            if (Step) UGameplayStatics::PlaySoundAtLocation(this,Step,Foot,.18f+FMath::Min(FlatSpeed/1600.f,.3f),.94f+(StepIndex%4)*.042f);
+        }
+    }
+    else
+    {
+        LastContactHalf = INDEX_NONE;
+        StepTravel = 0.f;
             ActiveSequence = Sequence;
             GetMesh()->PlayAnimation(Sequence, true);
         }

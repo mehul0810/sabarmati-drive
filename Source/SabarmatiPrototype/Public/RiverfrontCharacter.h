@@ -11,6 +11,7 @@ class USkeletalMesh;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UAnimSequence;
+class UBlendSpace1D;
 class UMaterialInterface;
 
 UCLASS()
@@ -81,6 +82,8 @@ private:
     UPROPERTY()
     TObjectPtr<UAnimSequence> ActiveSequence;
     UPROPERTY()
+    TObjectPtr<UBlendSpace1D> LocomotionBlend;
+    UPROPERTY()
     TArray<TObjectPtr<UAnimSequence>> AnimationClips;
     UPROPERTY()
     TArray<TObjectPtr<UStaticMeshComponent>> PreviewPieces;
@@ -88,6 +91,7 @@ private:
     UPROPERTY() TObjectPtr<class USoundWave> StoneStep;
     UPROPERTY() TObjectPtr<class USoundWave> GritStep;
     float StepTravel=0;
+    int32 LastContactHalf = INDEX_NONE;
     int32 StepIndex=0;
     double GaitPhase = 0.0;
     bool bUsesImportedMesh = false;
