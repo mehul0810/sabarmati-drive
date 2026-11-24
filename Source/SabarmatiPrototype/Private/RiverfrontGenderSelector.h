@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RiverfrontResidentAppearance.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -24,6 +25,15 @@ public:
     {
         Selected = Args._Selected;
         OnSelected = Args._OnSelected;
+        const FLinearColor Saffron(FColor(243,187,114));
+        const FLinearColor Ivory(FColor(246,241,232));
+        RadioStyle = FCoreStyle::Get().GetWidgetStyle<FCheckBoxStyle>("RadioButton");
+        RadioStyle.UncheckedImage.TintColor = Ivory.CopyWithNewOpacity(.75f);
+        RadioStyle.UncheckedHoveredImage.TintColor = Ivory;
+        RadioStyle.UncheckedPressedImage.TintColor = Saffron;
+        RadioStyle.CheckedImage.TintColor = Saffron;
+        RadioStyle.CheckedHoveredImage.TintColor = Ivory;
+        RadioStyle.CheckedPressedImage.TintColor = Saffron;
         ChildSlot
         [
             SNew(SHorizontalBox)
@@ -31,7 +41,7 @@ public:
             [
                 SNew(STextBlock)
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-                .ColorAndOpacity(FLinearColor(.92f, .74f, .48f))
+                .ColorAndOpacity(Saffron)
                 .Text(NSLOCTEXT("SabarmatiAvatar", "GenderLabel", "AVATAR"))
             ]
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,16,0)
@@ -42,14 +52,21 @@ public:
     }
 
 private:
+    class SAvatarRadio final : public SCheckBox
+    {
+        const FSlateRoundedBoxBrush FocusBorder{FLinearColor::Transparent, 3.f, FLinearColor(FColor(243,187,114)), 1.5f};
+        const FSlateBrush* GetFocusBrush() const override { return &FocusBorder; }
+    };
+
+    FCheckBoxStyle RadioStyle;
     TAttribute<ERiverfrontGender> Selected;
     FOnRiverfrontGenderSelected OnSelected;
 
     TSharedRef<SWidget> Choice(ERiverfrontGender Value, FName Tag, const FText& Name)
     {
-        return SNew(SCheckBox)
+        return SNew(SAvatarRadio)
             .Tag(Tag)
-            .Style(FCoreStyle::Get(), "RadioButton")
+            .Style(&RadioStyle)
             .Padding(FMargin(6,5))
             .IsChecked_Lambda([this, Value]
             {
@@ -61,7 +78,7 @@ private:
                     OnSelected.ExecuteIfBound(Value);
             })
             [
-                SNew(STextBlock).Text(Name).ColorAndOpacity(FLinearColor(.95f, .93f, .87f))
+                SNew(STextBlock).Text(Name).ColorAndOpacity(FLinearColor(FColor(246,241,232)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 15))
             ];
     }
