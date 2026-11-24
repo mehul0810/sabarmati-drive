@@ -15,6 +15,7 @@
 #include "Internationalization/Internationalization.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Colors/SSimpleGradient.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SDPIScaler.h"
@@ -26,11 +27,11 @@
 
 namespace RiverfrontFittingUI
 {
-const FLinearColor Paper(.95f,.90f,.79f);
-const FLinearColor Muted(.64f,.66f,.60f);
-const FLinearColor Amber(.92f,.61f,.28f);
-const FLinearColor Panel(.027f,.034f,.033f,.97f);
-const FLinearColor Row(.065f,.078f,.070f);
+const FLinearColor Paper(.97f,.94f,.87f);
+const FLinearColor Muted(.66f,.70f,.69f);
+const FLinearColor Amber(.99f,.66f,.28f);
+const FLinearColor Panel(.012f,.020f,.024f,.95f);
+const FLinearColor Row(1.f,1.f,1.f,.065f);
 constexpr float PanelWidth = 404.f;
 
 FText Copy(const FString& Text) { return FText::FromString(Text); }
@@ -82,15 +83,15 @@ public:
         }
 
         ButtonStyle = FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button");
-        ButtonStyle.SetNormal(FSlateRoundedBoxBrush(FLinearColor::White,4.f))
-            .SetHovered(FSlateRoundedBoxBrush(FLinearColor::White,4.f,Amber,1.5f))
-            .SetPressed(FSlateRoundedBoxBrush(FLinearColor::White,4.f,Paper,1.5f))
+        ButtonStyle.SetNormal(FSlateRoundedBoxBrush(FLinearColor::White,1.f))
+            .SetHovered(FSlateRoundedBoxBrush(FLinearColor::White,1.f,Amber,1.5f))
+            .SetPressed(FSlateRoundedBoxBrush(FLinearColor::White,1.f,Paper,1.5f))
             .SetNormalPadding(FMargin(0)).SetPressedPadding(FMargin(0));
 
         const bool bShop = Page == ERiverfrontLifeMenu::Shop;
         const bool bWardrobe = Page == ERiverfrontLifeMenu::Wardrobe;
         const FString Title = bShop ? TEXT("Sutra Cloth House") : bWardrobe ? TEXT("Wardrobe") : TEXT("Wallet");
-        const FString Location = bShop ? TEXT("AT THE COUNTER") : bWardrobe ? TEXT("KESAR APARTMENTS  /  FLAT 2B") : TEXT("SABARMATI DRIVE");
+        const FString Location = bShop ? TEXT("RIVERFRONT MARKET") : bWardrobe ? TEXT("KESAR APARTMENTS  /  FLAT 2B") : TEXT("PERSONAL ACCOUNT");
 
         TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
         if (bAvailable && (bShop || bWardrobe))
@@ -193,12 +194,26 @@ public:
             SNew(SDPIScaler).DPIScale(this,&SRiverfrontLifeMenu::PanelScale)
             [
                 SNew(SOverlay)
-                + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(14)
+                + SOverlay::Slot().HAlign(HAlign_Right)
+                [
+                    SNew(SHorizontalBox).Visibility(EVisibility::HitTestInvisible)
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [
+                        SNew(SBox).WidthOverride(80.f)
+                        [ SNew(SSimpleGradient).Orientation(Orient_Horizontal)
+                            .StartColor(Panel.CopyWithNewOpacity(0.f)).EndColor(Panel) ]
+                    ]
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [
+                        SNew(SBox).WidthOverride(PanelWidth + 14.f)
+                        [ SNew(SBorder).Padding(0).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Panel) ]
+                    ]
+                ]
+                + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(FMargin(0,12,14,12))
                 [
                     SNew(SBox).Tag(TEXT("LifePanel")).WidthOverride(PanelWidth).MaxDesiredHeight(650.f)
                     [
-                        SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                        .BorderBackgroundColor(Panel).Padding(FMargin(19,16))
+                        SNew(SBox).Padding(FMargin(16,8,14,8))
                         [
                             SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,7)
@@ -212,7 +227,7 @@ public:
                                     [Label(Copy(TEXT("Close  Esc")),11,Paper)]
                                 ]
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,11)[Label(Copy(Title),29,Paper,true)]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,14)[Label(Copy(Title),32,Paper,true)]
                             + SVerticalBox::Slot().AutoHeight()
                             [
                                 SNew(SHorizontalBox).Visibility(Show(bAvailable))
@@ -299,16 +314,25 @@ private:
 
     static void AddCaption(const TSharedRef<SVerticalBox>& Body, const FString& Caption)
     {
-        Body->AddSlot().AutoHeight().Padding(0,13,0,6)[Label(Copy(Caption),13,Muted,true)];
+        Body->AddSlot().AutoHeight().Padding(0,13,0,5)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth()[Label(Copy(Caption.ToUpper()),11,Amber,true)]
+            + SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(10,0,0,0)
+            [
+                SNew(SBox).HeightOverride(1.f)
+                [SNew(SBorder).Padding(0).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                    .BorderBackgroundColor(Paper.CopyWithNewOpacity(.19f))]
+            ]
+        ];
     }
 
     TSharedRef<SWidget> Balance(bool bBank)
     {
-        return SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-            .BorderBackgroundColor(Row).Padding(FMargin(10,7))
+        return SNew(SBox).Padding(FMargin(0,2,4,5))
             [
                 SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()[Label(Copy(bBank ? TEXT("Bank balance") : TEXT("Cash in hand")),11,Muted)]
+                + SVerticalBox::Slot().AutoHeight()[Label(Copy(bBank ? TEXT("BANK") : TEXT("CASH")),11,Muted)]
                 + SVerticalBox::Slot().AutoHeight().Padding(0,2,0,0)
                 [
                     SNew(STextBlock).Tag(bBank ? TEXT("LifeBankBalance") : TEXT("LifeCashBalance"))
@@ -325,14 +349,14 @@ private:
         const FName Id = Entry.Id;
         TSharedPtr<SButton> RowButton;
         SAssignNew(RowButton,SButton).Tag(FName(*(TEXT("LifeItem.")+Id.ToString()))).ButtonStyle(&ButtonStyle)
-            .ContentPadding(FMargin(9,7)).HAlign(HAlign_Fill)
-            .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected == Id ? FLinearColor(.16f,.18f,.14f) : Row); })
+            .ContentPadding(FMargin(10,6)).HAlign(HAlign_Fill)
+            .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected == Id ? Amber.CopyWithNewOpacity(.15f) : Row); })
             .OnClicked_Lambda([this,Id]{ return Select(Id); })
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,9,0)
                 [
-                    SNew(SBox).WidthOverride(16).HeightOverride(22)
+                    SNew(SBox).WidthOverride(4).HeightOverride(24)
                     [SNew(SBorder).Padding(0).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Entry.Tint)]
                 ]
                 + SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)[Label(Copy(Entry.Label),14,Paper,true)]
