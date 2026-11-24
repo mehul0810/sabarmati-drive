@@ -222,10 +222,12 @@ void ARiverfrontWorld::BuildBanks()
         Span(ETint::Paving, -SegmentHalfLength, SegmentHalfLength, 2350, -110, 310, 52, true);
         for (const double Z : {-49.0, 9.0})
         {
-            Span(ETint::Rail, -SegmentHalfLength, SegmentHalfLength, 2205, Z, 9, 9, true);
+            Span(ETint::Rail, -SegmentHalfLength, BridgeX-BridgeSide, 2205, Z, 9, 9, true);
+            Span(ETint::Rail, BridgeX+BridgeSide, SegmentHalfLength, 2205, Z, 9, 9, true);
         }
         for (double X = -7500; X <= 7550; X += 210)
         {
+            if (FMath::Abs(X-BridgeX)<BridgeSide) continue;
             Box(ETint::Rail, FVector(X, BankY(Bank, 2205), -33), FVector(9, 9, 102));
         }
         for (const double X : {BridgeX - BridgeSide - 26, BridgeX + BridgeSide + 26})
