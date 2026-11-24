@@ -53,11 +53,15 @@ You can walk from the wardrobe in Flat 2B down the apartment stairs to street le
 
 ## Optional local avatar import
 
-`SourceAssets/fictional-rigged.glb` may be supplied in a local checkout. The prototype rig uses one skin, 15 joints and four named clips: **Idle**, **Walk**, **WalkAlt** and **Jog**. The prototype rig is not distributed in the public repository. The raw GLB is not loaded in-game. The public game uses an animated, clothed fictional resident when the local mesh is unavailable. To use a locally provided, appropriately licensed avatar:
+The editor and installed game use the fictional riverfront resident by default. At the wardrobe in Flat 2B, **Inspect face** shows the hairstyle and complexion up close. **View full outfit** restores the clothing view.
+
+The public resident walks at 145 cm/s and runs at 335 cm/s with Shift. A native Unreal 1D Blend Space uses the character's actual horizontal speed and keeps the left and right footfalls in phase while accelerating. The clip authoring script solves the support leg against a planted foot on level ground. It uses the existing resident skeleton.
+
+For a local rig comparison, the editor supports a separately supplied and appropriately licensed `SourceAssets/fictional-rigged.glb` with one skin, 15 joints and Idle, Walk, WalkAlt and Jog clips.
 
 1. In the UE editor, create **Content/Sabarmati/Avatar**. In the Content Browser, import the GLB as an asset into that folder (do not use **Import Into Level**). In the [Interchange importer](https://dev.epicgames.com/documentation/unreal-engine/interchange-import-reference-in-unreal-engine), enable **Import Skeletal Meshes** and **Import Animations**. Enable **Combine Skeletal Meshes**, if displayed, so the skinned body/clothes/shoes use one skeletal mesh and one skeleton. Save imported materials and textures.
 2. Rename the imported skeletal mesh **SK_Sabarmati**, and its Idle, Walk and Jog animation assets **A_Idle**, **A_Walk** and **A_Jog**, all directly in that folder. The mesh and three clips must reference the same Skeleton asset. The optional `WalkAlt` clip is not loaded by default. If your Unreal glTF importer does not bring the skinned parts or clips together, re-export the fictional source rig from Blender as skeletal FBX with baked animation clips and import against the same Skeleton; do not use the fallback as proof of a successful import.
-3. Preview orientation (UE forward is +X), height (~1.8 m), ground contact, clothes/shoes and foot movement in the editor, then press Play. If necessary correct import transforms before saving. The prototype uses simple speed-based clip selection, not production foot IK, turning animations, motion matching, or retargeting.
+3. Preview the mesh facing +X and check its standing height, foot contact and deformation. To play with the private rig, run `bash Scripts/run-mac.sh --game -- -SabarmatiPrivateAvatar`. A configured Blueprint avatar keeps its own animation graph. The private skeletal-mesh fallback plays the imported clips.
 4. The public cook excludes this local folder automatically. Both clothed public residents ship in the Riverfront content directory.
 
 ## Run a native smoke test

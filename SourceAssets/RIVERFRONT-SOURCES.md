@@ -93,6 +93,8 @@ The public pedestrians use the generic MakeHuman hm08 mesh. The preparation scri
 
 The shop signs, furnishings, service station, small-vehicle fleet and synthesized sounds are project-authored. The two opening front doors use the credited hatchback geometry. Road routing uses the existing offline ODbL street network. [SRFDCL promenade](https://www.sabarmatiriverfront.com/river-promenade.html) · [HCP Ravivari Market](https://hcp.co.in/urbanism/71) · [OSM copyright and attribution](https://www.openstreetmap.org/copyright)
 
+The playable resident's everyday button-front shirt and jeans use MakeHuman's `male_casualsuit03` geometry, and the slip-ons use `shoes01`. The asset pack provides the geometry, fitting information and surface maps under CC0. The project fit them to the resident skeleton and prepared the fabric for the saved sand and indigo dyes. [MakeHuman system assets and license](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html)
+
 ## Canopy, glazing, instruments and street sound
 
 The park's larger trees use the CC0 Jacaranda by Rico Cilliers and Rob Tuytel. The project converted its trunk, branch cards and masked leaf atlas for the Metal renderer. The mesh has 78,352 triangles at LOD 0 and three imported or reduced LODs. Texture archives and the source GLTF are development inputs. [Jacaranda Tree](https://polyhaven.com/a/jacaranda_tree) · [Poly Haven license](https://polyhaven.com/license)
@@ -106,3 +108,9 @@ The phone user and seated residents on promenade benches derive from the same pu
 ## Riverfront service elevations and asphalt repairs
 
 The original service elevations add shaded stair lights, stone sills, rear service doors and rainwater pipes to the existing building footprints. The three masonry materials keep their credited scan maps. A world-space moisture mask changes colour and roughness close to ground level. The road blends the credited Asphalt 033 and 019 materials, with worn wheel tracks, dusty shoulders and irregular resurfacing cuts at metre scale. The two new fixed camera views capture a public side lane and a low view over a cast access cover. The editor can rebuild these adjustments with `Scripts/build-wet-road.py` and `Scripts/build-facade-weathering.py`.
+
+## Playable resident hair
+
+The swept and cropped wardrobe cuts use the MakeHuman system hairstyles `short01` and `short04`. The swept style includes project-authored tapered hairs following the forehead. Their CC0 mesh bindings fit the existing hm08 head, and the original 2048-pixel strand masks retain the shape of the hairline. The restored scalp uses the wearer's current skin material. Run `Scripts/make-resident-hair.py` with the hm08 OBJ, the extracted system pack and an output directory. Set `SABARMATI_RESIDENT_HAIR_SOURCE` to that directory for `Scripts/import-resident-hair.py`. [MakeHuman system assets and CC0 credits](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html)
+
+The 2048-pixel playable and close-resident eye chart uses the CC0 MakeHuman system `eyes/materials/brown_eye.png`. `Scripts/prepare-resident-eyes.py` samples each iris and its adjoining sclera onto the existing public mesh UVs at a 12 mm iris diameter. `Scripts/import-resident-eyes.py` reads the result from `SABARMATI_RESIDENT_HAIR_SOURCE` and binds the atlas, iris mask and corneal dome normal to Unreal's Eye shading model. [MakeHuman system assets and CC0 credits](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html)

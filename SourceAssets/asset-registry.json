@@ -123,6 +123,18 @@
       "verification": "Both public skeletal meshes and eight clips saved by the Unreal commandlet. One pedestrian crossed under signal control during input QA."
     },
     {
+      "id": "playable-resident",
+      "category": "character",
+      "source": "Generic hm08 body and CC0 MakeHuman system skin, brows, brown eyes, hairstyles, casualsuit03 and shoes01. See SourceAssets/RESIDENT-SKIN.md and SourceAssets/RIVERFRONT-SOURCES.md.",
+      "license": "MakeHuman system assets under CC0 1.0. https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+      "geometry": "An adult fictional player with skinned clothes and shoes, fitted scalp and hair cards. Everyday and kurta appearances keep their resident skeletons.",
+      "textures": "2K skin colour and tangent normals, 1K roughness, a native Unreal subsurface profile, fabric normals, and masked hair textures.",
+      "collision": "Unreal CharacterMovement capsule with in-place, contact-calibrated walk and run animations.",
+      "lod": "Conventional skeletal mesh and masked hair cards on Metal SM5.",
+      "location": "Content/Sabarmati/Riverfront/People/Wardrobe/Everyday/SK_RiverEveryday.uasset",
+      "verification": "Use the wardrobe portrait review for appearance and the gait review for world-space knee angles, foot contact and motion captures."
+    },
+    {
       "id": "district-fleet",
       "category": "traffic vehicles",
       "source": "Original unbadged parametric coachwork in Scripts/make-district-fleet.py.",
