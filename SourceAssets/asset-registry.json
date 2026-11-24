@@ -156,7 +156,7 @@
       "collision": "Swept near-player bodies and lane spacing at distance.",
       "lod": "Three generated LODs per model.",
       "location": "Content/Sabarmati/Riverfront/Vehicles/Fleet/SM_TrafficSedan.uasset",
-      "verification": "23 traffic agents on six directed riverfront circuits. Measured forward travel, stops and turning."
+      "verification": "36 riverfront agents across 12 native meshes, with eight initially within 47 metres of Kesar. The mapped city spawns 30 agents, including eight along the mapped starting road. The systems review checks body meshes and LODs."
     },
     {
       "id": "district-panoramas",

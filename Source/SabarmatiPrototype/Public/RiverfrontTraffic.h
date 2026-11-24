@@ -21,6 +21,7 @@ public:
     bool MoveOnRoad(const FVector& Position, const FRotator& Heading, double Travel, bool Near);
     void UpdateLights(bool Night, bool Stopping, bool Project);
     double HalfLength=200., HalfWidth=85., TyreRadius=32.;
+    double Wheelbase=240.;
     bool IsEmergency=false;
 private:
     UPROPERTY() TObjectPtr<UBoxComponent> Bounds;
@@ -30,12 +31,14 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
     UPROPERTY() TObjectPtr<USpotLightComponent> DippedBeam;
     int32 LightState=-1;
+    int32 FrontWheels=0;
     float Spin=0;
 };
 
 struct FSabarmatiLane
 {
     int32 Route=0;
+    int32 ClearingJunction=INDEX_NONE;
     double At=0, Speed=0, Cruise=800, Offset=0;
     bool WasStopped=false;
 };
@@ -46,7 +49,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontTraffic : public AActor
     GENERATED_BODY()
 public:
     ARiverfrontTraffic();
-    void Start(bool MappedCity);
+    void Start(bool MappedCity, const FVector& StreetStart);
     virtual void Tick(float Dt) override;
     bool WalkSignal() const;
     int32 ActiveCount() const { return Agents.Num(); }
@@ -69,8 +72,12 @@ private:
     int32 Stops=0, Turns=0, LastPhase=-1;
     TWeakObjectPtr<ARiverfrontWorld> District;
     bool bCity=false;
-    void Lane(const TArray<FVector>& Nodes, bool Reverse);
+    void Lane(const TArray<FVector>& Nodes, bool Reverse, bool bClosed=true);
+    bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant);
+    FTransform RoadPose(const USplineComponent& Route, double Distance, double Offset,
+        double Radius, double Wheelbase, bool bSampleRoad) const;
     void SetUpSignals();
+    void UpdateJunctionClearance(FSabarmatiLane& Driver, const ARiverfrontRoadAgent& Agent, const FVector& Heading, int32 Signal);
     int32 Phase() const;
     float StopDistance(const FVector& At, const FVector& Heading, double Length, bool& Obstacle, int32 Index);
 };

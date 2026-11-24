@@ -98,12 +98,20 @@ class AhmedabadCityDataTests(unittest.TestCase):
                 if width >= 500:
                     roads[tuple(sorted(((ax, ay), (bx, by))))].add(width)
         counts = Counter(route["area"] for route in paths["routes"])
-        self.assertEqual(counts, {"riverfront": 6, "ashram": 2, "cg": 2, "sg-service": 2})
+        self.assertEqual(counts, {"riverfront": 7, "ashram": 2, "cg": 2, "sg-service": 2})
+        start = self.summary["car_spawn_cm"][:2]
+        open_routes = [route for route in paths["routes"] if not route.get("closed", True)]
+        self.assertEqual(len(open_routes), 1)
+        start_road = open_routes[0]["points"]
+        self.assertGreater(min(math.dist(start, start_road[i][:2]) for i in (0,-1)), 53000.)
+        self.assertTrue(any(distance_to_strip_squared(*start, (*a[:2], *b[:2], a[2])) <= 100.**2
+                            for a,b in zip(start_road, start_road[1:])))
         for route in paths["routes"]:
             pts = route["points"]
             self.assertGreaterEqual(len(pts), 6)
             distance = 0.
-            for start, end in zip(pts, pts[1:] + pts[:1]):
+            ends = pts[1:] + pts[:1] if route.get("closed", True) else pts[1:]
+            for start, end in zip(pts, ends):
                 a, b = tuple(start[:2]), tuple(end[:2])
                 self.assertIn(start[2], roads[tuple(sorted((a, b)))])
                 distance += math.dist(a, b)

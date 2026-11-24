@@ -130,10 +130,19 @@ bool CheckCorridorRoutes(UWorld& World)
                 FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(33, 92));
         }
     }
+    int32 OpenCentralLanes = 0;
+    for (const double X : {2985.,3315.})
+    {
+        for (const double BankEdge : {2205.,-24125.})
+        {
+            OpenCentralLanes += !World.SweepTestByObjectType(FVector(X,BankEdge+205.,39.),FVector(X,BankEdge-205.,39.),
+                FQuat::Identity,FCollisionObjectQueryParams(ECC_WorldStatic),FCollisionShape::MakeBox(FVector(96.,210.,29.)));
+        }
+    }
     UE_LOG(LogTemp, Display,
-        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/10, road seams=%d/4, foot seams=%d/4."),
-        Road, Walk, Bridges, OpenSeams, OpenFootSeams);
-    return Road==16 && Walk==16 && Bridges==10 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==4;
+        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/10, road seams=%d/4, foot seams=%d/4, central lanes=%d/4."),
+        Road, Walk, Bridges, OpenSeams, OpenFootSeams, OpenCentralLanes);
+    return Road==16 && Walk==16 && Bridges==10 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==4 && OpenCentralLanes==4;
 }
 #endif
 

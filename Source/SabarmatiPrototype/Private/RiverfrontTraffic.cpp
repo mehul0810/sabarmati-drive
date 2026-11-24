@@ -41,12 +41,18 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
 {
     const auto& S=Bodies[Style%UE_ARRAY_COUNT(Bodies)];
     HalfLength=S.Length*.5; HalfWidth=S.Width*.5; TyreRadius=S.Wheel; IsEmergency=Style%UE_ARRAY_COUNT(Bodies)==10;
+    Wheelbase=2.*S.Axle;
+    FrontWheels=S.WheelCount==4?2:1;
     Bounds->SetBoxExtent(FVector(HalfLength,HalfWidth,S.Wheel*.85));
     const FString Base=TEXT("/Game/Sabarmati/Riverfront/Vehicles/");
     auto* Model=MeshAt(Base+TEXT("Fleet/SM_Traffic")+S.Name);
     auto* Left=MeshAt(Base+TEXT("SM_HatchWheelL"));
     auto* Right=MeshAt(Base+TEXT("SM_HatchWheelR"));
-    if (!Model || !Left || !Right) return false;
+    if (!Model || !Left || !Right)
+    {
+        UE_LOG(LogTemp,Warning,TEXT("Sabarmati road traffic: missing body or wheels for %s."),S.Name);
+        return false;
+    }
     auto Visual=[&](UStaticMesh* M,USceneComponent* Parent,const FVector& At,const FRotator& Facing,const FVector& Scale)
     {
         auto* C=NewObject<UStaticMeshComponent>(this); AddInstanceComponent(C); C->SetupAttachment(Parent);
@@ -56,9 +62,12 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
     auto* Shell=Visual(Model,Bounds,FVector(0,0,-S.Wheel-6),FRotator(0,-90,0),FVector::OneVector);
     if (const int32 Paint=Shell->GetMaterialIndex(TEXT("body")); Paint!=INDEX_NONE)
     {
-        const FLinearColor Colors[]={FLinearColor(.08,.15,.14),FLinearColor(.18,.27,.30),FLinearColor(.35,.16,.082),FLinearColor(.37,.36,.29)};
+        const FLinearColor Colors[]={
+            FLinearColor(.07,.13,.115), FLinearColor(.52,.50,.45), FLinearColor(.22,.033,.028),
+            FLinearColor(.065,.09,.12), FLinearColor(.34,.255,.15), FLinearColor(.65,.67,.64),
+            FLinearColor(.075,.16,.22), FLinearColor(.029,.031,.03)};
         auto* Instance=Shell->CreateDynamicMaterialInstance(Paint);
-        if (Instance) Instance->SetVectorParameterValue(TEXT("Tint"),Colors[Variant%4]);
+        if (Instance) Instance->SetVectorParameterValue(TEXT("Tint"),Colors[Variant%UE_ARRAY_COUNT(Colors)]);
     }
     if (auto* Lens=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
     {
@@ -122,13 +131,18 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
 }
 bool ARiverfrontRoadAgent::MoveOnRoad(const FVector& Position,const FRotator& Heading,double Travel,bool Near)
 {
+    const double Turn=FMath::FindDeltaAngleDegrees(GetActorRotation().Yaw,Heading.Yaw);
     FHitResult Hit;
     SetActorLocationAndRotation(Position,Heading,Near,&Hit,ETeleportType::None);
     if (Hit.bBlockingHit) return false;
     if (Near)
     {
         Spin=FMath::Fmod(Spin-float(FMath::RadiansToDegrees(Travel/TyreRadius)),360.f);
-        for (const auto& P:Wheels) P->SetRelativeRotation(FRotator(Spin,0,0));
+        const double Steering=Travel>1.?FMath::Clamp(FMath::RadiansToDegrees(
+            FMath::Atan(FMath::DegreesToRadians(Turn)*Wheelbase/Travel)),-32.,32.):0.;
+        for (int32 I=0;I<Wheels.Num();++I)
+            Wheels[I]->SetRelativeRotation(FRotator(0,I<FrontWheels?Steering:0.,0).Quaternion()
+                * FRotator(Spin,0,0).Quaternion());
         for (int32 I=0;I<Beacons.Num();++I) Beacons[I]->SetVisibility((int32(GetWorld()->GetTimeSeconds()*5.)+I)%2==0);
     }
     return true;
@@ -138,7 +152,7 @@ ARiverfrontTraffic::ARiverfrontTraffic()
     RootComponent=CreateDefaultSubobject<USceneComponent>(TEXT("RoadNetwork"));
     PrimaryActorTick.bCanEverTick=true; PrimaryActorTick.TickInterval=.05f;
 }
-void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse)
+void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse,bool bClosed)
 {
     if (Nodes.Num()<3) return;
     TArray<FVector> Ordered=Nodes;
@@ -147,6 +161,15 @@ void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse)
     TArray<FVector> P;
     for (int32 I=0;I<N;++I)
     {
+        if (!bClosed && (I==0 || I==N-1))
+        {
+            const int32 Link=FMath::Min(I,N-2);
+            const FVector Direction=(Ordered[Link+1]-Ordered[Link]).GetSafeNormal2D();
+            const double Width=Ordered[Link+(Reverse?1:0)].Z;
+            P.Add(FVector(Ordered[I].X,Ordered[I].Y,0.)+
+                FVector(Direction.Y,-Direction.X,0.)*FMath::Clamp(Width*.23,96.,222.));
+            continue;
+        }
         FVector A=Ordered[(I+N-1)%N], B=Ordered[I], C=Ordered[(I+1)%N];
         const double IncomingWidth=Reverse?B.Z:A.Z, OutWidth=Reverse?C.Z:B.Z;
         A.Z=B.Z=C.Z=0;
@@ -166,9 +189,67 @@ void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse)
     AddInstanceComponent(Spline); Spline->SetupAttachment(RootComponent); Spline->RegisterComponent();
     Spline->SetSplinePoints(P,ESplineCoordinateSpace::World,false);
     for (int32 I=0;I<P.Num();++I) Spline->SetSplinePointType(I,ESplinePointType::Linear,false);
-    Spline->SetClosedLoop(true,true); Routes.Add(Spline);
+    Spline->SetClosedLoop(bClosed,true); Routes.Add(Spline);
 }
-void ARiverfrontTraffic::Start(bool Mapped)
+FTransform ARiverfrontTraffic::RoadPose(const USplineComponent& Route,double Distance,double Offset,
+    double Radius,double Wheelbase,bool bSampleRoad) const
+{
+    constexpr auto WorldSpace=ESplineCoordinateSpace::World;
+    const double Length=Route.GetSplineLength();
+    const auto At=[&](double Delta)
+    {
+        const double Along=Route.IsClosedLoop()?FMath::Fmod(Distance+Delta+Length,Length):FMath::Clamp(Distance+Delta,0.,Length);
+        return Route.GetLocationAtDistanceAlongSpline(Along,WorldSpace);
+    };
+    const FVector Forward=(At(70.)-At(-70.)).GetSafeNormal2D();
+    FVector Centre=At(0.)+FVector(-Forward.Y,Forward.X,0.)*Offset;
+    const bool bBridge=!bCity && FMath::Abs(Forward.Y)>.65 && FMath::Abs(Centre.X-3150)>850;
+    const auto ExpectedZ=[&](const FVector& P){return bBridge?RiverfrontCrossings::DeckZ(P.Y):0.;};
+    const auto Surface=[&](const FVector& P)
+    {
+        const double Z=ExpectedZ(P);
+        FHitResult Hit;
+        if (bSampleRoad && GetWorld()->LineTraceSingleByObjectType(Hit,FVector(P.X,P.Y,Z+31.),FVector(P.X,P.Y,Z-32.),
+            FCollisionObjectQueryParams(ECC_WorldStatic)) && Hit.ImpactNormal.Z>.78)
+            return Hit.ImpactPoint.Z;
+        return Z;
+    };
+    const double Front=Surface(Centre+Forward*(Wheelbase*.5));
+    const double Rear=Surface(Centre-Forward*(Wheelbase*.5));
+    Centre.Z=(Front+Rear)*.5+Radius+6.;
+    FRotator Facing=Forward.Rotation();
+    Facing.Pitch=FMath::RadiansToDegrees(FMath::Atan2(Front-Rear,Wheelbase));
+    return FTransform(Facing,Centre);
+}
+
+bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,int32 Variant)
+{
+    const auto& Shape=Bodies[Style];
+    const FTransform Pose=RoadPose(*Routes[Route],Distance,0.,Shape.Wheel,2.*Shape.Axle,true);
+    // Leave room for moving traffic to brake, even on circuits that share a lane.
+    const FCollisionShape Clearance=FCollisionShape::MakeBox(FVector(Shape.Length*.5+245.,Shape.Width*.5+12.,Shape.Wheel*.8));
+    if (GetWorld()->OverlapBlockingTestByProfile(Pose.GetLocation(),Pose.GetRotation(),TEXT("BlockAllDynamic"),Clearance))
+        return false;
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    auto* Agent=GetWorld()->SpawnActor<ARiverfrontRoadAgent>(Pose.GetLocation(),Pose.Rotator(),Params);
+    if (!Agent) return false;
+    if (!Agent->Assemble(Style,Variant))
+    {
+        Agent->Destroy();
+        return false;
+    }
+    FSabarmatiLane LaneState;
+    LaneState.Route=Route;
+    LaneState.At=Distance;
+    const double BaseSpeed=Shape.WheelCount<4?650.:Shape.Length>600.?620.:790.;
+    LaneState.Cruise=BaseSpeed+(Variant*67)%207;
+    Drivers.Add(LaneState);
+    Agents.Add(Agent);
+    return true;
+}
+
+void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
 {
     bCity=Mapped;
     if (TActorIterator<ARiverfrontWorld> It(GetWorld()); It) District=*It;
@@ -204,7 +285,9 @@ void ARiverfrontTraffic::Start(bool Mapped)
                 const auto& N=Pt->AsArray(); if (N.Num()!=3) continue;
                 Nodes.Emplace(N[0]->AsNumber(),N[1]->AsNumber(),N[2]->AsNumber());
             }
-            Lane(Nodes,false); Lane(Nodes,true);
+            bool bClosed=true;
+            O->TryGetBoolField(TEXT("closed"),bClosed);
+            Lane(Nodes,false,bClosed); Lane(Nodes,true,bClosed);
         }
     }
     if (!Routes.Num()) return;
@@ -212,7 +295,8 @@ void ARiverfrontTraffic::Start(bool Mapped)
     for (int32 I=0;I<Routes.Num();I+=2)
     {
         auto* Road=Routes[I].Get(); const int32 N=Road->GetNumberOfSplinePoints();
-        for (int32 J=0;J<N;++J)
+        const int32 Segments=Road->IsClosedLoop()?N:N-1;
+        for (int32 J=0;J<Segments;++J)
         {
             const FVector A=Road->GetLocationAtSplinePoint(J,ESplineCoordinateSpace::World);
             const FVector B=Road->GetLocationAtSplinePoint((J+1)%N,ESplineCoordinateSpace::World);
@@ -224,27 +308,45 @@ void ARiverfrontTraffic::Start(bool Mapped)
     }
     SetUpSignals();
     for (TActorIterator<ARiverfrontCar> It(GetWorld());It;++It) Parked.Add(*It);
-    const int32 Population=bCity?(Routes.Num()>12?48:16):23;
-    for (int32 I=0;I<Population;++I)
+    // First populate the two directions on the street nearest the player's start.
+    // Each later fill uses a different phase so the distant loops stay populated.
+    int32 Nearest=0;
+    double StreetDistance=DBL_MAX;
+    for (int32 R=0;R<Routes.Num();R+=2)
     {
-        const int32 R=I%Routes.Num(); auto* S=Routes[R].Get();
-        const double F=FMath::Frac(.19+I*.38196601125);
-        const double Along=F*S->GetSplineLength();
-        const FVector P=S->GetLocationAtDistanceAlongSpline(Along,ESplineCoordinateSpace::World);
-        bool Clear=true;
-        for (const auto& C:Parked) if (C.IsValid() && FVector::Dist2D(P,C->GetActorLocation())<1600) Clear=false;
-        if (!Clear) continue;
-        FActorSpawnParameters Params; Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-        auto* A=GetWorld()->SpawnActor<ARiverfrontRoadAgent>(P+FVector(0,0,90),FRotator::ZeroRotator,Params);
-        if (!A || !A->Assemble(I,I*7)) { if (A) A->Destroy(); continue; }
-        FSabarmatiLane L; L.Route=R; L.At=Along; L.Cruise=I%12==3?642.:760.+(I*67)%270;
-        Drivers.Add(L); Agents.Add(A);
-        const FVector Fwd=S->GetDirectionAtDistanceAlongSpline(Along,ESplineCoordinateSpace::World);
-        double Z=(!bCity && FMath::Abs(Fwd.Y)>.70)?RiverfrontCrossings::DeckZ(P.Y):0.;
-        if (!bCity && FMath::Abs(P.X-3150)<700 && FMath::Abs(Fwd.Y)>.7) Z=0.;
-        A->SetActorLocationAndRotation(P+FVector(0,0,Z+A->TyreRadius+6),Fwd.Rotation());
+        const double Distance=FVector::DistSquared2D(StreetStart,
+            Routes[R]->FindLocationClosestToWorldLocation(StreetStart,ESplineCoordinateSpace::World));
+        if (Distance<StreetDistance)
+        {
+            StreetDistance=Distance;
+            Nearest=R;
+        }
     }
-    UE_LOG(LogTemp,Display,TEXT("Sabarmati road traffic: %d agents on %d connected directed circuits."),Agents.Num(),Routes.Num());
+    constexpr int32 StreetFleet[]={0,2,1,4,6,5,3,7};
+    if (StreetDistance<FMath::Square(2200.))
+    {
+        for (const double Offset:{-1040.,1370.,-2400.,2960.,-3800.,4380.})
+        {
+            for (int32 R=Nearest;R<Nearest+2 && Agents.Num()<UE_ARRAY_COUNT(StreetFleet);++R)
+            {
+                const auto* Spline=Routes[R].Get();
+                const double Length=Spline->GetSplineLength();
+                const double Along=Spline->GetDistanceAlongSplineAtLocation(StreetStart,ESplineCoordinateSpace::World);
+                SpawnVehicle(R,FMath::Fmod(Along+Offset+Length,Length),StreetFleet[Agents.Num()],Agents.Num());
+            }
+        }
+    }
+    const int32 StreetCount=Agents.Num();
+    const int32 Population=bCity?(District.IsValid() && District->HasStreetDistricts()?56:30):36;
+    for (int32 I=0;I<Population*2 && Agents.Num()<Population;++I)
+    {
+        const int32 R=I%Routes.Num();
+        const double F=FMath::Frac(.19+I*.38196601125);
+        const int32 Style=(Agents.Num()-StreetCount)%UE_ARRAY_COUNT(Bodies);
+        SpawnVehicle(R,F*Routes[R]->GetSplineLength(),Style,I+StreetCount);
+    }
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati road traffic: %d agents on %d directed lanes, %d seeded at the starting street."),
+        Agents.Num(),Routes.Num(),StreetCount);
 }
 int32 ARiverfrontTraffic::Phase() const
 {
@@ -291,7 +393,7 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
     {
         const bool Red=Along?H!=0:H!=3;
         const FVector V=Junctions[J]-At;
-        if (Red && FMath::Abs(V.X*D.Y-V.Y*D.X)<295 && V.Dot(D)>0 && V.Dot(D)<2350)
+        if (Red && Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295 && V.Dot(D)>0 && V.Dot(D)<2350)
             Limit=FMath::Min(Limit,V.Dot(D)-Length-337.);
     }
     auto Ahead=[&](FVector P,double OtherLength,double OtherWidth)
@@ -315,6 +417,31 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
     for (TActorIterator<ARiverfrontPedestrian> It(GetWorld());It;++It)
         if (It->IsCrossingStreet()) Ahead(It->GetActorLocation(),33,38);
     return Limit;
+}
+void ARiverfrontTraffic::UpdateJunctionClearance(FSabarmatiLane& Driver,const ARiverfrontRoadAgent& Agent,
+    const FVector& Heading,int32 Signal)
+{
+    const FVector Here=Agent.GetActorLocation();
+    if (Driver.ClearingJunction!=INDEX_NONE)
+    {
+        if (FVector::DistSquared2D(Here,Junctions[Driver.ClearingJunction])<FMath::Square(880.)) return;
+        Driver.ClearingJunction=INDEX_NONE;
+    }
+    // A vehicle that has passed the stop line on green owns its turn until it
+    // leaves the junction. Its heading changes as it crosses the other axis.
+    const bool bAlong=FMath::Abs(Heading.X)>FMath::Abs(Heading.Y);
+    if (Signal!=(bAlong?0:3)) return;
+    for (int32 J=0;J<Junctions.Num();++J)
+    {
+        const FVector To=Junctions[J]-Here;
+        const double Ahead=To.Dot(Heading);
+        if (Ahead>0. && Ahead<Agent.HalfLength+310. &&
+            FMath::Abs(To.X*Heading.Y-To.Y*Heading.X)<295.)
+        {
+            Driver.ClearingJunction=J;
+            return;
+        }
+    }
 }
 void ARiverfrontTraffic::Tick(float Dt)
 {
@@ -349,7 +476,9 @@ void ARiverfrontTraffic::Tick(float Dt)
         auto* A=Agents[I].Get(); auto& L=Drivers[I]; auto* R=Routes[L.Route].Get();
         const bool Near=FVector::DistSquared2D(A->GetActorLocation(),Eye)<FMath::Square(23000.);
         const double Length=R->GetSplineLength();
+        const bool bClosed=R->IsClosedLoop();
         const FVector D=R->GetDirectionAtDistanceAlongSpline(L.At,ESplineCoordinateSpace::World).GetSafeNormal2D();
+        UpdateJunctionClearance(L,*A,D,H);
         bool ParkedAhead=false;
         const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I);
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
@@ -369,33 +498,39 @@ void ARiverfrontTraffic::Tick(float Dt)
             }
         }
         L.Offset=FMath::FInterpConstantTo(L.Offset,Yielding?-115.:(Passing?225.:0.),Dt,105.);
-        const double Want=FMath::Min(L.Cruise*(Yielding?.45:(A->IsEmergency?1.18:1.)),FMath::Sqrt(2.*440.*FMath::Max(0.f,Gap)));
+        const double Available=bClosed?Gap:FMath::Min(double(Gap),Length-L.At);
+        const double Want=FMath::Min(L.Cruise*(Yielding?.45:(A->IsEmergency?1.18:1.)),FMath::Sqrt(2.*440.*FMath::Max(0.,Available)));
         const bool Brake=Want<L.Speed-27. || Want<25.;
         L.Speed=FMath::FInterpConstantTo(L.Speed,Want,Dt,Want>L.Speed?170.:580.);
         A->UpdateLights(Night,Brake,NearLamps.ContainsByPredicate([I](const auto& Lamp){return Lamp.Value==I;}));
         if (Want<15 && !L.WasStopped) { ++Stops; L.WasStopped=true; }
         if (Want>110) L.WasStopped=false;
-        const double Advance=L.Speed*Dt;
-        const double Next=FMath::Fmod(L.At+Advance,Length);
-        FVector P=R->GetLocationAtDistanceAlongSpline(Next,ESplineCoordinateSpace::World);
-        const FVector F=R->GetDirectionAtDistanceAlongSpline(Next,ESplineCoordinateSpace::World).GetSafeNormal2D();
-        P+=FVector(-F.Y,F.X,0)*L.Offset;
-        double Z=0;
-        if (!bCity && FMath::Abs(F.Y)>.65 && FMath::Abs(P.X-3150)>850) Z=RiverfrontCrossings::DeckZ(P.Y);
-        P.Z=Z+A->TyreRadius+6;
-        if (Near)
+        const double Advance=bClosed?L.Speed*Dt:FMath::Min(L.Speed*Dt,Length-L.At);
+        const double Next=bClosed?FMath::Fmod(L.At+Advance,Length):L.At+Advance;
+        const FTransform Pose=RoadPose(*R,Next,L.Offset,A->TyreRadius,A->Wheelbase,Near);
+        if (A->MoveOnRoad(Pose.GetLocation(),Pose.Rotator(),Advance,Near))
         {
-            FHitResult Ground;
-            if (GetWorld()->LineTraceSingleByObjectType(Ground,P+FVector(0,0,220),P-FVector(0,0,220),FCollisionObjectQueryParams(ECC_WorldStatic))
-                && Ground.ImpactNormal.Z>.78 && FMath::Abs(Ground.ImpactPoint.Z-Z)<28) P.Z=Ground.ImpactPoint.Z+A->TyreRadius+6;
-        }
-        if (A->MoveOnRoad(P,F.Rotation(),Advance,Near))
-        {
-            if (Advance>0 && D.Dot(F)<.9998) ++Turns;
+            if (Advance>0 && D.Dot(Pose.GetUnitAxis(EAxis::X).GetSafeNormal2D())<.9998) ++Turns;
             TravelCm+=Advance; L.At=Next;
         }
         else L.Speed=0;
-        A->SetActorHiddenInGame(!Near && FVector::DistSquared2D(P,Eye)>FMath::Square(51000.));
+        const bool bFar=FVector::DistSquared2D(A->GetActorLocation(),Eye)>FMath::Square(51000.);
+        A->SetActorHiddenInGame(bFar);
+        // The mapped starting road has open ends. Re-enter only offscreen and
+        // with physical space in the lane.
+        if (!bClosed && L.At>=Length-1.)
+        {
+            L.Speed=0.;
+            if (!bFar) continue;
+            const FTransform Entry=RoadPose(*R,0.,0.,A->TyreRadius,A->Wheelbase,true);
+            const FCollisionShape Room=FCollisionShape::MakeBox(FVector(A->HalfLength+245.,A->HalfWidth+12.,A->TyreRadius*.8));
+            if (FVector::DistSquared2D(Entry.GetLocation(),Eye)>FMath::Square(51000.) &&
+                !GetWorld()->OverlapBlockingTestByProfile(Entry.GetLocation(),Entry.GetRotation(),TEXT("BlockAllDynamic"),Room))
+            {
+                A->MoveOnRoad(Entry.GetLocation(),Entry.Rotator(),0.,false);
+                L.At=L.Offset=0.;
+            }
+        }
     }
 }
 

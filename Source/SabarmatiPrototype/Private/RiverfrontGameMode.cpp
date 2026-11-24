@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontHUD.h"
 #include "RiverfrontPedestrian.h"
 #include "RiverfrontTraffic.h"
@@ -107,7 +108,7 @@ void ARiverfrontGameMode::BeginPlay()
     }
     DistrictLoadProgress::Reached(5);
     Traffic=GetWorld()->SpawnActor<ARiverfrontTraffic>();
-    if (Traffic) Traffic->Start(bCityBuilt);
+    if (Traffic) Traffic->Start(bCityBuilt, bCityBuilt ? WalkSpawn : FRiverfrontFirstMorningWorld::StreetPoint());
     Super::BeginPlay();
     DistrictLoadProgress::Reached(6);
 }

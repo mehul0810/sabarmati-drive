@@ -2,14 +2,17 @@
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontPedestrian.h"
 #include "RiverfrontTraffic.h"
+#include "Components/StaticMeshComponent.h"
 #include "Containers/Ticker.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -51,6 +54,30 @@ public:
         for (const TCHAR* Key:{TEXT("r.ScreenPercentage"),TEXT("r.SecondaryScreenPercentage.GameViewport"),TEXT("r.AntiAliasingMethod"),TEXT("r.VSync"),TEXT("r.DynamicRes.OperationMode"),TEXT("t.MaxFPS"),TEXT("t.IdleWhenNotForeground")})
             if (auto* C=Console.FindConsoleVariable(Key)) Config+=FString::Printf(TEXT("%s=%s\n"),Key,*C->GetString());
         if (!Write(TEXT("settings.txt"),Config)) return Fail(TEXT("settings file"));
+        const FVector Street=FRiverfrontFirstMorningWorld::StreetPoint();
+        int32 Local=0, Assembled=0;
+        TSet<FName> Bodies;
+        for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
+        {
+            const TInlineComponentArray<UStaticMeshComponent*> Parts(*It);
+            for (const auto* Part:Parts)
+            {
+                const UStaticMesh* Mesh=Part->GetStaticMesh();
+                if (!Mesh || !Mesh->GetName().StartsWith(TEXT("SM_Traffic"))) continue;
+                if (Mesh->GetNumLODs()!=3 || Part->GetNumMaterials()<4) return Fail(TEXT("traffic body render data"));
+                Bodies.Add(Mesh->GetFName());
+                ++Assembled;
+                if (FVector::DistSquared2D(Street,It->GetActorLocation())<FMath::Square(4700.)) ++Local;
+                break;
+            }
+        }
+        const FString Fleet=FString::Printf(TEXT("road_agents=%d\nbodies_loaded=%d\nbody_styles=%d\nwithin_47m_of_kesar=%d\n"),
+            Traffic->ActiveCount(),Assembled,Bodies.Num(),Local);
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati fleet review: %s"),*Fleet);
+        if (Assembled!=Traffic->ActiveCount() || Bodies.Num()!=12 || Local<7 || !Write(TEXT("fleet.txt"),Fleet))
+            return Fail(TEXT("traffic mesh variety or starting street coverage"));
+        if (!Walker->TeleportTo(FVector(Street.X-540.,4790.,99.),FRotator(0.,-19.,0.))) return Fail(TEXT("Kesar street viewpoint"));
+        PC.SetControlRotation(FRotator(-1.,-19.,0.));
         StartTime=StageTime=FPlatformTime::Seconds();UE_LOG(LogTemp,Display,TEXT("Sabarmati systems review: %s"),*Folder);
         return true;
     }
@@ -64,6 +91,9 @@ public:
         if (Age<.57) return true;
         switch (Stage)
         {
+        case -1:
+            Shot(TEXT("kesar-traffic"));
+            break;
         case 0:
             if (!Walker->TeleportTo(Car->GetActorTransform().TransformPosition(FVector(12,-174,37)),Car->GetActorRotation()) || !Car->IsNearDoor(*Walker.Get()))
                 return Fail(TEXT("reach hatchback door"));
@@ -164,16 +194,45 @@ public:
             Key(EKeys::W,IE_Pressed); break;
         case 23:
         {
-            const double Remaining=19400.-Car->GetActorLocation().X;
+            const FVector Here=Car->GetActorLocation();
+            const double Remaining=19400.-Here.X;
             const double Velocity=Car->GetSpeedKph()/.036;
             if (Remaining>165.)
             {
-                if (Age>65.) return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f; %s"),
-                    Car->GetActorLocation().X,Car->GetActorLocation().Y,*PC.NavigationText()));
-                // Approach within a conservative stopping distance. The same
-                // inputs work for either chassis and the wet-road review.
-                const double SafeSpeed=FMath::Max(230.,FMath::Sqrt(700.*(Remaining-165.)));
-                const bool bBrake=Velocity>SafeSpeed+(bTrialBraking?-90.:90.);
+                if (Age>84.)
+                {
+                    for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
+                        if (FVector::DistSquared2D(It->GetActorLocation(),Here)<FMath::Square(1000.))
+                            UE_LOG(LogTemp,Display,TEXT("Trial traffic nearby: %s heading %.0f"),
+                                *It->GetActorLocation().ToCompactString(),It->GetActorRotation().Yaw);
+                    Shot(TEXT("trial-blocked"));
+                    return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f, yaw %.1f; %s"),
+                        Here.X,Here.Y,Car->GetActorRotation().Yaw,*PC.NavigationText()));
+                }
+                // Use the open space between the lane queues, steer on real keys,
+                // and slow for any vehicle turning across the route at the bridge.
+                constexpr double RoadCentre=4090.;
+                const double Aim=FMath::RadiansToDegrees(FMath::Atan2(RoadCentre-Here.Y,FMath::Max(620.,Velocity*.91)));
+                const double Error=FMath::FindDeltaAngleDegrees(Car->GetActorRotation().Yaw,Aim);
+                TrialSteer(Error>2.4?1:Error< -2.4?-1:0);
+                const double Limit=FMath::Abs(Here.X-3150.)<1000.?590.:1280.;
+                double SafeSpeed=FMath::Clamp(FMath::Sqrt(700.*(Remaining-165.)),190.,Limit);
+                bool bHold=false;
+                for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
+                {
+                    const FVector Route=It->GetActorForwardVector();
+                    const FVector Other=It->GetActorLocation();
+                    const double HalfWidth=FMath::Abs(Route.Y)*It->HalfLength+FMath::Abs(Route.X)*It->HalfWidth;
+                    const double HalfLength=FMath::Abs(Route.X)*It->HalfLength+FMath::Abs(Route.Y)*It->HalfWidth;
+                    const double Gap=Other.X-Here.X-HalfLength-212.;
+                    const double FutureY=FMath::Lerp(Here.Y,RoadCentre,FMath::Clamp(Gap/900.,0.,1.));
+                    if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<HalfWidth+97.)
+                    {
+                        SafeSpeed=FMath::Min(SafeSpeed,FMath::Sqrt(710.*FMath::Max(0.,Gap-145.)));
+                        bHold|=Gap<170.;
+                    }
+                }
+                const bool bBrake=bHold || Velocity>SafeSpeed+(bTrialBraking?-50.:65.);
                 if (bBrake!=bTrialBraking)
                 {
                     Key(bBrake?EKeys::W:EKeys::SpaceBar,IE_Released);
@@ -182,7 +241,7 @@ public:
                 }
                 return true;
             }
-            Key(EKeys::W,IE_Released); Key(EKeys::SpaceBar,IE_Pressed); break;
+            TrialSteer(0);Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);break;
         }
         case 24:
             if (Car->GetSpeedKph()>.5f) return true;
@@ -217,6 +276,13 @@ public:
         ++Stage; StageTime=Now;return true;
     }
 private:
+    void TrialSteer(int32 Direction)
+    {
+        if (Direction==TrialDirection) return;
+        if (TrialDirection!=0) Key(TrialDirection<0?EKeys::A:EKeys::D,IE_Released);
+        TrialDirection=Direction;
+        if (TrialDirection!=0) Key(TrialDirection<0?EKeys::A:EKeys::D,IE_Pressed);
+    }
     void Key(FKey K,EInputEvent E)
     {
         PC.InputKey(FInputKeyEventArgs(PC.GetWorld()->GetGameViewport()->Viewport,
@@ -311,7 +377,7 @@ private:
     FString Folder,Buffer;FVector Origin,Previous;FKey Pending;
     double StartTime=0,StageTime=0,EnduranceStart=0,LastFrame=0,LapStart=0,WalkCm=0,DriveCm=0;
     bool bTrialBraking=false;
-    int32 Minutes=0,Stage=0,Leg=0,Laps=0,Count=0;
+    int32 Minutes=0,Stage=-1,Leg=0,Laps=0,Count=0,TrialDirection=0;
 };
 }
 void ARiverfrontPlayerController::RunSystemsReview()
