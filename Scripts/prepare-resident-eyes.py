@@ -22,6 +22,12 @@ def bake(resident, artwork, out):
     # Treat each colour channel in display space, preserving the fine scleral vessels
     # and tempering the strongly red source iris to a deep warm brown.
     result = np.full((2048, 2048, 3), [169, 161, 153], dtype=np.uint8)
+    iris_mask = np.zeros(result.shape[:2], dtype=np.uint8)
+    normals = np.full_like(result, [128, 128, 255])
+
+    def unit(vector):
+        return vector / np.maximum(1.e-9, np.linalg.norm(vector, axis=-1, keepdims=True))
+
     for section in doc["meshes"][0]["primitives"]:
         if doc["materials"][section["material"]]["name"] not in {"iris", "sclera"}:
             continue
@@ -31,6 +37,7 @@ def bake(resident, artwork, out):
             return np.array(list(gltf["vectors"](doc, raw, index)))
 
         positions = read(attributes["POSITION"])
+        vertex_normals = read(attributes["NORMAL"])
         chart = (read(attributes["TEXCOORD_0"]) - [.752, .038]) / [.068, .038] * result.shape[0]
         for tri in read(section["indices"]).reshape(-1, 3):
             xy = chart[tri]
@@ -58,12 +65,36 @@ def bake(resident, artwork, out):
             red = rgb[:, :, 0].copy()
             rgb[:, :, 1] += .28 * iris * np.maximum(0, red - rgb[:, :, 1])
             rgb[:, :, 2] += .18 * iris * np.maximum(0, red - rgb[:, :, 2])
+            # Lift the fibres surrounding the pupil without baking a highlight.
+            radius = np.linalg.norm(offset, axis=2)
+            fibres = np.clip((radius/.006 - .31)/.13, 0, 1) * iris
+            rgb += fibres[:, :, None] * [24, 23, 16]
+
+            # The cornea has a steeper radius than the surrounding eyeball.
+            # Project its smooth optical normal into the triangle's tangent basis.
+            base_normal = unit(bary @ vertex_normals[tri])
+            xy_normal = offset / .0078
+            dome = unit(np.dstack([xy_normal, np.sqrt(np.maximum(.008, 1-(xy_normal**2).sum(axis=2)))]))
+            forward = point[:, :, 2] > .130
+            transition = np.clip((.0074-radius)/.0019, 0, 1)*forward
+            desired = unit(base_normal*(1-transition[:, :, None]) + dome*transition[:, :, None])
+            edge1, edge2 = positions[tri[1:]] - positions[tri[0]]
+            du = (ey * edge1 - dy * edge2) / area
+            dv = (-ex * edge1 + dx * edge2) / area
+            tangent = unit(du - (base_normal @ du)[:, :, None]*base_normal)
+            bitangent = np.cross(base_normal,tangent)
+            bitangent *= np.where(bitangent @ dv < 0, -1, 1)[:, :, None]
+            relative = np.stack([(desired*tangent).sum(-1), (desired*bitangent).sum(-1),
+                                 (desired*base_normal).sum(-1)],axis=-1)
             # The back half never receives a second iris as the eye turns away.
             rgb[point[:, :, 2] < .130] = [165, 155, 147]
             inside = bary.min(axis=-1) >= -.01
+            iris_mask[y0:y1,x0:x1][inside] = (iris[inside]*forward[inside]*255).astype(np.uint8)
+            normals[y0:y1,x0:x1][inside] = np.clip((relative[inside]+1)*127.5,0,255).astype(np.uint8)
             result[y0:y1,x0:x1][inside] = np.clip(rgb[inside],0,255).astype(np.uint8)
     out.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(result).save(out / "T_RiverEyes.png")
+    Image.fromarray(np.dstack([result, iris_mask])).save(out / "T_RiverEyes.png")
+    Image.fromarray(normals).save(out / "T_ResidentCornea_N.png")
 
 
 if __name__ == "__main__":
