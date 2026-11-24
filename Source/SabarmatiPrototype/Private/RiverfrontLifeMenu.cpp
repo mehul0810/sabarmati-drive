@@ -39,7 +39,7 @@ EVisibility Show(bool bVisible) { return bVisible ? EVisibility::Visible : EVisi
 FString Rupees(int64 Amount)
 {
     // The catalogue deals in whole rupees. ICU supplies Indian lakh/crore grouping.
-    static const FCulturePtr IndianEnglish = FInternationalization::Get().GetCulture(TEXT("en-IN"));
+    const FCulturePtr IndianEnglish = FInternationalization::Get().GetCulture(TEXT("en-IN"));
     return FString(TEXT("₹")) + FText::AsNumber(Amount, nullptr, IndianEnglish).ToString();
 }
 
