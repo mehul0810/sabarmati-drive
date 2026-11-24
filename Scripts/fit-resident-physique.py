@@ -24,7 +24,59 @@ def segment_volume(points, start, end, peak, spread, radius, gain):
     return weight[:, None]*radial*gain
 
 
-class AthleticBody:
+class SkinField:
+    """Smooth a vertex displacement through nearby clothing in the rest pose."""
+
+    def __init__(self, points, deltas, step=.014):
+        self.step = step
+        self.origin = points.min(axis=0)-.12
+        cells = (points-self.origin)/self.step
+        dims = (np.ceil(cells.max(axis=0)).astype(int)+12).tolist()
+        grid = np.zeros((*dims, 4), np.float32)
+        lower = np.floor(cells).astype(int)
+        fraction = cells-lower
+        samples = np.column_stack((deltas, np.ones(len(points))))
+        for corner in np.ndindex(2, 2, 2):
+            weight = np.where(corner, fraction, 1-fraction).prod(axis=1)
+            np.add.at(grid, tuple((lower+corner).T), weight[:, None]*samples)
+        kernel = np.exp(-.5*(np.arange(-6, 7)/1.65)**2)
+        for axis in range(3):
+            padded = np.pad(grid, [(6, 6) if i == axis else (0, 0) for i in range(4)])
+            filtered = np.zeros_like(grid)
+            for k, weight in enumerate(kernel):
+                view = [slice(None)]*4
+                view[axis] = slice(k, k+grid.shape[axis])
+                filtered += weight*padded[tuple(view)]
+            grid = filtered
+        self.grid = grid[:, :, :, :3]/np.maximum(grid[:, :, :, 3:], 1.e-4)
+
+    def sample(self, xyz):
+        cell = np.clip((xyz-self.origin)/self.step, 0, np.array(self.grid.shape[:3])-1.00001)
+        lower = np.floor(cell).astype(int)
+        fraction = cell-lower
+        delta = np.zeros_like(xyz, dtype=float)
+        for corner in np.ndindex(2, 2, 2):
+            weight = np.where(corner, fraction, 1-fraction).prod(axis=1)
+            delta += weight[:, None]*self.grid[tuple((lower+corner).T)]
+        return delta
+
+
+class SurfaceFit:
+    def transform(self, points, normals):
+        delta = self.offsets(points)
+        # Inverse-transpose of the displacement Jacobian also preserves the
+        # source's smoothed normals at UV/material seams.
+        jac = np.broadcast_to(np.eye(3), (len(points), 3, 3)).copy()
+        for j in range(3):
+            step = np.eye(3)[j]*.0007
+            jac[:, :, j] += (self.offsets(points+step)-self.offsets(points-step))/.0014
+        adjusted = np.linalg.solve(jac.transpose(0,2,1), normals[:, :, None])[:, :, 0]
+        adjusted /= np.maximum(np.linalg.norm(adjusted, axis=1, keepdims=True), 1.e-12)
+        adjusted[np.all(delta == 0, axis=1)] = normals[np.all(delta == 0, axis=1)]
+        return points+delta, adjusted
+
+
+class AthleticBody(SurfaceFit):
     def __init__(self, base, muscle):
         if hashlib.sha256(base.read_bytes()).hexdigest() != '8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c':
             raise ValueError('Unexpected hm08 base OBJ')
@@ -49,39 +101,13 @@ class AthleticBody:
         # garments and exposed skin the same continuous field through air gaps.
         # Fourteen-millimetre cells retain the major muscle groups under clothing.
         ids = np.array(sorted(body_ids))
-        self.step = .014
-        self.origin = self.base[ids].min(axis=0)-.12
-        cells = (self.base[ids]-self.origin)/self.step
-        dims = (np.ceil(cells.max(axis=0)).astype(int)+12).tolist()
-        grid = np.zeros((*dims, 4), np.float32)
-        lower = np.floor(cells).astype(int)
-        fraction = cells-lower
-        samples = np.column_stack((delta[ids], np.ones(len(ids))))
-        for corner in np.ndindex(2, 2, 2):
-            weight = np.where(corner, fraction, 1-fraction).prod(axis=1)
-            np.add.at(grid, tuple((lower+corner).T), weight[:, None]*samples)
-        kernel = np.exp(-.5*(np.arange(-6, 7)/1.65)**2)
-        for axis in range(3):
-            padded = np.pad(grid, [(6, 6) if i == axis else (0, 0) for i in range(4)])
-            filtered = np.zeros_like(grid)
-            for k, weight in enumerate(kernel):
-                view = [slice(None)]*4
-                view[axis] = slice(k, k+grid.shape[axis])
-                filtered += weight*padded[tuple(view)]
-            grid = filtered
-        self.grid = grid[:, :, :, :3]/np.maximum(grid[:, :, :, 3:], 1.e-4)
+        self.field = SkinField(self.base[ids], delta[ids])
 
     def offsets(self, points):
         xyz = np.asarray(points)
         x, y, z = xyz.T
         ax = abs(x)
-        cell = np.clip((xyz-self.origin)/self.step, 0, np.array(self.grid.shape[:3])-1.00001)
-        lower = np.floor(cell).astype(int)
-        fraction = cell-lower
-        delta = np.zeros_like(xyz)
-        for corner in np.ndindex(2, 2, 2):
-            weight = np.where(corner, fraction, 1-fraction).prod(axis=1)
-            delta += weight[:, None]*self.grid[tuple((lower+corner).T)]
+        delta = self.field.sample(xyz)
         delta *= [.54, .18, .54]
 
         # Support ribcage breadth and anterior/posterior depth, keeping the
@@ -109,27 +135,14 @@ class AthleticBody:
         delta *= (guard*(1-waist))[:, None]
         return delta
 
-    def transform(self, points, normals):
-        delta = self.offsets(points)
-        # Inverse-transpose of the displacement Jacobian also preserves the
-        # source's smoothed normals at UV/material seams.
-        jac = np.broadcast_to(np.eye(3), (len(points), 3, 3)).copy()
-        for j in range(3):
-            step = np.eye(3)[j]*.0007
-            jac[:, :, j] += (self.offsets(points+step)-self.offsets(points-step))/.0014
-        adjusted = np.linalg.solve(jac.transpose(0,2,1), normals[:, :, None])[:, :, 0]
-        adjusted /= np.maximum(np.linalg.norm(adjusted, axis=1, keepdims=True), 1.e-12)
-        adjusted[np.all(delta == 0, axis=1)] = normals[np.all(delta == 0, axis=1)]
-        return points+delta, adjusted
 
-
-def fit(source, destination, body):
+def fit(source, destination, body, fixed_materials=("hair","iris","sclera","lips","shoe")):
     io = runpy.run_path(str(Path(__file__).with_name('prepare-riverfront-hatch.py')))
     scene, raw = io['read_glb'](source)
     data = bytearray(raw)
     for primitive in scene['meshes'][0]['primitives']:
         name = scene['materials'][primitive['material']]['name']
-        if name in ('hair','iris','sclera','lips','shoe'):
+        if name in fixed_materials:
             continue
         attr = primitive['attributes']
         points, normals = (np.asarray(list(io['vectors'](scene,raw,attr[k]))) for k in ('POSITION','NORMAL'))
