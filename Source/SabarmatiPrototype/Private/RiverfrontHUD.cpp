@@ -7,11 +7,12 @@
 #include "RiverfrontTraffic.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
+#include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/World.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GlobalRenderResources.h"
-#include "Styling/CoreStyle.h"
 
 namespace RiverfrontInstruments
 {
@@ -112,7 +113,7 @@ struct FInstruments
         Triangles.Reset();
     }
 
-    FSlateFontInfo Font(FName Face, float Points) const { return FCoreStyle::GetDefaultFontStyle(Face, Points * Scale); }
+    FSlateFontInfo Font(FName Face, float Points) const { return FSlateFontInfo(UEngine::GetMediumFont(), Points * Scale, Face); }
     double Measure(const FString& S, FName Face, float Points) const
     {
         return FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(S, Font(Face,Points)).X / Scale;
@@ -363,7 +364,7 @@ void ARiverfrontHUD::DrawHUD()
     Super::DrawHUD();
     const auto* Player = Cast<ARiverfrontPlayerController>(PlayerOwner);
     if (!Canvas || Canvas->ClipX<=0 || Canvas->ClipY<=0 || !Player || Player->IsShowingMenu()
-        || !FSlateApplication::IsInitialized()) return;
+        || !GEngine || !UEngine::GetMediumFont() || !FSlateApplication::IsInitialized()) return;
     const APawn* Pawn = Player->GetPawn();
     if (!Pawn) return;
     using namespace RiverfrontInstruments;
