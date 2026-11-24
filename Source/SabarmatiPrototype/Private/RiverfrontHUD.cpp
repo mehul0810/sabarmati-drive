@@ -1,183 +1,412 @@
 #include "RiverfrontHUD.h"
-#include "RiverfrontTraffic.h"
 
-#include "Engine/Canvas.h"
-#include "Engine/Engine.h"
-#include "Engine/World.h"
-#include "GameFramework/PlayerController.h"
 #include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontPlayerController.h"
+#include "RiverfrontTraffic.h"
+#include "CanvasItem.h"
+#include "Engine/Canvas.h"
+#include "Engine/World.h"
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GlobalRenderResources.h"
+#include "Styling/CoreStyle.h"
+
+namespace RiverfrontInstruments
+{
+const FLinearColor Ivory(FColor(246,241,232));
+const FLinearColor Gold(FColor(243,187,114));
+const FLinearColor Graphite(FColor(17,25,22));
+const FLinearColor Silver(FColor(179,195,182));
+const FLinearColor Water(FColor(43,91,101));
+const FLinearColor Road(FColor(153,167,143));
+const FLinearColor Warning(FColor(248,120,83));
+
+FVector2D Radial(double Degrees)
+{
+    const double Angle = FMath::DegreesToRadians(Degrees);
+    return FVector2D(FMath::Cos(Angle), FMath::Sin(Angle));
+}
+
+// Use one set of design units and one transient triangle batch for the glass, street lines and dials.
+struct FInstruments
+{
+    UCanvas& Canvas;
+    const float Scale;
+    const float Width;
+    const float Height;
+    TArray<FCanvasUVTri> Triangles;
+
+    explicit FInstruments(UCanvas& InCanvas)
+        : Canvas(InCanvas)
+        , Scale(FMath::Min(InCanvas.ClipY / 900.f, InCanvas.ClipX / 810.f))
+        , Width(InCanvas.ClipX / Scale), Height(InCanvas.ClipY / Scale)
+    {
+        Triangles.Reserve(600);
+    }
+
+    void Triangle(FVector2D A, FVector2D B, FVector2D C, FLinearColor First, FLinearColor Second, FLinearColor Third)
+    {
+        auto& T = Triangles.AddDefaulted_GetRef();
+        T.V0_Pos = A * Scale; T.V1_Pos = B * Scale; T.V2_Pos = C * Scale;
+        T.V0_UV = T.V1_UV = T.V2_UV = FVector2D::ZeroVector;
+        T.V0_Color = First; T.V1_Color = Second; T.V2_Color = Third;
+    }
+    void Fill(FVector2D A, FVector2D B, FVector2D C, FLinearColor Color)
+    {
+        Triangle(A,B,C,Color,Color,Color);
+    }
+    void Quad(FVector2D A, FVector2D B, FVector2D C, FVector2D D, FLinearColor Color)
+    {
+        Fill(A,B,C,Color); Fill(A,C,D,Color);
+    }
+    void Stroke(FVector2D A, FVector2D B, float Weight, FLinearColor Color)
+    {
+        const FVector2D Dir = (B-A).GetSafeNormal();
+        const FVector2D Edge(-Dir.Y * Weight * .5, Dir.X * Weight * .5);
+        Quad(A-Edge, B-Edge, B+Edge, A+Edge, Color);
+    }
+    void Arc(FVector2D Centre, float Radius, double From, double To, float Weight, FLinearColor Color)
+    {
+        if (To <= From) return;
+        const int32 Count = FMath::CeilToInt((To-From)/6.);
+        FVector2D Last = Radial(From);
+        for (int32 I=1; I<=Count; ++I)
+        {
+            const FVector2D Next = Radial(FMath::Lerp(From,To,double(I)/Count));
+            Quad(Centre+Last*(Radius-Weight),Centre+Last*Radius,Centre+Next*Radius,Centre+Next*(Radius-Weight),Color);
+            Last = Next;
+        }
+    }
+    void Disc(FVector2D Centre, float Radius, FLinearColor Inside, FLinearColor Outside)
+    {
+        FVector2D Last = Centre + FVector2D(Radius,0);
+        for (int32 I=1; I<=64; ++I)
+        {
+            const FVector2D Next = Centre + Radial(I*360./64.)*Radius;
+            Triangle(Centre, Last, Next, Inside, Outside, Outside);
+            Last = Next;
+        }
+    }
+    void Fade(double X,double Y,double W,double H,FLinearColor Left,FLinearColor Right)
+    {
+        const FVector2D A(X,Y), B(X+W,Y), C(X+W,Y+H), D(X,Y+H);
+        Triangle(A,B,C,Left,Right,Right); Triangle(A,C,D,Left,Right,Left);
+    }
+    void Diamond(FVector2D P, float R, FLinearColor Color, float Weight)
+    {
+        const FVector2D Top(0,-R), Right(R,0);
+        Stroke(P+Top,P+Right,Weight,Color); Stroke(P+Right,P-Top,Weight,Color);
+        Stroke(P-Top,P-Right,Weight,Color); Stroke(P-Right,P+Top,Weight,Color);
+    }
+    void Flush()
+    {
+        if (Triangles.IsEmpty()) return;
+        FCanvasTriangleItem Item(FVector2D::ZeroVector,FVector2D::ZeroVector,FVector2D::ZeroVector,GWhiteTexture);
+        Item.TriangleList = MoveTemp(Triangles);
+        Item.BlendMode = SE_BLEND_Translucent;
+        Canvas.DrawItem(Item);
+        Triangles = MoveTemp(Item.TriangleList);
+        Triangles.Reset();
+    }
+
+    FSlateFontInfo Font(FName Face, float Points) const { return FCoreStyle::GetDefaultFontStyle(Face, Points * Scale); }
+    double Measure(const FString& S, FName Face, float Points) const
+    {
+        return FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(S, Font(Face,Points)).X / Scale;
+    }
+    void Label(const FString& S, FVector2D P, float Points, FName Face, FLinearColor Color, bool Center=false)
+    {
+        Flush();
+        FCanvasTextStringViewItem Item(P * Scale, FStringView(S), Font(Face,Points), Color);
+        Item.bCentreX = Center;
+        Item.bCentreY = true;
+        Item.EnableShadow(FLinearColor(0,0,0,Color.A*.92f), FVector2D(1,1) * Scale);
+        Canvas.DrawItem(Item);
+    }
+};
+
+// The source street segments can span the entire map even if both ends are outside the dial.
+bool ClipToDisc(FVector2D& A,FVector2D& B,double Radius)
+{
+    const FVector2D Delta = B-A;
+    const double LengthSq = Delta.SizeSquared();
+    if (LengthSq < UE_SMALL_NUMBER) return false;
+    const double T = -FVector2D::DotProduct(A,Delta)/LengthSq;
+    const double SpanSq = Radius*Radius - (A+T*Delta).SizeSquared();
+    if (SpanSq<=0.) return false;
+    const double HalfT = FMath::Sqrt(SpanSq/LengthSq);
+    const double Enter = FMath::Max(0.,T-HalfT), Leave = FMath::Min(1.,T+HalfT);
+    if (Enter>=Leave) return false;
+    B=A+Leave*Delta; A+=Enter*Delta;
+    return true;
+}
+
+void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
+{
+    // Distinguish home, shops and other places by silhouette, including on a monochrome display.
+    const FLinearColor Ink = Ivory.CopyWithNewOpacity(.86f);
+    if (Kind==ERiverSiteKind::Wardrobe)
+    {
+        Draw.Stroke(P+FVector2D(-4,0),P+FVector2D(0,-4),1.6f,Ink);
+        Draw.Stroke(P+FVector2D(0,-4),P+FVector2D(4,0),1.6f,Ink);
+        Draw.Quad(P+FVector2D(-2.7,0),P+FVector2D(2.7,0),P+FVector2D(2.7,3),P+FVector2D(-2.7,3),Ink);
+    }
+    else if (Kind==ERiverSiteKind::ClothesShop || Kind==ERiverSiteKind::Tea || Kind==ERiverSiteKind::Print)
+    {
+        Draw.Arc(P+FVector2D(0,-.4),2.5,180,360,1.2f,Ink);
+        Draw.Quad(P+FVector2D(-3,-.5),P+FVector2D(3,-.5),P+FVector2D(3.6,3.5),P+FVector2D(-3.6,3.5),Ink);
+    }
+    else Draw.Diamond(P,3.5f,Ink,1.4f);
+}
+
+void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerController& Player,
+    const ARiverfrontTraffic& Traffic,bool City,bool Driving,const FString& Destination)
+{
+    const float Radius = Driving ? 74.f : 64.f;
+    const FVector2D Centre(32+Radius,Draw.Height-36-Radius);
+    const double MapScale = Radius / (Driving ? 17000. : 11500.);
+    const FVector Here = Pawn.GetActorLocation();
+    auto Project = [&](const FVector& Point)
+    {
+        return FVector2D(Here.Y-Point.Y,Here.X-Point.X)*MapScale;
+    };
+    auto Segment = [&](FVector2D A,FVector2D B,float Weight,FLinearColor Color)
+    {
+        if (ClipToDisc(A,B,Radius-3.f)) Draw.Stroke(Centre+A,Centre+B,Weight,Color);
+    };
+    Draw.Disc(Centre,Radius+5,Graphite.CopyWithNewOpacity(.9f),Graphite.CopyWithNewOpacity(0));
+    Draw.Disc(Centre,Radius,Graphite.CopyWithNewOpacity(.93f),Graphite.CopyWithNewOpacity(.86f));
+    if (!City)
+    {
+        const double R = Radius-2.f;
+        const double Left = FMath::Clamp((Here.Y-2300.)*MapScale,-R,R);
+        const double Right = FMath::Clamp((Here.Y+24300.)*MapScale,-R,R);
+        if (Right>Left)
+        {
+            // The two riverfront banks are parallel. Cut their water between the corresponding chords.
+            double X = Left, Y = FMath::Sqrt(FMath::Max(0.,R*R-X*X));
+            for (int32 I=1; I<=32; ++I)
+            {
+                const double NX = FMath::Lerp(Left,Right,I/32.);
+                const double NY = FMath::Sqrt(FMath::Max(0.,R*R-NX*NX));
+                Draw.Quad(Centre+FVector2D(X,-Y),Centre+FVector2D(NX,-NY),
+                    Centre+FVector2D(NX,NY),Centre+FVector2D(X,Y),Water.CopyWithNewOpacity(.84f));
+                X=NX; Y=NY;
+            }
+        }
+        for (const double Bank : {2300.,-24300.})
+            Segment(Project(FVector(-84000,Bank,0)),Project(FVector(84000,Bank,0)),1.4f,Silver);
+        Segment(Project(FVector(-5350,2800,0)),Project(FVector(-5350,-24700,0)),2.f,Ivory);
+    }
+    for (const auto& RoadSegment : Traffic.MapSegments())
+        Segment(Project(RoadSegment.Key),Project(RoadSegment.Value),2.5f,Road);
+    for (const auto& Place : Player.GetPlaces())
+    {
+        const FVector2D P = Project(Place.Point);
+        if (P.SizeSquared()<FMath::Square(Radius-9.f)) PlaceSymbol(Draw,Centre+P,Place.Kind);
+    }
+
+    Draw.Arc(Centre,Radius+1,0,360,1.2f,Silver.CopyWithNewOpacity(.83f));
+    for (int32 I=1; I<12; ++I)
+    {
+        const FVector2D Tick = Radial(-90+I*30);
+        Draw.Stroke(Centre+Tick*(Radius-1),Centre+Tick*(Radius-(I%3==0?7:4)),1.1f,Ivory.CopyWithNewOpacity(.9f));
+    }
+    if (!Destination.IsEmpty())
+    {
+        const FVector2D To = Centre+Project(Player.NextWaypoint()).GetClampedToMaxSize(Radius-8.f);
+        Draw.Stroke(Centre,To,1.4f,Gold.CopyWithNewOpacity(.82f));
+        Draw.Diamond(To,5.4f,Graphite,4.f); Draw.Diamond(To,5.4f,Gold,2.f);
+    }
+    const FVector Forward = Pawn.GetActorForwardVector();
+    const FVector2D Nose = FVector2D(-Forward.Y,-Forward.X).GetSafeNormal();
+    const FVector2D Side(-Nose.Y,Nose.X);
+    for (const float Size : {11.f,8.f})
+    {
+        const FLinearColor Color = Size>8.f ? Graphite : Ivory;
+        const FVector2D Tip = Centre+Nose*Size, Tail = Centre-Nose*(Size*.28);
+        Draw.Fill(Tip,Centre-Nose*(Size*.63)+Side*(Size*.69),Tail,Color);
+        Draw.Fill(Tip,Tail,Centre-Nose*(Size*.63)-Side*(Size*.69),Color);
+    }
+    Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-10),10,TEXT("Bold"),Ivory,true);
+    Draw.Label(City ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
+        FVector2D(Centre.X,Draw.Height-19),11,TEXT("BoldCondensed"),Ivory,true);
+}
+
+void DriveCluster(FInstruments& Draw,const ARiverfrontCar& Car)
+{
+    const FVector2D Centre(Draw.Width-116,Draw.Height-106);
+    Draw.Disc(Centre,84,Graphite.CopyWithNewOpacity(.94f),Graphite.CopyWithNewOpacity(0));
+    const double Tach = FMath::Clamp(Car.GetEngineRpm()/6000.,0.,1.);
+    Draw.Arc(Centre,71,155,385,3.5f,Silver.CopyWithNewOpacity(.44f));
+    Draw.Arc(Centre,71,155,155+230*Tach,3.5f,Gold);
+    for (int32 I=0; I<=24; ++I)
+    {
+        const FVector2D Tick = Radial(155+230.*I/24.);
+        Draw.Stroke(Centre+Tick*74.,Centre+Tick*(I%4==0?81.:77.),I%4==0?1.8f:1.f,
+            I>=20 ? Warning : Ivory.CopyWithNewOpacity(.85f));
+    }
+    Draw.Label(FString::FromInt(FMath::RoundToInt(Car.GetSpeedKph())),Centre+FVector2D(0,-7),
+        43,TEXT("BoldCondensedItalic"),Ivory,true);
+    Draw.Label(TEXT("km/h"),Centre+FVector2D(0,22),11,TEXT("Medium"),Ivory,true);
+    const int32 Gear = Car.GetGear();
+    const FString GearLabel = Gear<0 ? TEXT("R") : FString::Printf(TEXT("D%d"),Gear);
+    const float Fuel = FMath::Clamp(Car.GetFuel(),0.f,1.f);
+    Draw.Label(GearLabel,Centre+FVector2D(-36,46),15,TEXT("BoldCondensed"),Gold,true);
+    Draw.Stroke(Centre+FVector2D(-14,37),Centre+FVector2D(-14,55),1.f,Silver);
+    Draw.Label(FString::Printf(TEXT("%.0f%% fuel"),100.f*Fuel),Centre+FVector2D(-4,46),
+        10,TEXT("Medium"),Fuel<.15f?Warning:Ivory);
+    const int32 Signal = Car.GetSignal();
+    for (const int32 Side : {-1,1})
+    {
+        if (Signal!=Side && Signal!=2) continue;
+        const FVector2D Tip=Centre+FVector2D(Side*46,12);
+        Draw.Stroke(Tip+FVector2D(-Side*6,-5),Tip,2.3f,Gold);
+        Draw.Stroke(Tip,Tip+FVector2D(-Side*6,5),2.3f,Gold);
+    }
+}
+
+void Guidance(FInstruments& Draw,const ARiverfrontPlayerController& Player,const FString& Destination)
+{
+    const double Centre = Draw.Width*.5;
+    const double TextWidth = Draw.Measure(Destination,TEXT("Medium"),13);
+    const double Half = TextWidth*.5 + 30.;
+    Draw.Fade(Centre-Half-22,23,22,30,Graphite.CopyWithNewOpacity(0),Graphite.CopyWithNewOpacity(.77f));
+    Draw.Fade(Centre-Half,23,Half*2,30,Graphite.CopyWithNewOpacity(.77f),Graphite.CopyWithNewOpacity(.77f));
+    Draw.Fade(Centre+Half,23,22,30,Graphite.CopyWithNewOpacity(.77f),Graphite.CopyWithNewOpacity(0));
+    Draw.Diamond(FVector2D(Centre-TextWidth*.5-9,38),5.f,Gold,1.6f);
+    Draw.Label(Destination,FVector2D(Centre+5,38),13,TEXT("Medium"),Ivory,true);
+    FVector2D Screen;
+    if (!Player.ProjectWorldLocationToScreen(Player.NextWaypoint()+FVector(0,0,135),Screen,true)) return;
+    Screen/=Draw.Scale;
+    if (Screen.X<35 || Screen.X>Draw.Width-35 || Screen.Y<65 || Screen.Y>Draw.Height-175) return;
+    Draw.Diamond(Screen,9,Graphite,4.f);
+    Draw.Diamond(Screen,9,Gold,2.f);
+}
+
+void Controls(FInstruments& Draw,bool City)
+{
+    const TCHAR* Keys[] = { TEXT("W A S D  /  SHIFT"), TEXT("E  /  I"), TEXT("SPACE  /  O"),
+        TEXT("C  /  Z X  /  H"), City?TEXT("N  /  V  /  M"):TEXT("N  /  G  /  M"),
+        TEXT("T  /  P  /  Y"), TEXT("B  /  F  /  F3"), TEXT("R  /  ESC") };
+    const TCHAR* Actions[] = { TEXT("Move or drive  /  Run"), TEXT("Interact or exit  /  Wallet"),
+        TEXT("Jump or brake  /  Door"), TEXT("Camera  /  Indicators  /  Horn"),
+        City?TEXT("Destination  /  Street travel  /  Map"):TEXT("Destination  /  River run  /  Map"),
+        TEXT("Time  /  Weather  /  Clock"), TEXT("Hazards  /  Service  /  Frame timing"),
+        TEXT("Reset  /  Pause") };
+    Draw.Fade(0,17,374,249,Graphite.CopyWithNewOpacity(.93f),Graphite.CopyWithNewOpacity(.90f));
+    Draw.Fade(374,17,77,249,Graphite.CopyWithNewOpacity(.90f),Graphite.CopyWithNewOpacity(0));
+    Draw.Label(TEXT("Controls"),FVector2D(32,39),21,TEXT("BoldCondensed"),Ivory);
+    Draw.Label(TEXT("F1   Close"),FVector2D(32,66),11,TEXT("Medium"),Gold);
+    for (int32 I=0; I<UE_ARRAY_COUNT(Keys); ++I)
+    {
+        Draw.Label(Keys[I],FVector2D(32,92+22*I),10,TEXT("BoldCondensed"),Gold);
+        Draw.Label(Actions[I],FVector2D(140,92+22*I),12,TEXT("Regular"),Ivory);
+    }
+}
+
+float Message(FInstruments& Draw,const FString& Value,float Bottom,double MaxWidth,bool Action)
+{
+    if (Value.IsEmpty()) return Bottom;
+    FString Body=Value, Key;
+    if (Action && Value.Len()>4 && Value.Mid(1,3)==TEXT("   "))
+    {
+        Key=Value.Left(1); Body=Value.Mid(4);
+    }
+    const float Points = Action ? 15.f : 12.f;
+    const FName Face = Action ? FName(TEXT("Medium")) : FName(TEXT("Regular"));
+    const double KeySpace = Key.IsEmpty()?0.:40.;
+    TArray<FString> Lines;
+    Lines.Add(Body);
+    if (Draw.Measure(Body,Face,Points)>MaxWidth-KeySpace)
+    {
+        Lines.Reset();
+        TArray<FString> Words;
+        Body.ParseIntoArrayWS(Words);
+        FString Current;
+        for (const FString& Word : Words)
+        {
+            const FString Candidate=Current.IsEmpty()?Word:Current+TEXT(" ")+Word;
+            if (!Current.IsEmpty() && Draw.Measure(Candidate,Face,Points)>MaxWidth-KeySpace)
+            {
+                Lines.Add(Current); Current=Word;
+            }
+            else Current=Candidate;
+        }
+        if (!Current.IsEmpty()) Lines.Add(Current);
+    }
+    double TextWidth=0.;
+    for (const FString& Line : Lines) TextWidth=FMath::Max(TextWidth,Draw.Measure(Line,Face,Points));
+    const double H=FMath::Max(36.,Lines.Num()*24.+12.);
+    const double W=TextWidth+KeySpace+22., X=(Draw.Width-W)*.5, Y=Bottom-H;
+    Draw.Fade(X-21,Y,21,H,Graphite.CopyWithNewOpacity(0),Graphite.CopyWithNewOpacity(.80f));
+    Draw.Fade(X,Y,W,H,Graphite.CopyWithNewOpacity(.80f),Graphite.CopyWithNewOpacity(.80f));
+    Draw.Fade(X+W,Y,21,H,Graphite.CopyWithNewOpacity(.80f),Graphite.CopyWithNewOpacity(0));
+    if (!Key.IsEmpty())
+    {
+        const FVector2D P(X+9,Y+H*.5);
+        Draw.Quad(P+FVector2D(0,-12),P+FVector2D(25,-12),P+FVector2D(25,12),P+FVector2D(0,12),Ivory);
+        Draw.Label(Key,P+FVector2D(12.5,0),13,TEXT("BoldCondensed"),Graphite,true);
+    }
+    for (int32 I=0; I<Lines.Num(); ++I)
+        Draw.Label(Lines[I],FVector2D(X+11+KeySpace,Y+H*.5+(I-(Lines.Num()-1)*.5)*24),
+            Points,Face,Action?Ivory:Gold);
+    return Y-5;
+}
+}
 
 void ARiverfrontHUD::DrawHUD()
 {
     Super::DrawHUD();
-    if (!Canvas || !PlayerOwner || !GEngine)
-    {
-        return;
-    }
-
-    const auto* Driver=Cast<ARiverfrontPlayerController>(PlayerOwner);
-    if (!Driver || Driver->IsShowingMenu())
-    {
-        return;
-    }
-
-    const float Scale = FMath::Clamp(Canvas->ClipY / 900.f, .68f, 2.40f);
-    const float Width = Canvas->ClipX / Scale;
-    const float Height = Canvas->ClipY / Scale;
-    constexpr float Margin = 24.f;
-    const FLinearColor Paper(.96f, .92f, .85f, 1.f);
-    const FLinearColor Amber(.88f, .68f, .43f, 1.f);
-    const FLinearColor Dark(.019f, .024f, .024f, .88f);
-    UFont* Font = GEngine->GetSmallFont();
-    UFont* Headline = GEngine->GetMediumFont();
-
-    const auto Box = [this, Scale](FLinearColor Color, float X, float Y, float W, float H)
-    {
-        DrawRect(Color, X * Scale, Y * Scale, W * Scale, H * Scale);
-    };
-    const auto Text = [this, Scale](const FString& Label, FLinearColor Color, float X, float Y, UFont* Face, float Size)
-    {
-        DrawText(Label, Color, X * Scale, Y * Scale, Face, Size * Scale);
-    };
-
+    const auto* Player = Cast<ARiverfrontPlayerController>(PlayerOwner);
+    if (!Canvas || Canvas->ClipX<=0 || Canvas->ClipY<=0 || !Player || Player->IsShowingMenu()
+        || !FSlateApplication::IsInitialized()) return;
+    const APawn* Pawn = Player->GetPawn();
+    if (!Pawn) return;
+    using namespace RiverfrontInstruments;
+    FInstruments Draw(*Canvas);
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
-    const bool bCity = Mode && Mode->IsCityMode();
+    const bool City = Mode && Mode->IsCityMode();
+    const auto* Car = Cast<ARiverfrontCar>(Pawn);
+    if (Player->MapVisible() && Mode && Mode->GetTraffic())
+    {
+        const FString Destination=Player->NavigationText();
+        StreetMap(Draw,*Pawn,*Player,*Mode->GetTraffic(),City,Car!=nullptr,Destination);
+        if (!Destination.IsEmpty()) Guidance(Draw,*Player,Destination);
+    }
+    if (Car) DriveCluster(Draw,*Car);
+    if (City)
+    {
+        const FString Credit=TEXT("© OpenStreetMap contributors");
+        Draw.Label(Credit,FVector2D(Draw.Width-26-Draw.Measure(Credit,TEXT("Regular"),10),Draw.Height-15),
+            10,TEXT("Regular"),Ivory);
+    }
     const float Now = GetWorld()->GetTimeSeconds();
-    if (WelcomeUntil < 0.f) WelcomeUntil = Now + 8.f;
-    if (!Driver->ControlsVisible() && Now < WelcomeUntil)
+    if (WelcomeUntil < 0) WelcomeUntil = Now+8;
+    if (Player->ControlsVisible()) Controls(Draw,City);
+    else if (Now<WelcomeUntil)
     {
-        const float Opacity = FMath::Clamp(WelcomeUntil - Now, 0.f, 1.f);
-        Box(Dark.CopyWithNewOpacity(.84f * Opacity), Margin, Margin, 248.f, 55.f);
-        Box(Amber.CopyWithNewOpacity(Opacity), Margin, Margin, 3.f, 55.f);
-        Text(bCity ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
-            Paper.CopyWithNewOpacity(Opacity), Margin+13, Margin+7, Headline, 1.05f);
-        Text(TEXT("F1  controls     I  wallet     Esc  pause"),
-            Amber.CopyWithNewOpacity(Opacity), Margin+13, Margin+33, Font, .86f);
+        const float Opacity=FMath::Clamp(WelcomeUntil-Now,0.f,1.f);
+        Draw.Fade(0,23,315,59,Graphite.CopyWithNewOpacity(.83f*Opacity),Graphite.CopyWithNewOpacity(0));
+        Draw.Label(City?TEXT("Ahmedabad"):TEXT("Sabarmati Riverfront"),FVector2D(32,41),
+            21,TEXT("BoldCondensed"),Ivory.CopyWithNewOpacity(Opacity));
+        Draw.Label(TEXT("F1  Controls     I  Wallet     Esc  Pause"),FVector2D(33,67),
+            11,TEXT("Medium"),Gold.CopyWithNewOpacity(Opacity));
     }
-
-    const APawn* Pawn = PlayerOwner->GetPawn();
-    const ARiverfrontCar* Car = Cast<ARiverfrontCar>(Pawn);
-    const bool bInCar = Car != nullptr;
-    if (!bInCar)
+    FString Prompt=Player->PlacePrompt();
+    if (Prompt.IsEmpty())
     {
-        const ARiverfrontCharacter* Character = Cast<ARiverfrontCharacter>(Pawn);
-        Car = Mode && Character ? Mode->FindEnterableCar(*Character) : nullptr;
-    }
-
-    if (Pawn && Driver->MapVisible() && Mode && Mode->GetTraffic())
-    {
-        const float Side=Width<760.f?105.f:134.f;
-        const float X=Width-Margin-Side,Y=Margin;
-        Box(Dark,X,Y,Side,Side); Box(Amber,X,Y,3.f,Side);
-        const FVector2D Centre(X+Side*.5,Y+Side*.5);
-        const FVector P=Pawn->GetActorLocation();
-        const auto Project=[&](const FVector& At) {
-            return FVector2D(Centre.X-(At.Y-P.Y)*Side/24000.,Centre.Y-(At.X-P.X)*Side/24000.);
-        };
-        // Clip line segments to the minimap, including roads that cross the viewport with both ends outside.
-        auto Segment=[&](FVector2D A,FVector2D B,FLinearColor Color,float Weight)
+        if (Car) Prompt=Car->GetHint();
+        else if (const auto* Character=Cast<ARiverfrontCharacter>(Pawn))
         {
-            FVector2D V=B-A;
-            double Lo=0,Hi=1;
-            auto Clip=[&](double Dir,double Gap)
-            {
-                if (FMath::Abs(Dir)<1.e-7) return Gap>=0.;
-                const double R=Gap/Dir;
-                if (Dir<0) Lo=FMath::Max(Lo,R); else Hi=FMath::Min(Hi,R);
-                return Lo<=Hi;
-            };
-            if (!Clip(-V.X,A.X-X-3) || !Clip(V.X,X+Side-A.X-2) || !Clip(-V.Y,A.Y-Y-2) || !Clip(V.Y,Y+Side-A.Y-2)) return;
-            const FVector2D End=A+Hi*V; A+=Lo*V;
-            DrawLine(A.X*Scale,A.Y*Scale,End.X*Scale,End.Y*Scale,Color,Weight*Scale);
-        };
-        for (const auto& Line:Mode->GetTraffic()->MapSegments())
-            Segment(Project(Line.Key),Project(Line.Value),FLinearColor(.44,.47,.43),1.5f);
-        if (!bCity)
-        {
-            for (const double Bank:{2300.,-24300.}) Segment(Project(FVector(-84000.,Bank,0)),Project(FVector(84000.,Bank,0)),FLinearColor(.18,.47,.52),2.4f);
-            Segment(Project(FVector(-5350.,2800.,0)),Project(FVector(-5350.,-24700.,0)),FLinearColor(.48,.57,.51),1.f);
+            const auto* Nearby=Mode?Mode->FindEnterableCar(*Character):nullptr;
+            if (Nearby) Prompt=FString::Printf(TEXT("E   Open door  ·  %s"),Nearby->GetVehicleLabel());
         }
-        const FString Direction=Driver->NavigationText();
-        if (!Direction.IsEmpty())
-        {
-            FVector2D Target=Project(Driver->NextWaypoint());
-            const FVector2D Delta=Target-Centre;
-            const double Normal=FMath::Max(FMath::Abs(Delta.X),FMath::Abs(Delta.Y));
-            if (Normal>Side*.44) Target=Centre+Delta*(Side*.44/Normal);
-            Segment(Centre,Target,Amber,1.3f); Box(Amber,Target.X-3,Target.Y-3,6,6);
-            Box(Dark,X-70,Y+Side+2,Side+70,25);Text(Direction,Paper,X-64,Y+Side+7,Font,.80f);
-            FVector2D Screen;
-            if (PlayerOwner->ProjectWorldLocationToScreen(Driver->NextWaypoint()+FVector(0,0,135),Screen,true))
-            {
-                const float SX=Screen.X/Scale,SY=Screen.Y/Scale;
-                if (SX>Margin+10 && SX<Width-Margin-10 && SY>Margin+28 && SY<Height-110)
-                { Box(Amber,SX-4,SY-4,8,8); Box(Dark,SX-2,SY-2,4,4); }
-            }
-        }
-        const FVector Facing=Pawn->GetActorForwardVector();
-        Segment(Centre,Centre+FVector2D(-Facing.Y,-Facing.X)*9,Paper,2.3f);
-        Box(Paper,Centre.X-2,Centre.Y-2,4,4);
-        Text(TEXT("N"),Paper,X+7,Y+4,Font,.72f);
     }
-    if (Driver->ControlsVisible())
-    {
-        const TCHAR* Lines[] = {
-            TEXT("WASD  move or drive     /     Shift  jog"),
-            TEXT("E  interact or exit     /     I  wallet"),
-            TEXT("Space  jump or brake     /     O  car door"),
-            TEXT("C  camera     /     Z, X  indicators     /     H  horn"),
-            bCity ? TEXT("N  destination     /     V  street travel     /     M  map") :
-                    TEXT("N  destination     /     G  river run     /     M  map"),
-            TEXT("T  time     /     P  weather     /     Y  clock"),
-            TEXT("B  hazards     /     F  service     /     F3  timing")
-        };
-        Box(Dark,Margin,Margin,348.f,216.f);
-        Box(Amber,Margin,Margin,3.f,216.f);
-        Text(TEXT("Controls"),Paper,Margin+13,Margin+9,Headline,1.1f);
-        Text(TEXT("F1 to close"),Amber,Margin+255,Margin+12,Font,.8f);
-        for (int32 I=0; I<UE_ARRAY_COUNT(Lines); ++I)
-            Text(Lines[I],Paper,Margin+13,Margin+43+I*23,Font,.88f);
-    }
-    const float Base = Height - 76.f;
-    if (bInCar)
-    {
-        const float SpeedX = Width - Margin - 150.f;
-        Box(Dark, SpeedX, Base - 15.f, 150.f, 65.f);
-        const FString Gear = Car->GetGear() < 0 ? TEXT("R") : FString::FromInt(Car->GetGear());
-        Text(FString::FromInt(FMath::RoundToInt(Car->GetSpeedKph())), Paper,
-            SpeedX + 12.f, Base - 9.f, Headline, 1.68f);
-        Text(TEXT("km/h"), Amber, SpeedX + 91.f, Base + 10.f, Font, .93f);
-        Text(FString::Printf(TEXT("Gear %s    ·    Fuel %.0f%%"), *Gear, Car->GetFuel()*100.f),
-            Paper, SpeedX + 12.f, Base + 29.f, Font, .87f);
-    }
-    if (bCity)
-    {
-        const float CreditX = Width - Margin - 187.f;
-        Box(Dark, CreditX, Height - 23.f, 187.f, 17.f);
-        Text(TEXT("© OpenStreetMap contributors"), Paper, CreditX + 7.f, Height - 21.f, Font, .77f);
-    }
-
-    const auto Message = [&](const FString& Value, float Y, bool bAction)
-    {
-        if (Value.IsEmpty()) return;
-        float W = 0, H = 0;
-        GetTextSize(Value,W,H,Font,1.f);
-        const float MaxWidth = FMath::Max(20.f,Width-2*Margin-28.f);
-        const float Size = FMath::Min(.98f, MaxWidth / FMath::Max(1.f,W));
-        const float MessageWidth = FMath::Min(MaxWidth,W*Size)+28.f;
-        const float X = (Width-MessageWidth)*.5f;
-        Box(Dark,X,Y,MessageWidth,36.f);
-        if (bAction) Box(Amber,X,Y,3.f,36.f);
-        Text(Value,bAction ? Paper : Amber,X+14.f,Y+9.f,Font,Size);
-    };
-
-    const FString Place = Driver->PlacePrompt();
-    const FString Hint = !Place.IsEmpty() ? Place : bInCar ? Car->GetHint() : Car
-        ? FString::Printf(TEXT("E   Open door  ·  %s"),Car->GetVehicleLabel()) : FString();
-    const float HintY = bInCar ? Base-58.f : Height-Margin-40.f;
-    Message(Driver->ActivityText(),Hint.IsEmpty() ? HintY : HintY-40.f,false);
-    Message(Hint,HintY,true);
+    const double MaxWidth=FMath::Min(620.,Draw.Width-390.);
+    const float AbovePrompt=Message(Draw,Prompt,Draw.Height-38,MaxWidth,true);
+    Message(Draw,Player->ActivityText(),AbovePrompt,MaxWidth,false);
+    Draw.Flush();
 }

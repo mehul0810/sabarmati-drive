@@ -35,6 +35,7 @@ public:
 
     void InteractWithPlace();
     FString PlacePrompt() const;
+    const TArray<FRiverSite>& GetPlaces() const { return Sites; }
     const FRiverSite* Destination() const;
     FVector NextWaypoint() const;
     FString NavigationText() const;
