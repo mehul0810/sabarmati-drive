@@ -22,7 +22,7 @@ Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine
 
 Open **Play Sabarmati Drive.command** for the standard window or **Play Sabarmati Drive 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `~/Applications/Sabarmati Drive.app` directly in Finder. **Finder and both shortcuts use the same offline profile** on your Mac, including your wallet, wardrobe and checkpoint.
 
-On your first visit, create a local display name and choose **Start**. You wake at 07:15 in Flat 2B, Kesar Apartments, with ₹1,00,000 in cash and ₹5,00,000 in the bank. On later visits, **Continue** restores your last saved checkpoint. If you saved while driving, you resume on foot beside the last safe vehicle position. **Quit Game** is on the title screen and the **Esc** menu. [Play through the first morning](Docs/First-morning.md) · [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg)
+On your first visit, enter a local display name, choose **Male** or **Female**, create the profile, and choose **Start**. You wake at 07:15 in Flat 2B, Kesar Apartments, with ₹1,00,000 in cash and ₹5,00,000 in the bank. On later visits, **Continue** restores your last saved checkpoint. If you saved while driving, you resume on foot beside the last safe vehicle position. **Quit Game** is on the title screen and the **Esc** menu. [Play through the first morning](Docs/First-morning.md) · [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg)
 
 For a development playtest with an optional local avatar, run `bash Scripts/run-mac.sh --game --no-build`. To open the packaged game from Terminal, run `bash Scripts/run-mac.sh --standalone`.
 
@@ -51,9 +51,11 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 
 You can walk from the wardrobe in Flat 2B down the apartment stairs to street level and enter three furnished shops. **Sutra Cloth House** is on the ground floor. Across the road, **Kagaz Print House** offers a delivery to the counter at **Nadi Chai**. A public passage runs behind these two shops. The hatch and crossover are parked by the Atal promenade. Cross Atal on foot or use the road bridges to drive between the banks.
 
+The circular street map sits at the lower left. Use **N** to cycle destinations and **M** to hide or show navigation. Enter a vehicle to see speed, gear, engine speed, fuel and indicators. Press **F1** for the controls. Pause with **Esc** to return to the title and settings controls over the live scene.
+
 ## Optional local avatar import
 
-The editor and installed game use the fictional riverfront resident by default. His lean athletic build carries through the everyday shirt, jeans and fitted kurta. At the wardrobe in Flat 2B, **Inspect face** shows the hairstyle and complexion up close. **View full outfit** restores the clothing view. [Body dimensions and asset sources](SourceAssets/RESIDENT-PHYSIQUE.md)
+The offline game includes two fictional adult residents. At the wardrobe in Flat 2B, select **Male** or **Female** to change your avatar on an existing save. Both can wear the cotton shirt and jeans or the fitted kurta, change hairstyle and complexion, and wear the watch. **Inspect face** moves the camera close and **View full outfit** returns to the fitting view. Your purchases, wallet and checkpoint carry over. The two presets also appear among walkers, visitors and families. [Male physique and sources](SourceAssets/RESIDENT-PHYSIQUE.md) · [Female physique and sources](SourceAssets/RESIDENT-FEMALE.md)
 
 The public resident walks at 145 cm/s and runs at 335 cm/s with Shift. A native Unreal 1D Blend Space uses the character's actual horizontal speed and keeps the left and right footfalls in phase while accelerating. The clip authoring script solves the support leg against a planted foot on level ground. It uses the existing resident skeleton.
 
