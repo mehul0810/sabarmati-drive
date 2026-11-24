@@ -37,20 +37,32 @@ def material(style):
         name, folder, ue.Material, ue.MaterialFactoryNew())
     mat.set_editor_property("blend_mode", ue.BlendMode.BLEND_MASKED)
     mat.set_editor_property("two_sided", True)
+    if style == "Sweep":
+        mat.set_editor_property("dither_opacity_mask", True)
     mat.set_editor_property("opacity_mask_clip_value", coverage)
     edit.delete_all_material_expressions(mat)
     strand = edit.create_material_expression(mat, ue.MaterialExpressionTextureSample)
     strand.set_editor_property("texture", tex)
     roughness = edit.create_material_expression(mat, ue.MaterialExpressionConstant)
-    roughness.set_editor_property("r", .51)
+    roughness.set_editor_property("r", .66 if style == "Sweep" else .51)
     specular = edit.create_material_expression(mat, ue.MaterialExpressionConstant)
-    specular.set_editor_property("r", .34)
+    specular.set_editor_property("r", .23 if style == "Sweep" else .34)
     for node, output, pin in [(strand, "RGB", ue.MaterialProperty.MP_BASE_COLOR),
                               (strand, "A", ue.MaterialProperty.MP_OPACITY_MASK),
                               (roughness, "", ue.MaterialProperty.MP_ROUGHNESS),
                               (specular, "", ue.MaterialProperty.MP_SPECULAR)]:
         if not edit.connect_material_property(node, output, pin):
             raise RuntimeError(f"{name}: {pin}")
+    if style == "Sweep":
+        # The outward normals are shared by both sides of each card.
+        sign = edit.create_material_expression(mat, ue.MaterialExpressionTwoSidedSign)
+        normal = edit.create_material_expression(mat, ue.MaterialExpressionConstant3Vector)
+        normal.set_editor_property("constant", ue.LinearColor(0,0,1,1))
+        shared = edit.create_material_expression(mat, ue.MaterialExpressionMultiply)
+        if not (edit.connect_material_expressions(sign, "", shared, "A") and
+                edit.connect_material_expressions(normal, "", shared, "B") and
+                edit.connect_material_property(shared, "", ue.MaterialProperty.MP_NORMAL)):
+            raise RuntimeError("Unable to assign the hair volume normals")
     edit.layout_material_expressions(mat)
     edit.recompile_material(mat)
     save(mat)
