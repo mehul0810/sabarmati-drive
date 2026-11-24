@@ -200,7 +200,7 @@ bool RiverfrontLife::Create(const FString& Slot, const FString& DisplayName, ERi
     const FString CleanName = URiverfrontLocalProfile::CleanDisplayName(DisplayName);
     const auto Lock = LockWriter();
     const FRiverfrontProfileSlot Storage = FRiverfrontProfileSlot::ForLaunch(Slot);
-    if (CleanName.IsEmpty() || !StaticEnum<ERiverfrontGender>()->IsValidEnumValue(static_cast<int64>(Gender)) ||
+    if (CleanName.IsEmpty() || (Gender != ERiverfrontGender::Male && Gender != ERiverfrontGender::Female) ||
         !Lock.IsValid() || Storage.Exists())
     {
         return false;
@@ -276,7 +276,7 @@ FText RiverfrontLife::Equip(const FString& Slot, FName Id)
 
 FText RiverfrontLife::SetAvatarGender(const FString& Slot, ERiverfrontGender Gender)
 {
-    if (!StaticEnum<ERiverfrontGender>()->IsValidEnumValue(static_cast<int64>(Gender)))
+    if (Gender != ERiverfrontGender::Male && Gender != ERiverfrontGender::Female)
         return LOCTEXT("UnknownGender", "That avatar is unavailable.");
     return Update(Slot, [Gender](URiverfrontLocalProfile& Profile)
     {
