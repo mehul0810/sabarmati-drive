@@ -113,8 +113,10 @@ def main():
         write_target(args.base_obj, args.build_target, args.target)
     if args.outfit:
         fit = ResidentFit(args.base_obj, args.target)
+        refine_sleeves = runpy.run_path(str(SCRIPTS / "fit-female-kurta-sleeves.py"))["refine"]
         for source, destination in args.outfit:
             physique["fit"](source, destination, fit, fixed_materials=("hair","iris","sclera","shoe"))
+            refine_sleeves(destination)
 
 
 if __name__ == "__main__":
