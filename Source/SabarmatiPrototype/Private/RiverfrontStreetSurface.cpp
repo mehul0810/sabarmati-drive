@@ -33,4 +33,24 @@ void ARiverfrontWorld::DressStreetSurface()
             for (int32 J=-4;J<=4;++J) Box(ETint::Shadow,FVector(X+J*6.9,Y,2.52),FVector(3.2,23,.42));
         }
     }
+
+    // Street-level detail around the Kesar shops. Recessed faces leave the
+    // existing road and pavement collision continuous through the crossing.
+    for (const double X : {-5040., -3640., -2475.})
+    {
+        Box(ETint::Retaining,FVector(X,4575,1.1),FVector(110,40,2.1));
+        Box(ETint::Shadow,FVector(X,4574,2.2),FVector(101,31,.3));
+        for (int32 Bar=-5; Bar<=5; ++Bar)
+            Box(ETint::Rail,FVector(X+Bar*8.5,4574,2.5),FVector(2.8,27,.36));
+        Box(ETint::Rail,FVector(X,4588,2.65),FVector(97,3,.4));
+    }
+    // Weep joints and varying stone lengths break up the continuous edge.
+    // The existing accessible crossing stays flush with the roadway.
+    for (double X=-5950.; X<=-1940.; X+=74.)
+    {
+        if (FMath::Abs(X+5350.)<210.) continue;
+        const double Run=Layout.FRandRange(66.,72.);
+        Box(ETint::Retaining,FVector(X,4603,3.05),FVector(Run,15.5,2.2));
+        Box(ETint::Stone,FVector(X,4599,1.3),FVector(Run+1.,3.5,2.1));
+    }
 }

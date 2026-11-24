@@ -429,6 +429,51 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     Part(ETint::Rail,454,738,Upper+185,145,6,34);
     Lettering(World,TEXT("KESAR   /   2B"),At(454,734,Upper+185),-90,14,FColor(239,219,174));
 
+    // The roof reads as a working terrace from the street and balcony. The
+    // parapet has a coping and shadow joint, with a set-back water tank plinth.
+    for (const double Y : {0., 740.})
+    {
+        Part(ETint::FacadeStone,0,Y,Upper+362,762,18,73);
+        Part(ETint::PaleStone,0,Y,Upper+402,773,27,7);
+    }
+    for (const double X : {-373., 373.})
+    {
+        Part(ETint::FacadeStone,X,370,Upper+362,18,740,73);
+        Part(ETint::PaleStone,X,370,Upper+402,27,744,7);
+    }
+    Part(ETint::Retaining,-174,571,Upper+350,183,171,32);
+    Shape(EShape::Cylinder,ETint::Shadow,-174,571,Upper+425,139,139,118);
+    Shape(EShape::Cylinder,ETint::Rail,-174,571,Upper+485,105,105,13);
+    for (double Z : {Upper+391, Upper+434, Upper+462})
+        Shape(EShape::Cylinder,ETint::Shadow,-174,571,Z,143,143,5);
+    Member(ETint::Rail,{-106,571,Upper+391},{-106,742,Upper+391},5.8);
+    Member(ETint::Rail,{-106,742,Upper+391},{-106,753,32},5.8);
+
+    // Perforated terracotta beside the upper landing leaves the stair width
+    // and the handrail clear. The open cells cast individual shadows.
+    Part(ETint::FacadeStone,548,624,Upper+19,20,225,11);
+    Part(ETint::FacadeStone,548,624,Upper+289,20,225,11);
+    for (int32 Column=0; Column<=9; ++Column)
+        Part(ETint::Terracotta,548,514+Column*24.4,Upper+154,14,8,265);
+    for (int32 Row=0; Row<=9; ++Row)
+        Part(ETint::Terracotta,548,624,Upper+24+Row*28.8,14,220,8);
+    for (const double X : {-332., 332.})
+    {
+        Member(ETint::Rail,{X,-17,Upper+317},{X,-17,Upper+115},7);
+        Member(ETint::Rail,{X,-17,Upper+115},{X,-139,Upper+20},7);
+        Member(ETint::Rail,{X,-139,Upper+20},{X,-139,28},7);
+        for (double Z : {78., 192., Upper+183.})
+            Part(ETint::Rail,X,-13,Z,14,11,4);
+    }
+    // A separate stair nosing and anti-slip strip catch light at every tread.
+    for (int32 I=0; I<Steps; ++I)
+    {
+        const double Y=FirstRiser+I*Tread;
+        const double Top=ApartmentGroundZ+(I+1)*Rise;
+        Part(ETint::FacadeStone,455,Y+1.5,Top-.5,172,4,1.5);
+        Part(ETint::Shadow,455,Y+6,Top+.08,164,2.4,.25);
+    }
+
     // The bed, a caned headboard and an indigo block-print quilt sit at the back of the apartment.
     Part(ETint::Timber,-218,585,Upper+29,167,218,18,true);
     for (double X : {-288.,-148.})
