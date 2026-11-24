@@ -1,4 +1,5 @@
 #include "RiverfrontLifeMenu.h"
+#include "RiverfrontGenderSelector.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLifeProfile.h"
@@ -146,6 +147,16 @@ public:
                         .Text_Lambda([this]{ return Copy(bPortrait ? TEXT("View full outfit") : TEXT("Inspect face")); })
                     ]
                 ];
+                Body->AddSlot().AutoHeight().Padding(0,8,0,0)
+                [
+                    SNew(SRiverfrontGenderSelector)
+                    .MaleTag(TEXT("LifeGenderMale")).FemaleTag(TEXT("LifeGenderFemale"))
+                    .Selected_Lambda([this]{ return Gender; })
+                    .OnSelected_Lambda([this](ERiverfrontGender Choice)
+                    {
+                        Complete(RiverfrontLife::SetAvatarGender(Slot, Choice), TEXT("Avatar saved."));
+                    })
+                ];
                 AddCaption(Body,TEXT("Skin tone"));
                 Body->AddSlot().AutoHeight()
                 [
@@ -264,6 +275,7 @@ private:
     TMap<FName,TSharedPtr<SButton>> Rows;
     TArray<FName> Owned;
     FName Selected, Outfit, Accessory, Tone;
+    ERiverfrontGender Gender = ERiverfrontGender::Male;
     int64 Cash = 0, Bank = 0;
     int32 Deliveries = 0;
     bool bAvailable = false, bDeliveryActive = false;
@@ -306,6 +318,7 @@ private:
         Outfit = Saved->EquippedOutfit;
         Accessory = Saved->EquippedAccessory;
         Tone = Saved->AppearanceTone;
+        Gender = Saved->AvatarGender;
         bCroppedHair = Saved->bCroppedHair;
         LastReceipt = Saved->LastReceipt;
         bDeliveryActive = Saved->bPrintDeliveryActive;

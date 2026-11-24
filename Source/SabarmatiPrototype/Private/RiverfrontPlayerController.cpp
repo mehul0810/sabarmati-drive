@@ -1,4 +1,5 @@
 #include "RiverfrontPlayerController.h"
+#include "RiverfrontGenderSelector.h"
 #include "AudioDevice.h"
 #include "GameFramework/GameUserSettings.h"
 #include "RiverfrontCrossings.h"
@@ -136,7 +137,7 @@ bool CheckCorridorRoutes(UWorld& World)
 }
 #endif
 
-DECLARE_DELEGATE_RetVal_OneParam(FText, FCreateLocalProfile, const FString&);
+DECLARE_DELEGATE_RetVal_TwoParams(FText, FCreateLocalProfile, const FString&, ERiverfrontGender);
 
 DECLARE_DELEGATE_OneParam(FSabarmatiQuality,int32);
 
@@ -315,6 +316,13 @@ public:
                                     .HintText(LOCTEXT("ProfileNameHint", "Display name (2–24 characters)"))
                                     .OnTextCommitted(this, &SRiverfrontMenu::OnNameCommitted)
                                 ]
+                                + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 10.f)
+                                [
+                                    SNew(SRiverfrontGenderSelector).IsEnabled(!bUnreadableProfile)
+                                    .MaleTag(TEXT("ProfileGenderMale")).FemaleTag(TEXT("ProfileGenderFemale"))
+                                    .Selected_Lambda([this]{ return SelectedGender; })
+                                    .OnSelected_Lambda([this](ERiverfrontGender Choice){ SelectedGender = Choice; })
+                                ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
                                 [
                                     SNew(STextBlock)
@@ -482,7 +490,7 @@ private:
         if (NeedsProfile() && !bUnreadableProfile && ProfileNameInput && CreateProfile.IsBound())
         {
             const FString Proposed = ProfileNameInput->GetText().ToString();
-            const FText Error = CreateProfile.Execute(Proposed);
+            const FText Error = CreateProfile.Execute(Proposed, SelectedGender);
             if (Error.IsEmpty())
             {
                 ShowCreatedPlayer(URiverfrontLocalProfile::CleanDisplayName(Proposed));
@@ -521,6 +529,7 @@ private:
     TSharedPtr<SEditableTextBox> ProfileNameInput;
     FString PlayerName;
     FText ProfileError;
+    ERiverfrontGender SelectedGender = ERiverfrontGender::Male;
     FCreateLocalProfile CreateProfile;
     FSimpleDelegate SwitchMap;
     bool bIsCity = false;
@@ -1086,7 +1095,7 @@ void ARiverfrontPlayerController::LoadLocalProfile()
     bUnreadableProfile = LocalDisplayName.IsEmpty();
 }
 
-FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedName)
+FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedName, ERiverfrontGender Gender)
 {
     if (bUnreadableProfile || HasLocalProfile() || RiverfrontLife::Exists(ProfileSlot))
     {
@@ -1097,7 +1106,7 @@ FText ARiverfrontPlayerController::CreateLocalProfile(const FString& RequestedNa
     {
         return LOCTEXT("ProfileInvalidName", "Enter a display name with 2 to 24 characters on one line.");
     }
-    if (!RiverfrontLife::Create(ProfileSlot, Clean))
+    if (!RiverfrontLife::Create(ProfileSlot, Clean, Gender))
     {
         return LOCTEXT("ProfileSaveFailed", "Could not save the profile on this Mac. Please try again.");
     }

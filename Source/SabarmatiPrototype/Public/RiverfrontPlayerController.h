@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "RiverfrontResidentAppearance.h"
 #include "RiverfrontPlayerController.generated.h"
 
 class SWidget;
@@ -118,7 +119,7 @@ private:
     void Notice(const FString& Text);
     void SetMouseSensitivity(float Value);
     void LoadLocalProfile();
-    FText CreateLocalProfile(const FString& RequestedName);
+    FText CreateLocalProfile(const FString& RequestedName, ERiverfrontGender Gender = ERiverfrontGender::Male);
     bool HasLocalProfile() const { return !LocalDisplayName.IsEmpty(); }
 
     void ShowTitle();
