@@ -3,6 +3,7 @@
 #include "Components/SpotLightComponent.h"
 #include "EngineUtils.h"
 #include "RiverfrontWorld.h"
+#include "ChaosWheeledVehicleMovementComponent.h"
 
 #include "Camera/CameraComponent.h"
 #include "Camera/CameraTypes.h"
@@ -12,13 +13,16 @@
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/CommandLine.h"
 #include "Misc/PackageName.h"
+#include "Misc/Parse.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontGameMode.h"
 #include "UObject/ConstructorHelpers.h"
@@ -63,6 +67,14 @@ ARiverfrontCar::ARiverfrontCar()
     Body->SetGenerateOverlapEvents(false);
     Body->SetCanEverAffectNavigation(false);
     bUseControllerRotationYaw = false;
+    VehicleMovement = CreateDefaultSubobject<UChaosWheeledVehicleMovementComponent>(TEXT("HatchbackMovement"));
+    VehicleMovement->bAutoActivate = false;
+    VehicleMovement->bAutoRegister = false;
+    PhysicsChassis = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HatchbackPhysicsChassis"));
+    PhysicsChassis->bAutoRegister = false;
+    PhysicsChassis->SetHiddenInGame(true);
+    PhysicsChassis->SetGenerateOverlapEvents(false);
+    PhysicsChassis->SetCanEverAffectNavigation(false);
 
     Arm = CreateDefaultSubobject<USpringArmComponent>(TEXT("ChaseArm"));
     Arm->SetupAttachment(Body);
@@ -225,6 +237,13 @@ bool ARiverfrontCar::InstallDetailedVisuals()
             DoorSkins.Add(PlaceMesh(Side<0 ? LeftDoor : RightDoor,Hinge,FVector::ZeroVector,-90.));
         }
     }
+    const auto LoadHatchFinish = [](const TCHAR* Name) -> UMaterialInterface*
+    {
+        const FString Package = FString(TEXT("/Game/Sabarmati/Riverfront/Vehicles/Coachwork/")) + Name;
+        return FPackageName::DoesPackageExist(Package)
+            ? LoadObject<UMaterialInterface>(nullptr, *(Package + TEXT(".") + Name)) : nullptr;
+    };
+    UMaterialInterface* Tyre = LoadHatchFinish(TEXT("M_HatchTyre"));
     for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
     {
         const bool bRight = SideIndex == 1;
@@ -234,17 +253,20 @@ bool ARiverfrontCar::InstallDetailedVisuals()
             USceneComponent* Pivot = Wheel->GetAttachParent();
             Pivot->SetRelativeLocation(FVector(Axle == 0 ? 122 : -138, bRight ? 77 : -77,
                 DetailedWheelRadius + ModelGroundOffset));
-            PlaceMesh(bRight ? RightWheel : LeftWheel, Wheel, FVector::ZeroVector, bRight ? 90.0 : -90.0);
+            auto* WheelMesh = PlaceMesh(bRight ? RightWheel : LeftWheel, Wheel, FVector::ZeroVector, bRight ? 90.0 : -90.0);
+            if (Tyre) WheelMesh->SetMaterialByName(TEXT("tire"), Tyre);
         }
     }
-    UMaterialInterface* Window = LoadObject<UMaterialInterface>(nullptr,
+    UMaterialInterface* Window = LoadHatchFinish(TEXT("M_HatchGlazing"));
+    if (!Window) Window = LoadObject<UMaterialInterface>(nullptr,
         TEXT("/Game/Sabarmati/Riverfront/M_DistrictGlass.M_DistrictGlass"));
-    UMaterialInterface* Finish = LoadObject<UMaterialInterface>(nullptr,
+    UMaterialInterface* Finish = LoadHatchFinish(TEXT("M_HatchPaint"));
+    if (!Finish) Finish = LoadObject<UMaterialInterface>(nullptr,
         TEXT("/Game/Sabarmati/Riverfront/M_DistrictCarPaint.M_DistrictCarPaint"));
     TArray<UStaticMeshComponent*> Shells{DetailedBody.Get()};
     for (const auto& Door:DoorSkins) Shells.Add(Door);
     UMaterialInstanceDynamic* Paint=Finish?UMaterialInstanceDynamic::Create(Finish,this):nullptr;
-    if (Paint) Paint->SetVectorParameterValue(TEXT("BodyColor"),bCrossover?FLinearColor(.14,.052,.021):FLinearColor(.12,.19,.16));
+    if (Paint) Paint->SetVectorParameterValue(TEXT("BodyColor"),bCrossover?FLinearColor(.145,.042,.028):FLinearColor(.050,.107,.095));
     for (auto* Shell:Shells)
     {
         const auto Slots=Shell->GetMaterialSlotNames();
@@ -279,6 +301,8 @@ void ARiverfrontCar::BeginPlay()
     }
     bDetailedVisuals = InstallDetailedVisuals();
     TravelYaw = GetActorRotation().Yaw;
+    if (bDetailedVisuals && !bCrossover && !FParse::Param(FCommandLine::Get(), TEXT("SabarmatiLegacyDrive")))
+        ConfigureHatchbackPhysics();
     auto Loop = [&](const TCHAR* Path, const FVector& At)
     {
         auto* Audio=NewObject<UAudioComponent>(this);
@@ -446,6 +470,11 @@ void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     if (MotorLoop && TyreLoop) { MotorLoop->FadeIn(.24f,.32f); TyreLoop->FadeIn(.18f,.02f); }
     Character.SetInCar(true);
     Player->Possess(this);
+    if (bChaosDrive)
+    {
+        VehicleMovement->SetParked(false);
+        VehicleMovement->SetTargetGear(1, true);
+    }
     UpdateDrivingLights();
     Player->SetControlRotation(FRotator(-13, GetActorRotation().Yaw, 0));
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
@@ -522,6 +551,7 @@ void ARiverfrontCar::Exit()
     UpdateDrivingLights();
     Speed = Throttle = Steering = 0;
     bBraking = false;
+    StopHatchbackPhysics(true);
 }
 
 void ARiverfrontCar::Tick(float DeltaSeconds)
@@ -529,9 +559,15 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     HintRemaining = FMath::Max(0.f, HintRemaining - DeltaSeconds);
     UpdateDoors(DeltaSeconds);
+    if (bChaosDrive) UpdateHatchbackWheels();
 
     if (!Controller || !IsValid(Driver))
     {
+        return;
+    }
+    if (bChaosDrive)
+    {
+        TickHatchbackPhysics(DeltaSeconds);
         return;
     }
     const float T=FMath::Clamp(DeltaSeconds,0.f,.10f);
@@ -650,6 +686,7 @@ void ARiverfrontCar::ResetCar()
     for (TActorIterator<ARiverfrontWorld> It(GetWorld()); It; ++It) It->PrepareCityTravel(Home.GetLocation());
     if (TeleportTo(Home.GetLocation(), Home.Rotator(), false, false))
     {
+        StopHatchbackPhysics(!IsOccupied());
         Speed = Throttle = Steering = 0;
         bBraking=false; TurnAngle=BodyRoll=0; Gear=1; Signal=0; TravelYaw=Home.Rotator().Yaw;
         if (Controller)
@@ -827,6 +864,7 @@ bool ARiverfrontCar::TravelToStreet(const FVector& Position, double Heading)
     if (!SampleWheels(Position,Heading,Wheels)) return false;
     const FVector Arrival(Position.X,Position.Y,(Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25+68.);
     if (!TeleportTo(Arrival,FRotator(0,Heading,0))) return false;
+    StopHatchbackPhysics(false);
     Speed=Throttle=Steering=TurnAngle=BodyRoll=0.f;
     Gear=1; TravelYaw=Heading; HasCameraSample=false;
     return true;

@@ -101,7 +101,10 @@ public:
             Origin=Car->GetActorLocation();Key(EKeys::W,IE_Pressed);break;
         case 11:
             if (FVector::Dist2D(Car->GetActorLocation(),Origin)<5200 && Age<14.) return true;
-            if (Car->GetGear()<2 || !Car->HasFourContacts() || Car->GetSpeedKph()<12) return Fail(TEXT("four wheel drive and gear change"));
+            if (Car->GetGear()<2 || !Car->HasFourContacts() || Car->GetSpeedKph()<12)
+                return Fail(*FString::Printf(TEXT("acceleration: %.1f m, %.1f km/h, gear %d, four contacts %d, %.0f RPM"),
+                    FVector::Dist2D(Car->GetActorLocation(),Origin)*.01,Car->GetSpeedKph(),Car->GetGear(),
+                    Car->HasFourContacts(),Car->GetEngineRpm()));
             Shot(TEXT("driving-instruments"));
             if (!Write(TEXT("driving-instruments.csv"), FString::Printf(
                 TEXT("speed_kmh,gear,engine_rpm,fuel_percent\n%.2f,%d,%.0f,%.2f\n"),
@@ -163,10 +166,20 @@ public:
         {
             const double Remaining=19400.-Car->GetActorLocation().X;
             const double Velocity=Car->GetSpeedKph()/.036;
-            if (Remaining>100.+Velocity*Velocity/(2.*720.))
+            if (Remaining>165.)
             {
                 if (Age>65.) return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f; %s"),
                     Car->GetActorLocation().X,Car->GetActorLocation().Y,*PC.NavigationText()));
+                // Approach within a conservative stopping distance. The same
+                // inputs work for either chassis and the wet-road review.
+                const double SafeSpeed=FMath::Max(230.,FMath::Sqrt(700.*(Remaining-165.)));
+                const bool bBrake=Velocity>SafeSpeed+(bTrialBraking?-90.:90.);
+                if (bBrake!=bTrialBraking)
+                {
+                    Key(bBrake?EKeys::W:EKeys::SpaceBar,IE_Released);
+                    Key(bBrake?EKeys::SpaceBar:EKeys::W,IE_Pressed);
+                    bTrialBraking=bBrake;
+                }
                 return true;
             }
             Key(EKeys::W,IE_Released); Key(EKeys::SpaceBar,IE_Pressed); break;
@@ -297,6 +310,7 @@ private:
     TWeakObjectPtr<ARiverfrontCharacter> Walker;TWeakObjectPtr<ARiverfrontTraffic> Traffic;
     FString Folder,Buffer;FVector Origin,Previous;FKey Pending;
     double StartTime=0,StageTime=0,EnduranceStart=0,LastFrame=0,LapStart=0,WalkCm=0,DriveCm=0;
+    bool bTrialBraking=false;
     int32 Minutes=0,Stage=0,Leg=0,Laps=0,Count=0;
 };
 }

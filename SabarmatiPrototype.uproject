@@ -12,6 +12,7 @@
   ],
   "Plugins": [
     { "Name": "ProceduralMeshComponent", "Enabled": true },
+    { "Name": "ChaosVehiclesPlugin", "Enabled": true },
     { "Name": "AndroidFileServer", "Enabled": false },
     {
       "Name": "PythonScriptPlugin",

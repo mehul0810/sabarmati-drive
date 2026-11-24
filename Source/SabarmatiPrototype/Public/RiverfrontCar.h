@@ -7,7 +7,9 @@
 class ARiverfrontCharacter;
 class UBoxComponent;
 class UCameraComponent;
+class UChaosWheeledVehicleMovementComponent;
 class USpotLightComponent;
+class USkeletalMeshComponent;
 class UAudioComponent;
 class USoundWave;
 class UMaterialInstanceDynamic;
@@ -53,6 +55,10 @@ public:
 private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UBoxComponent> Body;
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UChaosWheeledVehicleMovementComponent> VehicleMovement;
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<USkeletalMeshComponent> PhysicsChassis;
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USpringArmComponent> Arm;
     UPROPERTY(VisibleAnywhere)
@@ -123,9 +129,15 @@ private:
     bool bBraking = false;
     bool bDetailedVisuals = false;
     bool bCrossover = false;
+    bool bChaosDrive = false;
+    float AppliedTyreFriction = 1.f;
     FString Hint;
 
     bool InstallDetailedVisuals();
+    void ConfigureHatchbackPhysics();
+    void TickHatchbackPhysics(float DeltaSeconds);
+    void UpdateHatchbackWheels();
+    void StopHatchbackPhysics(bool bPark);
     void Panel(const TCHAR* Name, UStaticMesh* Mesh, USceneComponent* Parent,
         const FVector& Offset, const FVector& Size, FColor Color,
         const FRotator& Rotation = FRotator::ZeroRotator);
