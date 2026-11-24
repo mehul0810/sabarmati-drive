@@ -55,7 +55,8 @@ class SourceTests(unittest.TestCase):
             self.assertTrue(set(re.findall(r'BindAction\(TEXT\("(\w+)"\)', code)) <= actions)
             if file != "RiverfrontPlayerController.cpp":
                 self.assertIn('BindAction(TEXT("Interact")', code)
-        self.assertIn('+ActionMappings=(ActionName="PauseDrive",Key=Escape)', config)
+        # The Unreal Editor can serialize the same mapping with explicit default modifiers.
+        self.assertRegex(config, r'(?m)^\+ActionMappings=\(ActionName="PauseDrive",(?:b(?:Shift|Ctrl|Alt|Cmd)=False,)*Key=Escape\)$')
         menu = (PRIVATE / "RiverfrontPlayerController.cpp").read_text()
         for route in ('EScreen::Title', 'EScreen::Paused', 'SetPause(true)', 'SetPause(false)',
                       'FInputModeUIOnly', 'FInputModeGameOnly', 'EKeys::Escape'):
