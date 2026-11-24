@@ -6,6 +6,7 @@
 #include "RiverfrontLifeProfile.h"
 #include "RiverfrontLocalProfile.h"
 #include "RiverfrontPedestrian.h"
+#include "RiverfrontResidentAppearance.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontTraffic.h"
 #include "Camera/CameraActor.h"
@@ -39,7 +40,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls
 };
 
 struct FMorningEvidence
@@ -59,6 +60,7 @@ struct FMorningEvidence
     TWeakObjectPtr<ACameraActor> FamilyView;
     FRotator OutfitFront = FRotator::ZeroRotator;
     bool bKurtaPreview = false;
+    bool bBodyCaptured = false;
     FVector WakeOrigin = FVector::ZeroVector;
     double WakeTravel = 0.;
     bool bSawWake = false;
@@ -149,6 +151,45 @@ int32 ClearFamilyCamera(UWorld& World, const FVector& Centre, const TArray<FVect
     return INDEX_NONE;
 }
 
+// Verify the cooked mesh separately from the saved identifier. A broken asset reference
+// can otherwise leave the previous mesh visible while the profile still reads correctly.
+bool WearingResidentBody(ARiverfrontCharacter& Walker, ERiverfrontGender Gender, bool bKurta = false)
+{
+    const USkeletalMesh* Model = Walker.GetMesh()->GetSkeletalMeshAsset();
+    const bool bFemale = Gender == ERiverfrontGender::Female;
+    const FName Expected = bFemale
+        ? FName(bKurta ? TEXT("SK_FemaleKurta") : TEXT("SK_FemaleEveryday"))
+        : FName(bKurta ? TEXT("SK_FittedKurta") : TEXT("SK_RiverEveryday"));
+    return Walker.GetAvatarGender() == Gender && Model && Model->GetFName() == Expected;
+}
+
+FString CheckCrowdBodies(UWorld& World, FString& Results)
+{
+    int32 Counts[3][2] = {};
+    for (TActorIterator<ARiverfrontPedestrian> It(&World); It; ++It)
+    {
+        const auto* Body = It->FindComponentByClass<USkeletalMeshComponent>();
+        const auto* Model = Body ? Body->GetSkeletalMeshAsset() : nullptr;
+        if (!Model || !Model->GetSkeleton()) return TEXT("walker lacks an animated body");
+        const bool bFemale = It->GetAvatarGender() == ERiverfrontGender::Female;
+        const FName Asset = Model->GetFName();
+        const bool bFemaleMesh = Asset == TEXT("SK_FemaleEveryday") || Asset == TEXT("SK_FemaleKurta");
+        const bool bMaleMesh = Asset == TEXT("SK_RiverResident") || Asset == TEXT("SK_RiverResidentKurta")
+            || Asset == TEXT("SK_RiverEveryday") || Asset == TEXT("SK_FittedKurta");
+        if (!(bFemale ? bFemaleMesh : bMaleMesh)) return TEXT("NPC body differs from assigned gender: ") + Model->GetPathName();
+        const int32 Group = It->IsFamilyMember() ? 0 : It->IsInternationalVisitor() ? 1 : 2;
+        ++Counts[Group][bFemale ? 1 : 0];
+    }
+    const TCHAR* Groups[] = {TEXT("family"),TEXT("visitors"),TEXT("solo_residents")};
+    for (int32 Group = 0; Group < UE_ARRAY_COUNT(Groups); ++Group)
+    {
+        if (!Counts[Group][0] || !Counts[Group][1])
+            return FString::Printf(TEXT("%s lacks one body preset (male=%d female=%d)"),Groups[Group],Counts[Group][0],Counts[Group][1]);
+        Results += FString::Printf(TEXT("%s_male=%d\n%s_female=%d\n"),Groups[Group],Counts[Group][0],Groups[Group],Counts[Group][1]);
+    }
+    return {};
+}
+
 bool HasMorningPurchase(const URiverfrontLocalProfile* Profile)
 {
     return Profile && Profile->DisplayName == TEXT("Morning Playtest")
@@ -184,12 +225,14 @@ void ARiverfrontPlayerController::RunMorningReview()
         return;
     }
 
-    const bool bBodyReview = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBodyReview"));
+    const bool bGenderReview = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGenderReview"));
+    const bool bBodyReview = bGenderReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBodyReview"));
+    const ERiverfrontGender ExpectedGender = bGenderReview ? ERiverfrontGender::Female : ERiverfrontGender::Male;
     auto State = MakeShared<FMorningEvidence>();
     State->Route = FRiverfrontFirstMorningWorld::ExitRoute();
     UE_LOG(LogTemp,Display,TEXT("Sabarmati morning review started: %s, continue=%d"), *Folder, bContinue);
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview](float)
+        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,ExpectedGender](float)
         {
             auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
             const double Now = FPlatformTime::Seconds(), Age = Now - State->Since;
@@ -256,10 +299,20 @@ void ARiverfrontPlayerController::RunMorningReview()
                     auto NameBox = FindMorningControl(Overlay,TEXT("MorningName"));
                     if (!NameBox || NameBox->GetType() != FName(TEXT("SEditableTextBox"))) return Fail(TEXT("title name field"));
                     StaticCastSharedPtr<SEditableTextBox>(NameBox)->SetText(FText::FromString(TEXT("Morning Playtest")));
+                    if (bGenderReview)
+                    {
+                        if (!State->Pictures.Contains(TEXT("00-profile-selection.png")))
+                        {
+                            if (!PressMorningButton(Overlay,TEXT("ProfileGenderFemale"))) return Fail(TEXT("choose female at profile creation"));
+                            Shot(TEXT("00-profile-selection"),true);
+                            return true;
+                        }
+                        if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                    }
                     if (!PressMorningButton(Overlay,TEXT("MorningCreateProfile")) || !HasLocalProfile())
                         return Fail(TEXT("title profile creation"));
                     const auto* P = RiverfrontLife::Load(ProfileSlot);
-                    if (!P || P->CashRupees != 100000 || P->BankRupees != 500000 || P->bFirstMorningSeen)
+                    if (!P || P->CashRupees != 100000 || P->BankRupees != 500000 || P->bFirstMorningSeen || P->AvatarGender != ExpectedGender)
                         return Fail(TEXT("initial balances or wake state"));
                 }
                 else if (!HasMorningPurchase(RiverfrontLife::Load(ProfileSlot))) return Fail(TEXT("cold profile contents"));
@@ -292,13 +345,46 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (IsShowingMenu() || IsPaused() || !P || !P->bFirstMorningSeen
                     || FVector::Dist(Walker->GetActorLocation(), FRiverfrontFirstMorningWorld::HomeStart()) > 110.
                     || !Walker->GetCharacterMovement()->IsMovingOnGround()) return Fail(TEXT("grounded bedside wake and handoff"));
+                if (bGenderReview && !WearingResidentBody(*Walker,ExpectedGender)) return Fail(TEXT("female starter body on wake-up"));
                 if (!Walker->GetWardrobeShirtColor(State->OriginalShirt)) return Fail(TEXT("starter outfit material"));
                 Shot(TEXT("01-apartment"));
                 const auto Size = GetWorld()->GetGameViewport()->Viewport->GetSizeXY();
                 State->Results = FString::Printf(TEXT("viewport=%dx%d\nwake_camera_displacement_cm=%.2f\nstarting_cash=100000\nstarting_bank=500000\n"),Size.X,Size.Y,State->WakeTravel);
+                if (bGenderReview)
+                {
+                    if (const FString Error = CheckCrowdBodies(*GetWorld(),State->Results); !Error.IsEmpty()) return Fail(Error);
+                    State->Results += TEXT("created_female=1\n");
+                    if (!GetHUD() || !GetHUD()->bShowHUD || ControlsVisible() || !MapVisible())
+                        return Fail(TEXT("initial on-foot HUD"));
+                    Next(EMorningStep::HudControls);
+                    break;
+                }
                 WalkAgain();
                 break;
             }
+            case EMorningStep::HudControls:
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!ControlsVisible() && MapVisible() && !State->Pictures.Contains(TEXT("01-controls.png")))
+                {
+                    GameKey(EKeys::F1);
+                    GameKey(EKeys::M);
+                    return true;
+                }
+                if (!State->Pictures.Contains(TEXT("01-controls.png")))
+                {
+                    if (!ControlsVisible() || MapVisible()) return Fail(TEXT("HUD help and minimap key bindings"));
+                    Shot(TEXT("01-controls")); return true;
+                }
+                if (ControlsVisible() && !MapVisible())
+                {
+                    GameKey(EKeys::F1);
+                    GameKey(EKeys::M);
+                    return true;
+                }
+                if (ControlsVisible() || !MapVisible()) return Fail(TEXT("restoring HUD controls"));
+                State->Results += TEXT("map_and_controls_toggled=1\n");
+                WalkAgain();
+                break;
             case EMorningStep::Walk:
             {
                 const FVector Here = Walker->GetActorLocation();
@@ -340,9 +426,42 @@ void ARiverfrontPlayerController::RunMorningReview()
             case EMorningStep::Wardrobe:
                 if (const FString ViewError=VerifyFittingView(TEXT("wardrobe")); !ViewError.IsEmpty()) return Fail(ViewError);
                 if (!IsShowingMenu() || !MorningBalanceVisible(Overlay,TEXT("₹1,00,000"),TEXT("₹5,00,000"))) return Fail(TEXT("visible initial wallet balances"));
+                if (bGenderReview)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeGenderMale"))) return Fail(TEXT("wardrobe male selector"));
+                    Next(EMorningStep::WardrobeMale);
+                    break;
+                }
                 if (!PressMorningButton(Overlay,TEXT("LifeTone.warm"))) return Fail(TEXT("wardrobe skin-tone control"));
                 Next(EMorningStep::HairChoice);
                 break;
+            case EMorningStep::WardrobeMale:
+            case EMorningStep::WardrobeFemale:
+            {
+                const bool bMale = State->Step == EMorningStep::WardrobeMale;
+                const auto Gender = bMale ? ERiverfrontGender::Male : ERiverfrontGender::Female;
+                const auto* Saved = RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->AvatarGender != Gender || !WearingResidentBody(*Walker,Gender)
+                    || Saved->CashRupees != 100000 || Saved->BankRupees != 500000
+                    || Saved->EquippedOutfit != TEXT("cotton-sand") || Saved->OwnedItems.Num() != 1)
+                    return Fail(TEXT("wardrobe body, wallet or ownership after avatar change"));
+                if (Age < .6) return true;
+                const TCHAR* Picture = bMale ? TEXT("02-gender-male") : TEXT("02-gender-female");
+                if (!State->Pictures.Contains(FString(Picture) + TEXT(".png"))) { Shot(Picture,true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (bMale)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeGenderFemale"))) return Fail(TEXT("wardrobe female selector"));
+                    Next(EMorningStep::WardrobeFemale);
+                }
+                else
+                {
+                    State->Results += TEXT("wardrobe_male_and_female=1\n");
+                    if (!PressMorningButton(Overlay,TEXT("LifeTone.warm"))) return Fail(TEXT("wardrobe skin-tone control"));
+                    Next(EMorningStep::HairChoice);
+                }
+                break;
+            }
             case EMorningStep::HairChoice:
             {
                 if (!Walker->SupportsPublicHaircut())
@@ -462,7 +581,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                     const auto* Model = Walker->GetMesh()->GetSkeletalMeshAsset();
                     const FName Outfit = Kurta ? FName(TEXT("kurta")) : FName(TEXT("cotton-sand"));
                     if (!Model || Walker->GetWardrobeOutfit()!=Outfit || !LifeCamera.IsValid()
-                        || Model->GetName() != (Kurta ? TEXT("SK_FittedKurta") : TEXT("SK_RiverEveryday")))
+                        || !WearingResidentBody(*Walker,ExpectedGender,Kurta))
                         return Fail(TEXT("visible native shop preview or body mesh"));
                     State->Results += FString::Printf(TEXT("%s=%s actor_yaw=%.1f camera=%s fov=%.1f\n"),
                         Name,*Model->GetPathName(),Walker->GetActorRotation().Yaw,
@@ -508,11 +627,18 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (!FFileHelper::SaveStringToFile(State->Results,*FPaths::Combine(Folder,TEXT("body.txt"))))
                     return Fail(TEXT("body review report"));
                 UE_LOG(LogTemp,Display,TEXT("Sabarmati body review complete: %s"),*Folder);
+                if (bGenderReview)
+                {
+                    State->bBodyCaptured = true;
+                    InteractWithPlace();
+                    Next(EMorningStep::Store);
+                    break;
+                }
                 FPlatformMisc::RequestExitWithStatus(false,0);
                 return false;
             }
             case EMorningStep::Store:
-                if (bBodyReview)
+                if (bBodyReview && !State->bBodyCaptured)
                 {
                     if (Screen!=EScreen::Life || !PressMorningButton(Overlay,TEXT("LifeItem.cotton-sand")))
                         return Fail(TEXT("preview everyday outfit"));
@@ -657,6 +783,8 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (Screen!=EScreen::Paused || !HasMorningPurchase(P) || !P->bHasLifeCheckpoint
                     || FVector::Dist2D(P->CheckpointLocation,FRiverfrontFirstMorningWorld::ShopPoint())>150.)
                     return Fail(TEXT("shop checkpoint on pause"));
+                if (bGenderReview && !State->Pictures.Contains(TEXT("07-pause.png"))) { Shot(TEXT("07-pause"),true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 for (const auto& Pic : State->Pictures)
                     if (IFileManager::Get().FileSize(*FPaths::Combine(Folder,Pic))<1000) return Fail(TEXT("missing capture ")+Pic);
                 if (!FFileHelper::SaveStringToFile(State->Results,*FPaths::Combine(Folder,TEXT("first-morning.txt")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
@@ -682,13 +810,16 @@ void ARiverfrontPlayerController::RunMorningReview()
                     || FVector::Dist2D(Walker->GetActorLocation(),FRiverfrontFirstMorningWorld::ShopPoint())>150.
                     || !Walker->GetCharacterMovement()->IsMovingOnGround() || Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo"))
                     return Fail(TEXT("continue at shop with paid appearance and saved balances"));
+                if ((bGenderReview || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiLegacyAvatarReview")))
+                    && (P->AvatarGender != ExpectedGender || !WearingResidentBody(*Walker,ExpectedGender)))
+                    return Fail(TEXT("cold restart did not restore the saved body"));
                 if (State->Pictures.IsEmpty()) { Shot(TEXT("08-continued-at-shop")); return true; }
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 const auto Capture=FPaths::Combine(Folder,State->Pictures[0]);
                 if (IFileManager::Get().FileSize(*Capture)<1000) return Age < 20. || Fail(TEXT("continue photograph"));
                 if (!FFileHelper::SaveStringToFile(FString::Printf(
-                    TEXT("cold_process=%d\ncontinued_at_shop=1\nrun_at=%s\ncash=%lld\nbank=%lld\nequipped=%s\nappearance=%s\n"),
-                    bColdRun,*Walker->GetActorLocation().ToString(),P->CashRupees,P->BankRupees,*P->EquippedOutfit.ToString(),*P->AppearanceTone.ToString()),
+                    TEXT("cold_process=%d\ncontinued_at_shop=1\nrun_at=%s\ncash=%lld\nbank=%lld\nequipped=%s\nappearance=%s\nbody_mesh=%s\n"),
+                    bColdRun,*Walker->GetActorLocation().ToString(),P->CashRupees,P->BankRupees,*P->EquippedOutfit.ToString(),*P->AppearanceTone.ToString(),*GetNameSafe(Walker->GetMesh()->GetSkeletalMeshAsset())),
                     *FPaths::Combine(Folder,TEXT("continued.txt")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)) return Fail(TEXT("continue evidence"));
                 UE_LOG(LogTemp,Display,TEXT("Sabarmati morning continue verified: %s"),*Folder);
                 if (!FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningDelivery")))
@@ -780,7 +911,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 const auto* Mesh=Walker->GetMesh()->GetSkeletalMeshAsset();
                 const bool PublicMesh=State->InitialMesh.StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
-                const bool Switched=Mesh && Mesh->GetPathName()!=State->InitialMesh && Mesh->GetPathName()==TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Tailored/SK_FittedKurta.SK_FittedKurta");
+                const bool Switched=Mesh && Mesh->GetPathName()!=State->InitialMesh && WearingResidentBody(*Walker,ExpectedGender,true);
                 if (!Saved || Saved->CashRupees!=96550 || Saved->BankRupees!=499050 || Saved->EquippedOutfit!=TEXT("kurta")
                     || Saved->EquippedAccessory!=TEXT("watch") || !Saved->OwnedItems.Contains(TEXT("kurta"))
                     || !Saved->OwnedItems.Contains(TEXT("shirt-indigo")) || !Saved->OwnedItems.Contains(TEXT("watch"))
