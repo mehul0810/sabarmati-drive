@@ -10,6 +10,6 @@ public class SabarmatiPrototype : ModuleRules
         PublicDependencyModuleNames.AddRange(new[] {
             "Core", "CoreUObject", "Engine", "InputCore"
         });
-        PrivateDependencyModuleNames.AddRange(new[] { "Slate", "SlateCore", "ProceduralMeshComponent", "RenderCore", "RHI", "Json", "MoviePlayer", "LevelSequence", "MovieScene", "MovieSceneTracks" });
+        PrivateDependencyModuleNames.AddRange(new[] { "Slate", "SlateCore", "ProceduralMeshComponent", "RenderCore", "RHI", "Json", "MoviePlayer", "LevelSequence", "MovieScene", "MovieSceneTracks", "AnimGraphRuntime" });
     }
 }

@@ -3,6 +3,8 @@
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLifeProfile.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -50,6 +52,9 @@ struct FGaitStrip
     double CaptureStart = 0.;
     bool bClockWasFixed = false;
     double OriginalDelta = 0.;
+    double JumpFloor = 0.;
+    double JumpHeight = 0.;
+    TSet<FName> JumpClips;
     TArray<FGaitFrame> Samples;
     TWeakObjectPtr<ACameraActor> Lens;
     FString Summary = TEXT("mode,side,frames,seconds,distance_cm,speed_cm_s,knee_min_deg,knee_max_deg,swings,plants,max_plant_drift_cm,min_sole_above_floor_cm,lateral_cm,pass\n");
@@ -246,11 +251,12 @@ void ARiverfrontPlayerController::RunGaitReview()
     UE_LOG(LogTemp,Display,TEXT("Sabarmati gait review started: mesh=%s evidence=%s"),
         *Skin->GetSkeletalMeshAsset()->GetPathName(),*Folder);
     const bool bCapture=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitFrames"));
+    const bool bReviewJump=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiJumpReview"));
     if (bCapture && !IFileManager::Get().MakeDirectory(*FPaths::Combine(Folder,TEXT("Frames")),true))
     { FPlatformMisc::RequestExitWithStatus(false,1); return; }
     State->Started=GetWorld()->GetTimeSeconds();
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
+        [this,State,Folder,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
          WallStart=FPlatformTime::Seconds(),bPassed=true](float) mutable
         {
             if (!Who.IsValid() || GetPawn()!=Who.Get() || !State->Lens.IsValid() || FPlatformTime::Seconds()-WallStart>180.)
@@ -259,8 +265,53 @@ void ARiverfrontPlayerController::RunGaitReview()
                 FPlatformMisc::RequestExitWithStatus(false,1); return false;
             }
             const double Now=GetWorld()->GetTimeSeconds(),Age=Now-State->Started;
+            const auto Key=[&](FKey K,EInputEvent Action)
+            {
+                InputKey(FInputKeyEventArgs(GetWorld()->GetGameViewport()->Viewport,FInputDeviceId::CreateFromInternalId(0),
+                    K,Action,FPlatformTime::Cycles64()));
+            };
             if (State->Mode==2)
             {
+                if (bReviewJump)
+                {
+                    if (Age<.40) return true;
+                    if (!State->bPressed)
+                    {
+                        State->JumpFloor=Who->GetActorLocation().Z;
+                        Key(EKeys::SpaceBar,IE_Pressed);
+                        State->bPressed=true;
+                    }
+                    if (Age>.58 && !State->bMetricsWritten)
+                    {
+                        Key(EKeys::SpaceBar,IE_Released);
+                        State->bMetricsWritten=true;
+                    }
+                    const double Height=Who->GetActorLocation().Z-State->JumpFloor;
+                    State->JumpHeight=FMath::Max(State->JumpHeight,Height);
+                    if (const auto* Instance=Who->GetMesh()->GetAnimInstance())
+                    {
+                        const auto* Montage=Instance->GetCurrentActiveMontage();
+                        if (Montage && !Montage->SlotAnimTracks.IsEmpty() && !Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.IsEmpty())
+                        {
+                            const auto& Clip=Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0].GetAnimReference();
+                            if (Clip) State->JumpClips.Add(Clip->GetFName());
+                        }
+                    }
+                    if (Height>55. && !State->bPhotographed && !FScreenshotRequest::IsScreenshotRequested())
+                    {
+                        FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,TEXT("jump-profile.png")),false,false);
+                        State->bPhotographed=true;
+                    }
+                    if (Age<2.15 || FScreenshotRequest::IsScreenshotRequested()) return true;
+                    const bool bJumpPassed=State->JumpHeight>70. && FMath::Abs(Height)<3. &&
+                        Who->GetCharacterMovement()->IsMovingOnGround() &&
+                        State->JumpClips.Contains(TEXT("MM_Jump")) && State->JumpClips.Contains(TEXT("MM_Fall_Loop")) &&
+                        State->JumpClips.Contains(TEXT("MM_Land")) &&
+                        IFileManager::Get().FileSize(*FPaths::Combine(Folder,TEXT("jump-profile.png")))>0;
+                    UE_LOG(LogTemp,Display,TEXT("Sabarmati jump review: pass=%d height_cm=%.1f animation_phases=%d."),
+                        bJumpPassed,State->JumpHeight,State->JumpClips.Num());
+                    bPassed &= bJumpPassed;
+                }
                 if (Age<.35 || FScreenshotRequest::IsScreenshotRequested()) return true;
                 for (const TCHAR* File:{TEXT("walk-profile.png"),TEXT("run-profile.png")})
                     bPassed &= IFileManager::Get().FileSize(*FPaths::Combine(Folder,File))>0;
@@ -269,11 +320,6 @@ void ARiverfrontPlayerController::RunGaitReview()
                 return false;
             }
             const bool bRun=State->Mode==1;
-            const auto Key=[&](FKey K,EInputEvent Action)
-            {
-                InputKey(FInputKeyEventArgs(GetWorld()->GetGameViewport()->Viewport,FInputDeviceId::CreateFromInternalId(0),
-                    K,Action,FPlatformTime::Cycles64()));
-            };
             const FVector Here=Who->GetActorLocation();
             SetControlRotation(FRotator::ZeroRotator);
             if (!State->bPressed && Age>.6)
@@ -340,7 +386,7 @@ void ARiverfrontPlayerController::RunGaitReview()
                 State->bPhotographed=false;State->bPressed=false;State->bMetricsWritten=false;
                 State->CaptureCount=0;State->LastCapture=-1.;State->FrameTimes.Reset();
                 State->Started=Now;State->Samples.Reset();
-                if (State->Mode==1 && !ResetStrip()) { FPlatformMisc::RequestExitWithStatus(false,1); return false; }
+                if ((State->Mode==1 || bReviewJump) && !ResetStrip()) { FPlatformMisc::RequestExitWithStatus(false,1); return false; }
                 return true;
             }
             if (Age<1.45 || (!State->Samples.IsEmpty() && Now<=State->Samples.Last().Seconds)) return true;

@@ -89,6 +89,12 @@ private:
     UPROPERTY()
     TObjectPtr<UBlendSpace1D> LocomotionBlend;
     UPROPERTY()
+    TArray<TObjectPtr<UAnimSequence>> AirClips;
+    bool bWasAirborne = false;
+    bool bPlayedFall = false;
+    void StartResidentGait();
+    void UpdateAirAnimation();
+    UPROPERTY()
     TArray<TObjectPtr<UAnimSequence>> AnimationClips;
     UPROPERTY()
     TArray<TObjectPtr<UStaticMeshComponent>> PreviewPieces;

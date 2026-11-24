@@ -1,5 +1,6 @@
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLocalProfile.h"
+#include "RiverfrontLocomotionInstance.h"
 #include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
 #include "Kismet/GameplayStatics.h"
@@ -242,8 +243,24 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
     LocomotionBlend = bPublic && FPackageName::DoesPackageExist(BlendPath)
         ? LoadObject<UBlendSpace1D>(nullptr, *(BlendPath + TEXT(".BS_ResidentGait"))) : nullptr;
     if (LocomotionBlend && LocomotionBlend->GetSkeleton() != Model->GetSkeleton()) LocomotionBlend = nullptr;
+    AirClips.Reset(3);
     if (LocomotionBlend)
-        GetMesh()->PlayAnimation(LocomotionBlend, true);
+    {
+        const FString AirFolder = TEXT("/Game/Sabarmati/Riverfront/People/Motion/") + FString(bKurta ? TEXT("Kurta/") : TEXT("Everyday/"));
+        for (const TCHAR* Clip : {TEXT("MM_Jump"), TEXT("MM_Fall_Loop"), TEXT("MM_Land")})
+        {
+            const FString Package = AirFolder + Clip;
+            auto* Animation = FPackageName::DoesPackageExist(Package)
+                ? LoadObject<UAnimSequence>(nullptr, *(Package + TEXT(".") + Clip)) : nullptr;
+            if (!Animation || Animation->GetSkeleton() != Model->GetSkeleton())
+            {
+                AirClips.Reset();
+                break;
+            }
+            AirClips.Add(Animation);
+        }
+        StartResidentGait();
+    }
     else if (AnimationClips[0])
     {
         ActiveSequence = AnimationClips[0];
@@ -251,6 +268,46 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
     }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati avatar: skeletal mesh loaded, %s; clips idle=%d walk=%d jog=%d."),
         *Model->GetName(), IsValid(AnimationClips[0].Get()), IsValid(AnimationClips[1].Get()), IsValid(AnimationClips[2].Get()));
+}
+
+void ARiverfrontCharacter::StartResidentGait()
+{
+    bWasAirborne = bPlayedFall = false;
+    if (AirClips.Num() == 3)
+    {
+        GetMesh()->SetAnimInstanceClass(URiverfrontLocomotionInstance::StaticClass());
+        if (auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance()))
+        {
+            Instance->SetGait(LocomotionBlend);
+            return;
+        }
+    }
+    GetMesh()->PlayAnimation(LocomotionBlend, true);
+}
+
+void ARiverfrontCharacter::UpdateAirAnimation()
+{
+    auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
+    if (!Instance || IsHidden() || AirClips.Num() != 3) return;
+
+    const bool bAirborne = GetCharacterMovement()->IsFalling();
+    const double VerticalSpeed = GetVelocity().Z;
+    if (bAirborne && !bWasAirborne && VerticalSpeed > 100.)
+    {
+        bPlayedFall = false;
+        Instance->PlaySlotAnimationAsDynamicMontage(AirClips[0], TEXT("DefaultSlot"), .09f, .12f);
+    }
+    else if (bAirborne && VerticalSpeed < -105. && !bPlayedFall)
+    {
+        bPlayedFall = true;
+        Instance->PlaySlotAnimationAsDynamicMontage(AirClips[1], TEXT("DefaultSlot"), .14f, .13f, 1.f, 64);
+    }
+    else if (!bAirborne && bWasAirborne && bPlayedFall)
+    {
+        Instance->PlaySlotAnimationAsDynamicMontage(AirClips[2], TEXT("DefaultSlot"), .075f, .20f);
+        bPlayedFall = false;
+    }
+    bWasAirborne = bAirborne;
 }
 
 bool ARiverfrontCharacter::SupportsPublicHaircut() const
@@ -420,7 +477,7 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
         Movement->bOrientRotationToMovement = bOrientBeforeFitting;
         if (bBlueprintAvatarActive) ReceiveAvatarFittingPose(false);
         else if (LocomotionBlend)
-            GetMesh()->PlayAnimation(LocomotionBlend, true);
+            StartResidentGait();
         else
             GetMesh()->SetPlayRate(1.f);
         return;
@@ -492,15 +549,18 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     if (bInFittingPose) return;
     const float FlatSpeed = GetVelocity().Size2D();
+    UpdateAirAnimation();
     if (!IsHidden() && FlatSpeed > 12.f && GetCharacterMovement()->IsMovingOnGround())
     {
         bool bContact = false;
         FVector Foot = GetActorLocation() - FVector(0,0,87);
-        if (LocomotionBlend && GetMesh()->GetSingleNodeInstance())
+        const auto* Resident = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
+        if (LocomotionBlend && (Resident || GetMesh()->GetSingleNodeInstance()))
         {
             // Unreal advances blend spaces in normalized time. The clips strike
             // left at 0 and right at 0.5 throughout the walk-to-run transition.
-            const int32 ContactHalf = GetMesh()->GetPosition() < .5f ? 0 : 1;
+            const float Phase = Resident ? Resident->GetGaitPhase() : GetMesh()->GetPosition();
+            const int32 ContactHalf = Phase < .5f ? 0 : 1;
             bContact = LastContactHalf != INDEX_NONE && ContactHalf != LastContactHalf;
             LastContactHalf = ContactHalf;
             if (bContact) Foot = GetMesh()->GetSocketLocation(ContactHalf ? TEXT("Footr") : TEXT("Footl"));
