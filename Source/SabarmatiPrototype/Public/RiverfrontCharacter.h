@@ -105,7 +105,6 @@ private:
     UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;
     ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     UPROPERTY() TObjectPtr<UMaterialInterface> CottonMaterial;
-    UPROPERTY() TObjectPtr<UMaterialInterface> FaceMaterial;
     UPROPERTY() TObjectPtr<UMaterialInterface> TailoredCloth;
     UPROPERTY() TObjectPtr<UMaterialInterface> EyeMaterial;
     UPROPERTY() TObjectPtr<UStaticMesh> SweptHaircut;

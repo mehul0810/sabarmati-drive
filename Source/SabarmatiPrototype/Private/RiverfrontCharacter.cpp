@@ -194,8 +194,6 @@ void ARiverfrontCharacter::BeginPlay()
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverEyes.M_RiverEyes"));
             TailoredCloth = LoadObject<UMaterialInterface>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverTailoredCloth.M_RiverTailoredCloth"));
-            FaceMaterial = LoadObject<UMaterialInterface>(nullptr,
-                TEXT("/Game/Sabarmati/Riverfront/People/Hero/M_HeroSkin.M_HeroSkin"));
         }
         Wristwatch->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,
             TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/SM_RiverWristwatch/StaticMeshes/SM_RiverWristwatch.SM_RiverWristwatch")));
@@ -382,6 +380,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         // The albedo already contains the resident's complexion and lip colour.
         const FLinearColor Complexion = Tone == TEXT("umber") ? FLinearColor(.72f, .65f, .62f)
             : Tone == TEXT("warm") ? FLinearColor(1.15f, 1.06f, .98f) : FLinearColor::White;
+        UMaterialInterface* FaceMaterial = RiverfrontResident::LoadSkinMaterial(AvatarGender);
         SetSurface(TEXT("skin"), FaceMaterial, Complexion);
         SetSurface(TEXT("lips"), FaceMaterial, Complexion);
         SetSurface(TEXT("hair"), nullptr, FColor(34,25,21));
