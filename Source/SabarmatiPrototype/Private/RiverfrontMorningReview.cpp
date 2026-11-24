@@ -39,7 +39,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground
 };
 
 struct FMorningEvidence
@@ -57,6 +57,8 @@ struct FMorningEvidence
     TArray<double> WalkFrames;
     TArray<FString> Pictures;
     TWeakObjectPtr<ACameraActor> FamilyView;
+    FRotator OutfitFront = FRotator::ZeroRotator;
+    bool bKurtaPreview = false;
     FVector WakeOrigin = FVector::ZeroVector;
     double WakeTravel = 0.;
     bool bSawWake = false;
@@ -182,11 +184,12 @@ void ARiverfrontPlayerController::RunMorningReview()
         return;
     }
 
+    const bool bBodyReview = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBodyReview"));
     auto State = MakeShared<FMorningEvidence>();
     State->Route = FRiverfrontFirstMorningWorld::ExitRoute();
     UE_LOG(LogTemp,Display,TEXT("Sabarmati morning review started: %s, continue=%d"), *Folder, bContinue);
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Id,bColdRun,bContinue](float)
+        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview](float)
         {
             auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
             const double Now = FPlatformTime::Seconds(), Age = Now - State->Since;
@@ -384,7 +387,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (Age < .6) return true;
                 if (!State->Pictures.Contains(TEXT("02-wardrobe.png"))) { Shot(TEXT("02-wardrobe"),true); return true; }
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
-                if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAvatarPortraitReview")))
+                if (bBodyReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAvatarPortraitReview")))
                 {
                     if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || !LifeCamera.IsValid()
                         || LifeCamera->GetCameraComponent()->FieldOfView >= 50.f)
@@ -437,10 +440,86 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (!FFileHelper::SaveStringToFile(State->Results,*FPaths::Combine(Folder,TEXT("portrait.txt"))))
                     return Fail(TEXT("portrait camera record"));
                 UE_LOG(LogTemp,Display,TEXT("Sabarmati avatar portrait review complete: %s"),*Folder);
+                if (bBodyReview)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave wardrobe for shop"));
+                    WalkAgain();
+                    break;
+                }
                 FPlatformMisc::RequestExitWithStatus(false, 0);
                 return false;
             }
+            case EMorningStep::BodyFront:
+            case EMorningStep::BodyQuarter:
+            {
+                if (Age < 1.) return true;
+                const bool Front = State->Step == EMorningStep::BodyFront;
+                const bool Kurta = State->bKurtaPreview;
+                const TCHAR* Name = Kurta ? (Front ? TEXT("11-kurta-front") : TEXT("12-kurta-quarter"))
+                                          : (Front ? TEXT("09-everyday-front") : TEXT("10-everyday-quarter"));
+                if (!State->Pictures.Contains(FString(Name) + TEXT(".png")))
+                {
+                    const auto* Model = Walker->GetMesh()->GetSkeletalMeshAsset();
+                    const FName Outfit = Kurta ? FName(TEXT("kurta")) : FName(TEXT("cotton-sand"));
+                    if (!Model || Walker->GetWardrobeOutfit()!=Outfit || !LifeCamera.IsValid()
+                        || Model->GetName() != (Kurta ? TEXT("SK_FittedKurta") : TEXT("SK_RiverEveryday")))
+                        return Fail(TEXT("visible native shop preview or body mesh"));
+                    State->Results += FString::Printf(TEXT("%s=%s actor_yaw=%.1f camera=%s fov=%.1f\n"),
+                        Name,*Model->GetPathName(),Walker->GetActorRotation().Yaw,
+                        *LifeCamera->GetActorLocation().ToString(),LifeCamera->GetCameraComponent()->FieldOfView);
+                    Shot(Name);
+                    return true;
+                }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (IFileManager::Get().FileSize(*FPaths::Combine(Folder,FString(Name)+TEXT(".png")))<=0)
+                    return Fail(TEXT("missing shop body photograph"));
+                if (Front)
+                {
+                    Walker->SetActorRotation(State->OutfitFront+FRotator(0,55,0));
+                    Next(EMorningStep::BodyQuarter);
+                    break;
+                }
+                Walker->SetActorRotation(State->OutfitFront);
+                if (!Kurta)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeItem.kurta"))) return Fail(TEXT("preview kurta"));
+                    State->bKurtaPreview = true;
+                    Next(EMorningStep::BodyFront);
+                    break;
+                }
+                // A clean plate at the same camera and exposure lets QA measure the outfit silhouette.
+                Walker->SetActorHiddenInGame(true);
+                Next(EMorningStep::BodyBackground);
+                break;
+            }
+            case EMorningStep::BodyBackground:
+            {
+                if (Age < 1.) return true;
+                if (!State->Pictures.Contains(TEXT("13-shop-background.png"))) { Shot(TEXT("13-shop-background")); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                Walker->SetActorHiddenInGame(false);
+                if (IFileManager::Get().FileSize(*FPaths::Combine(Folder,TEXT("13-shop-background.png")))<=0)
+                    return Fail(TEXT("missing shop background photograph"));
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close shop preview"));
+                const auto* Saved = RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->EquippedOutfit!=TEXT("cotton-sand") || Walker->GetWardrobeOutfit()!=Saved->EquippedOutfit
+                    || Saved->OwnedItems.Contains(TEXT("kurta")) || Saved->CashRupees!=100000 || Saved->BankRupees!=500000)
+                    return Fail(TEXT("shop preview did not restore original outfit and wallet"));
+                if (!FFileHelper::SaveStringToFile(State->Results,*FPaths::Combine(Folder,TEXT("body.txt"))))
+                    return Fail(TEXT("body review report"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati body review complete: %s"),*Folder);
+                FPlatformMisc::RequestExitWithStatus(false,0);
+                return false;
+            }
             case EMorningStep::Store:
+                if (bBodyReview)
+                {
+                    if (Screen!=EScreen::Life || !PressMorningButton(Overlay,TEXT("LifeItem.cotton-sand")))
+                        return Fail(TEXT("preview everyday outfit"));
+                    State->OutfitFront = Walker->GetActorRotation();
+                    Next(EMorningStep::BodyFront);
+                    break;
+                }
                 if (Screen!=EScreen::Life || !PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo")))
                     return Fail(TEXT("shop shirt preview"));
                 Next(EMorningStep::Preview);
