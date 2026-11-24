@@ -143,7 +143,7 @@
       "textures": "Shared wardrobe UVs and dedicated female subsurface skin and lip material.",
       "collision": "The original physics asset and character capsule are retained.",
       "lod": "Native character and crowd animation visibility budgets.",
-      "location": "Content/Sabarmati/Riverfront/People/Wardrobe/Female/",
+      "location": "Content/Sabarmati/Riverfront/People/Wardrobe/Female/SK_FemaleEveryday.uasset",
       "verification": "Unreal verified matching skeletons, physics assets and material slots. The dressed kurta cleared the trousers for 100 walk poses and 100 run poses."
     },
     {
