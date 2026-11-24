@@ -60,8 +60,8 @@ bool ARiverfrontCharacter::TryStreetTraversal()
     };
     FHitResult Top;
     if (!FloorAt(Top, Front + Direction * 5., 168., 53.) || Top.GetComponent() != Face.GetComponent()) return false;
-    const double Rise = Top.ImpactPoint.Z - Feet.Z;
-    if (Rise < 60. || Rise > 145.) return false;
+    const double ObstacleHeight = Top.ImpactPoint.Z - Feet.Z;
+    if (ObstacleHeight < 60. || ObstacleHeight > 145.) return false;
 
     // A narrow rail has clear air on the far side. A solid ledge needs a full
     // standing capsule and support under both feet on the upper surface.
@@ -69,36 +69,37 @@ bool ARiverfrontCharacter::TryStreetTraversal()
     for (const double Depth : {13., 21., 33., 46., 59.})
     {
         FHitResult Sample;
-        if (!FloorAt(Sample, Front + Direction * Depth, Rise + 8., Rise - 6.))
+        if (!FloorAt(Sample, Front + Direction * Depth, ObstacleHeight + 8., ObstacleHeight - 6.))
         {
             BackEdge = Depth;
             break;
         }
     }
     const bool bWall = BackEdge == 0.;
-    if ((bWall && Rise < 86.) || (!bWall && (Rise > 104. || BackEdge > 46.))) return false;
+    if ((bWall && ObstacleHeight < 86.) || (!bWall && (ObstacleHeight > 104. || BackEdge > 46.))) return false;
     auto* Clip = bWall ? WallMantle.Get() : FenceVault.Get();
     if (!Clip) return false;
 
     const FVector Destination = Front + Direction * (Radius + (bWall ? 26. : BackEdge + 21.));
-    FHitResult Landing;
-    if (!FloorAt(Landing, Destination, bWall ? Rise + 8. : 26., bWall ? Rise - 7. : -38.)) return false;
+    FHitResult GroundHit;
+    if (!FloorAt(GroundHit, Destination, bWall ? ObstacleHeight + 8. : 26., bWall ? ObstacleHeight - 7. : -38.)) return false;
     for (const double Side : {-1., 1.})
     {
         FHitResult Support;
-        if (!FloorAt(Support, Destination + Across * (Side * Radius * .7), Rise + 9., -40.) ||
-            FMath::Abs(Support.ImpactPoint.Z - Landing.ImpactPoint.Z) > 8.) return false;
+        if (!FloorAt(Support, Destination + Across * (Side * Radius * .7), ObstacleHeight + 9., -40.) ||
+            FMath::Abs(Support.ImpactPoint.Z - GroundHit.ImpactPoint.Z) > 8.) return false;
     }
     const double Advance = (Destination - Feet).Dot(Direction);
-    const double LandHeight = Landing.ImpactPoint.Z - Feet.Z + 2.5;
+    const double LandHeight = GroundHit.ImpactPoint.Z - Feet.Z + 2.5;
     const double Approach = FMath::Max(0., FaceDistance - Radius - 4.);
-    const double Apex = Rise + 9.;
+    const double Apex = ObstacleHeight + 9.;
     const TArray<FTraversalKey, TInlineAllocator<8>> Keys = bWall
         ? TArray<FTraversalKey, TInlineAllocator<8>>{{0.f, 0., 0.}, {.16f, Approach*.61, 8.},
-            {.33f, Approach, Rise*.48}, {.57f, Approach, Apex}, {.84f, Advance-11., Apex}, {1.f, Advance, LandHeight}}
-        : TArray<FTraversalKey, TInlineAllocator<8>>{{0.f, 0., 0.}, {.18f, Approach*.78, Rise*.16},
-            {.30f, Approach, Rise*.43}, {.45f, Approach, Apex}, {.65f, Advance-19., Apex},
-            {.82f, Advance-4., Rise*.49}, {1.f, Advance, LandHeight}};
+            {.33f, Approach, ObstacleHeight*.48}, {.57f, Approach, Apex},
+            {.84f, Advance-11., Apex}, {1.f, Advance, LandHeight}}
+        : TArray<FTraversalKey, TInlineAllocator<8>>{{0.f, 0., 0.}, {.18f, Approach*.78, ObstacleHeight*.16},
+            {.30f, Approach, ObstacleHeight*.43}, {.45f, Approach, Apex}, {.65f, Advance-19., Apex},
+            {.82f, Advance-4., ObstacleHeight*.49}, {1.f, Advance, LandHeight}};
     const FVector Target = Start + Direction * Advance + FVector::UpVector * LandHeight;
     auto* Curve = NewObject<UCurveVector>(this);
     for (int32 I = 0; I < Keys.Num(); ++I)
