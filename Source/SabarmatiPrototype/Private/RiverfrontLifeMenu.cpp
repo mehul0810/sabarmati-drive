@@ -235,7 +235,8 @@ public:
                                 [
                                     SAssignNew(CloseButton,SButton).Tag(TEXT("LifeClose")).ButtonStyle(&ButtonStyle)
                                     .ButtonColorAndOpacity(Row).ContentPadding(FMargin(9,5)).OnClicked(this,&SRiverfrontLifeMenu::Close)
-                                    [Label(Copy(TEXT("Close  Esc")),11,Paper)]
+                                    [SNew(STextBlock).Text(Copy(TEXT("Esc   Back"))).ColorAndOpacity(Paper)
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Medium",11))]
                                 ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,14)[Label(Copy(Title),32,Paper,true)]
@@ -330,7 +331,9 @@ private:
         Body->AddSlot().AutoHeight().Padding(0,13,0,5)
         [
             SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().AutoWidth()[Label(Copy(Caption.ToUpper()),11,Amber,true)]
+            + SHorizontalBox::Slot().AutoWidth()
+            [SNew(STextBlock).Text(Copy(Caption.ToUpper())).ColorAndOpacity(Amber)
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold",11))]
             + SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(10,0,0,0)
             [
                 SNew(SBox).HeightOverride(1.f)
