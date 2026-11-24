@@ -47,6 +47,7 @@ private:
     double RouteLength = 0.0;
     double Distance = 0.0;
     double Speed = 0.0;
+    float WalkingPlayRate = 1.f;
     double RestAt=0., RestLeft=0.;
     int32 Crossings=0;
     bool bAtCrosswalk=false, bSteppingOff=false, bReturning=false;

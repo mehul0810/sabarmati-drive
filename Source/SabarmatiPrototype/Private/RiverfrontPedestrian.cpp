@@ -304,7 +304,11 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     if (IdlePose && IdlePose->GetSkeleton()!=Walk->GetSkeleton()) IdlePose=nullptr;
     Mesh->PlayAnimation(Walk, true);
     Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
-    Mesh->SetPlayRate(FMath::Clamp(static_cast<float>(Speed / (132.0 * BuildScale)), .75f, 1.25f));
+    // The horizontal mesh scale changes the distance covered by a planted foot.
+    const bool bResidentGait = Walk->GetOutermost()->GetName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
+    const double ClipSpeed = bResidentGait ? (Walk->GetFName() == TEXT("A_WalkAlt") ? 123. : 145.) : 132.;
+    WalkingPlayRate = Speed / (ClipSpeed * BuildScale);
+    Mesh->SetPlayRate(WalkingPlayRate);
     RestAt=12.+(Variant*13)%34;
     UpdateRouteTransform();
 }
@@ -373,7 +377,7 @@ void ARiverfrontPedestrian::SetMoving(bool Moving)
         Mesh->PlayAnimation(Clip, true);
         Mesh->SetPosition(Clip->GetPlayLength() * FMath::Frac(Speed * .0618), false);
     }
-    Mesh->SetPlayRate(Moving?FMath::Clamp(float(Speed/132.),.76f,1.26f):(IdlePose?.87f:0.f));
+    Mesh->SetPlayRate(Moving ? WalkingPlayRate : (IdlePose ? .87f : 0.f));
 }
 
 void ARiverfrontPedestrian::UpdateRouteTransform()
