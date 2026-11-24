@@ -126,6 +126,7 @@ private:
     void RunMorningReview();
     void RunRenderingBenchmark();
     void RunDistrictReview();
+    void RunGaitReview();
     void RunSystemsReview();
     void RunNeighbourhoodReview();
     double LastStreetTravelMs=0.;

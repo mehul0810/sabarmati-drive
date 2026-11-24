@@ -541,6 +541,7 @@ void ARiverfrontPlayerController::BeginPlay()
 #if !UE_BUILD_SHIPPING
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview"))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGaitReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
@@ -647,6 +648,11 @@ void ARiverfrontPlayerController::ShowTitle()
         return;
     }
 #if !UE_BUILD_SHIPPING
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGaitReview")))
+    {
+        RunGaitReview();
+        return;
+    }
     if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")))
     {
         RunMorningReview();
