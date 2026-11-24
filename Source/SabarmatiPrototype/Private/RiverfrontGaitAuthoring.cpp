@@ -25,12 +25,12 @@ bool SaveMotionAsset(UObject& Asset)
 }
 
 // The player uses the same speed axis in cm/s for a new rig.
-bool SaveLocomotion(const FString& Folder)
+bool SaveLocomotion(const FString& Folder, bool bAlternate = false)
 {
-    const FString Name = TEXT("BS_ResidentGait");
+    const FString Name = bAlternate ? TEXT("BS_ResidentAltGait") : TEXT("BS_ResidentGait");
     const FString Path = Folder / Name;
     TArray<UAnimSequence*> Clips;
-    for (const TCHAR* ClipName : {TEXT("A_Idle"), TEXT("A_Walk"), TEXT("A_Jog")})
+    for (const TCHAR* ClipName : {TEXT("A_Idle"), bAlternate ? TEXT("A_WalkAlt") : TEXT("A_Walk"), TEXT("A_Jog")})
     {
         auto* Clip = LoadMotionAsset<UAnimSequence>(Folder, ClipName);
         if (!Clip || (!Clips.IsEmpty() && Clips[0]->GetSkeleton() != Clip->GetSkeleton())) return false;
@@ -46,7 +46,7 @@ bool SaveLocomotion(const FString& Folder)
     }
     Gait->SetSkeleton(Clips[0]->GetSkeleton());
     while (!Gait->GetBlendSamples().IsEmpty()) Gait->DeleteSample(Gait->GetBlendSamples().Num()-1);
-    const float Speeds[] = {0.f,145.f,335.f};
+    const float Speeds[] = {0.f,bAlternate ? 123.f : 145.f,335.f};
     Gait->ExpandRangeForSample(FVector(Speeds[2],0,0));
     for (int32 Index = 0; Index < Clips.Num(); ++Index)
         if (Gait->AddSample(Clips[Index], FVector(Speeds[Index],0,0)) == INDEX_NONE) return false;
@@ -100,7 +100,8 @@ FAutoConsoleCommand AuthorResidentGaits(TEXT("Sabarmati.BuildResidentGaits"),
     FConsoleCommandDelegate::CreateLambda([]
     {
         const FString People = TEXT("/Game/Sabarmati/Riverfront/People");
-        if (SaveLocomotion(People) && SaveLocomotion(People / TEXT("Kurta")))
+        if (SaveLocomotion(People) && SaveLocomotion(People, true)
+            && SaveLocomotion(People / TEXT("Kurta")) && SaveLocomotion(People / TEXT("Kurta"), true))
         {
             UE_LOG(LogTemp, Display, TEXT("Sabarmati resident gait blend spaces verified and saved."));
         }

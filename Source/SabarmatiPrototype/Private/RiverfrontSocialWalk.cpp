@@ -170,6 +170,8 @@ void ARiverfrontPedestrian::LookTowards(const FVector& Point, float Delta)
 
 void ARiverfrontPedestrian::TickFamily(float Delta)
 {
+    for (const auto& Member : Family)
+        if (auto* Person=Member.Get()) Person->UpdateGait(Delta);
     const bool bCrossing = (FamilyFrom == PromenadeKerb && FamilyTo == ShopKerb)
         || (FamilyFrom == ShopKerb && FamilyTo == PromenadeKerb);
     if (!bFamilyDeparted)
@@ -231,7 +233,7 @@ void ARiverfrontPedestrian::TickFamily(float Delta)
             const double End = P->FamilyRoute->GetDistanceAlongSplineAtSplinePoint(FamilyTo);
             const double SegmentLength = FMath::Abs(End - Start);
             const double Limit = Start + Direction * FMath::Min(SegmentLength, SegmentLength * SlowestFraction + 38.);
-            P->FamilyPosition = FMath::FInterpConstantTo(P->FamilyPosition, Limit, double(Delta), P->Speed);
+            P->FamilyPosition = FMath::FInterpConstantTo(P->FamilyPosition, Limit, double(Delta), P->Speed*P->GaitFraction);
             const FVector At = P->FamilyRoute->GetLocationAtDistanceAlongSpline(P->FamilyPosition, ESplineCoordinateSpace::World);
             const FVector Travel = At - P->GetActorLocation();
             if (Travel.SizeSquared2D() > .01)

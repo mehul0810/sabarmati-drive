@@ -3,6 +3,8 @@
 #include "EngineUtils.h"
 
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/BlendSpace1D.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -344,11 +346,19 @@ void ARiverfrontPedestrian::Configure(USkeletalMesh* Model, UAnimSequence* Walk,
     const FString IdlePath=FPackageName::GetLongPackagePath(Walk->GetOutermost()->GetName())+TEXT("/A_Idle.A_Idle");
     IdlePose=LoadObject<UAnimSequence>(nullptr,*IdlePath);
     if (IdlePose && IdlePose->GetSkeleton()!=Walk->GetSkeleton()) IdlePose=nullptr;
-    Mesh->PlayAnimation(Walk, true);
-    Mesh->SetPosition(Walk->GetPlayLength() * FMath::Frac((Variant + 1) * .618f), false);
     // The horizontal mesh scale changes the distance covered by a planted foot.
     const double ClipSpeed = bResidentGait ? (Walk->GetFName() == TEXT("A_WalkAlt") ? 123. : 145.) : 132.;
     WalkingPlayRate = Speed / (ClipSpeed * BuildScale);
+    const FString BlendName=Walk->GetFName()==TEXT("A_WalkAlt") ? TEXT("BS_ResidentAltGait") : TEXT("BS_ResidentGait");
+    const FString BlendPath=FPackageName::GetLongPackagePath(Walk->GetOutermost()->GetName()) / BlendName;
+    if (bResidentGait && FPackageName::DoesPackageExist(BlendPath))
+        GaitBlend=LoadObject<UBlendSpace1D>(nullptr,*(BlendPath+TEXT(".")+BlendName));
+    if (GaitBlend && GaitBlend->GetSkeleton()!=Walk->GetSkeleton()) GaitBlend=nullptr;
+    GaitSampleSpeed=ClipSpeed;
+    Mesh->PlayAnimation(GaitBlend ? static_cast<UAnimationAsset*>(GaitBlend.Get()) : Walk, true);
+    Mesh->SetPosition((GaitBlend ? 1.f : Walk->GetPlayLength()) * FMath::Frac((Variant + 1) * .618f), false);
+    if (auto* Player=Mesh->GetSingleNodeInstance(); GaitBlend && Player)
+        Player->SetBlendSpacePosition(FVector(GaitSampleSpeed,0,0));
     Mesh->SetPlayRate(WalkingPlayRate);
     RestAt=12.+(Variant*13)%34;
     UpdateRouteTransform();
@@ -363,6 +373,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
     const bool Far=Player && FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(12500.);
     SetActorTickInterval(Far?.22f:.035f);
     if (!Family.IsEmpty()) { TickFamily(DeltaSeconds); return; }
+    UpdateGait(DeltaSeconds);
     if (!Errand.IsEmpty()) {TickErrand(DeltaSeconds);return;}
     if (bAtCrosswalk)
     {
@@ -379,7 +390,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
         const FVector Target=bReturning?RouteStart:RouteEnd;
         const FVector To=Target-GetActorLocation();
         const FVector Direction=To.GetSafeNormal2D();
-        const double Step=FMath::Min(To.Size2D(),Speed*DeltaSeconds);
+        const double Step=FMath::Min(To.Size2D(),Speed*GaitFraction*DeltaSeconds);
         SetActorLocationAndRotation(GetActorLocation()+Direction*Step,FRotator(0,Direction.Rotation().Yaw+MeshYawToForward,0));
         if (To.Size2D()<4.)
         {
@@ -404,7 +415,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
         RestLeft=2.5+FMath::Fmod(Distance/109.,5.);
         SetMoving(false); return;
     }
-    Distance=FMath::Fmod(Distance+Speed*DeltaSeconds,RouteLength);
+    Distance=FMath::Fmod(Distance+Speed*GaitFraction*DeltaSeconds,RouteLength);
     UpdateRouteTransform();
 }
 
@@ -412,6 +423,7 @@ void ARiverfrontPedestrian::SetMoving(bool Moving)
 {
     if (bMoving == Moving) return;
     bMoving = Moving;
+    if (GaitBlend) return;
     UAnimSequence* Clip=Moving || !IdlePose?Gait.Get():IdlePose.Get();
     if (Clip)
     {
@@ -419,6 +431,14 @@ void ARiverfrontPedestrian::SetMoving(bool Moving)
         Mesh->SetPosition(Clip->GetPlayLength() * FMath::Frac(Speed * .0618), false);
     }
     Mesh->SetPlayRate(Moving ? WalkingPlayRate : (IdlePose ? .87f : 0.f));
+}
+
+void ARiverfrontPedestrian::UpdateGait(float Delta)
+{
+    if (!GaitBlend) return;
+    GaitFraction=FMath::FInterpConstantTo(GaitFraction,bMoving ? 1.f : 0.f,Delta,4.f);
+    if (auto* Player=Mesh->GetSingleNodeInstance())
+        Player->SetBlendSpacePosition(FVector(GaitSampleSpeed*GaitFraction,0,0));
 }
 
 void ARiverfrontPedestrian::UpdateRouteTransform()
@@ -463,7 +483,7 @@ void ARiverfrontPedestrian::TickErrand(float Delta)
     }
     const FVector To=Errand[ErrandStep]-GetActorLocation();
     const FVector Facing=To.GetSafeNormal();
-    const double Step=FMath::Min(To.Size(),Speed*Delta);
+    const double Step=FMath::Min(To.Size(),Speed*GaitFraction*Delta);
     SetActorLocationAndRotation(GetActorLocation()+Facing*Step,FRotator(0,Facing.Rotation().Yaw+MeshYawToForward,0));
     if (To.Size()>4.) return;
     if (ErrandStep==Errand.Num()-1 || ErrandStep==0)

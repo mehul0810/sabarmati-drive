@@ -9,6 +9,7 @@ class ARiverfrontWorld;
 class USplineComponent;
 class UMaterialInterface;
 class UAnimSequence;
+class UBlendSpace1D;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class UWorld;
@@ -53,11 +54,13 @@ private:
     double Distance = 0.0;
     double Speed = 0.0;
     float WalkingPlayRate = 1.f;
+    float GaitFraction = 1.f, GaitSampleSpeed = 0.f;
     double RestAt=0., RestLeft=0.;
     int32 Crossings=0;
     bool bAtCrosswalk=false, bSteppingOff=false, bReturning=false;
     UPROPERTY() TObjectPtr<UAnimSequence> Gait;
     UPROPERTY() TObjectPtr<UAnimSequence> IdlePose;
+    UPROPERTY() TObjectPtr<UBlendSpace1D> GaitBlend;
     TArray<FVector> Errand;
     int32 ErrandStep=0,ErrandDirection=1,CounterVisits=0;
     static bool SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel, UAnimSequence& FirstWalk,
@@ -80,4 +83,5 @@ private:
     bool bSightseeing = false;
     bool bVisitingPrintmaker = false;
     void SetMoving(bool Moving);
+    void UpdateGait(float Delta);
 };
