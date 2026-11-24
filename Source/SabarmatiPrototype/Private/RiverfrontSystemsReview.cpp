@@ -222,11 +222,11 @@ public:
                 {
                     const FVector Route=It->GetActorForwardVector();
                     const FVector Other=It->GetActorLocation();
-                    const double HalfWidth=FMath::Abs(Route.Y)*It->HalfLength+FMath::Abs(Route.X)*It->HalfWidth;
-                    const double HalfLength=FMath::Abs(Route.X)*It->HalfLength+FMath::Abs(Route.Y)*It->HalfWidth;
-                    const double Gap=Other.X-Here.X-HalfLength-212.;
+                    const double ProjectedHalfWidth=FMath::Abs(Route.Y)*It->HalfLength+FMath::Abs(Route.X)*It->HalfWidth;
+                    const double ProjectedHalfLength=FMath::Abs(Route.X)*It->HalfLength+FMath::Abs(Route.Y)*It->HalfWidth;
+                    const double Gap=Other.X-Here.X-ProjectedHalfLength-212.;
                     const double FutureY=FMath::Lerp(Here.Y,RoadCentre,FMath::Clamp(Gap/900.,0.,1.));
-                    if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<HalfWidth+97.)
+                    if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<ProjectedHalfWidth+97.)
                     {
                         SafeSpeed=FMath::Min(SafeSpeed,FMath::Sqrt(710.*FMath::Max(0.,Gap-145.)));
                         bHold|=Gap<170.;
