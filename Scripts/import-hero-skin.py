@@ -6,7 +6,13 @@ import unreal as ue
 
 
 source = Path(os.environ["SABARMATI_HERO_SKIN_SOURCE"])
-folder = "/Game/Sabarmati/Riverfront/People/Hero"
+hero_folder = "/Game/Sabarmati/Riverfront/People/Hero"
+preset = os.environ.get("SABARMATI_SKIN_PRESET", "male")
+if preset not in {"male", "female"}:
+    raise ValueError(f"Unknown skin preset: {preset}")
+female = preset == "female"
+folder = f"{hero_folder}/Female" if female else hero_folder
+skin_name = "FemaleSkin" if female else "HeroSkin"
 assets = ue.EditorAssetLibrary
 asset_tools = ue.AssetToolsHelpers.get_asset_tools()
 edit = ue.MaterialEditingLibrary
@@ -46,24 +52,29 @@ def import_map(name, compression, srgb, group):
     return texture
 
 
-color = import_map("T_HeroSkin_Color", ue.TextureCompressionSettings.TC_DEFAULT, True,
+color = import_map(f"T_{skin_name}_Color", ue.TextureCompressionSettings.TC_DEFAULT, True,
                    ue.TextureGroup.TEXTUREGROUP_CHARACTER)
-normal = import_map("T_HeroSkin_Normal", ue.TextureCompressionSettings.TC_NORMALMAP, False,
+normal = import_map(f"T_{skin_name}_Normal", ue.TextureCompressionSettings.TC_NORMALMAP, False,
                     ue.TextureGroup.TEXTUREGROUP_CHARACTER_NORMAL_MAP)
-roughness = import_map("T_HeroSkin_Roughness", ue.TextureCompressionSettings.TC_MASKS, False,
+roughness = import_map(f"T_{skin_name}_Roughness", ue.TextureCompressionSettings.TC_MASKS, False,
                        ue.TextureGroup.TEXTUREGROUP_CHARACTER_SPECULAR)
 
-profile = get_or_create("SSP_HeroSkin", ue.SubsurfaceProfile, ue.SubsurfaceProfileFactory())
-settings = profile.get_editor_property("settings")
-# Representative default cheek (158, 120, 98 sRGB), in linear colour.
-settings.set_editor_property("surface_albedo", ue.LinearColor(.342, .188, .122, 1))
-# UE's built-in Burley model takes a mean free path in centimetres.
-settings.set_editor_property("mean_free_path_distance", .19)
-settings.set_editor_property("mean_free_path_color", ue.LinearColor(1, .45, .27, 1))
-profile.set_editor_property("settings", settings)
-save(profile)
+if female:
+    profile = assets.load_asset(f"{hero_folder}/SSP_HeroSkin")
+    if not isinstance(profile, ue.SubsurfaceProfile):
+        raise RuntimeError("Import the shared hero subsurface profile first.")
+else:
+    profile = get_or_create("SSP_HeroSkin", ue.SubsurfaceProfile, ue.SubsurfaceProfileFactory())
+    settings = profile.get_editor_property("settings")
+    # Representative default cheek (158, 120, 98 sRGB), in linear colour.
+    settings.set_editor_property("surface_albedo", ue.LinearColor(.342, .188, .122, 1))
+    # UE's built-in Burley model takes a mean free path in centimetres.
+    settings.set_editor_property("mean_free_path_distance", .19)
+    settings.set_editor_property("mean_free_path_color", ue.LinearColor(1, .45, .27, 1))
+    profile.set_editor_property("settings", settings)
+    save(profile)
 
-material = get_or_create("M_HeroSkin", ue.Material, ue.MaterialFactoryNew())
+material = get_or_create(f"M_{skin_name}", ue.Material, ue.MaterialFactoryNew())
 material.set_editor_property("shading_model", ue.MaterialShadingModel.MSM_SUBSURFACE_PROFILE)
 material.set_editor_property("subsurface_profile", profile)
 material.set_editor_property("used_with_skeletal_mesh", True)

@@ -9,10 +9,14 @@ from PIL import Image, ImageFilter
 
 LIGHT = 'skins/young_asian_male/young_lightskinned_male_diffuse3.png'
 DARK = 'skins/young_african_male/young_darkskinned_male_diffuse.png'
+FEMALE_LIGHT = 'skins/young_asian_female/young_lightskinned_female_diffuse3.png'
+FEMALE_DARK = 'skins/young_african_female/young_darkskinned_female_diffuse.png'
 BROW = 'eyebrows/eyebrow009/eyebrow009'
 SOURCE_HASHES = {
     LIGHT: 'f50016a5507fc687dc8df06599c8ea48de950cd185de33a71cafc1319ddab4d5',
     DARK: 'e3f0dbb634e4c68561338f0087f7a122444e84ec56df102212f1222aa12e4d50',
+    FEMALE_LIGHT: '1d82f782b7d2da732229633bd2d14754d873fff53cdb1d088977bcf67ae19dde',
+    FEMALE_DARK: '96aa4a96b247fc90d371587bb88e6ae3bfc77e83f5126f17e6bbb713aa200470',
     BROW + '.png': '4d33c85718ca5accf44625652daf0ae6e8cc007ed8138280e4d95601717910c3',
     BROW + '.obj': '037a2edb3252e1fe4a57e63dcb1598916609fd0339f2b453b2f71e9c4cbd481c',
 }
@@ -105,7 +109,7 @@ def oval(x, y):
     return np.exp(-np.minimum(x*x+y*y, 64))
 
 
-def face_detail(system, base, colour, roughness):
+def face_detail(system, base, colour, roughness, shaved_shadow):
     card, brow_origin, scale = brow_card(system)
     height, width = roughness.shape
     positions, uvs, triangles = mesh(base, 'body')
@@ -120,13 +124,13 @@ def face_detail(system, base, colour, roughness):
         facing = np.clip((z-.65)/.35, 0, 1)
         if not len(x) or not facing.any():
             continue
-        # Shaved shadow across the chin and short upper lip, excluding vermilion.
-        chin = oval(x/.36, (y-6.29)/.15)
-        jaw = oval((abs(x)-.42)/.23, (y-6.45)/.24)
-        upper_lip = oval(x/.25, (y-6.76)/.060)
-        shaved = np.minimum(1, chin+.63*jaw+.82*upper_lip)*facing
         rgb = colour[rows, cols].astype(np.float32)
-        rgb -= shaved[:, None]*[9., 7., 5.]
+        if shaved_shadow:
+            chin = oval(x/.36, (y-6.29)/.15)
+            jaw = oval((abs(x)-.42)/.23, (y-6.45)/.24)
+            upper_lip = oval(x/.25, (y-6.76)/.060)
+            shaved = np.minimum(1, chin+.63*jaw+.82*upper_lip)*facing
+            rgb -= shaved[:, None]*[9., 7., 5.]
         # Select the front facial surface only where the brow cards overlap it.
         sx, sy = (x-brow_origin[0])*scale, (y-brow_origin[1])*scale
         within = (sx >= 0) & (sy >= 0) & (sx < card.shape[1]) & (sy < card.shape[0]) & (z > .88)
@@ -144,12 +148,14 @@ def quantize(array):
     return np.clip(np.rint(array), 0, 255).astype(np.uint8)
 
 
-def bake(system, base, output):
+def bake(system, base, output, preset='male'):
+    light_asset, dark_asset = (FEMALE_LIGHT, FEMALE_DARK) if preset == 'female' else (LIGHT, DARK)
+    prefix = 'T_FemaleSkin' if preset == 'female' else 'T_HeroSkin'
     verify(base, BASE_HASH)
-    for asset, digest in SOURCE_HASHES.items():
-        verify(system/asset, digest)
-    light = np.asarray(Image.open(system/LIGHT).convert('RGB'), dtype=np.float32)
-    dark = np.asarray(Image.open(system/DARK).convert('RGB'), dtype=np.float32)
+    for asset in (light_asset, dark_asset, BROW + '.obj', BROW + '.png'):
+        verify(system/asset, SOURCE_HASHES[asset])
+    light = np.asarray(Image.open(system/light_asset).convert('RGB'), dtype=np.float32)
+    dark = np.asarray(Image.open(system/dark_asset).convert('RGB'), dtype=np.float32)
     colour = quantize(.57*light+.43*dark)
     del light, dark
 
@@ -165,12 +171,12 @@ def bake(system, base, output):
     normal = np.stack((-dx*inv_length, -dy*inv_length, inv_length), axis=-1)
     roughness = .565 + np.clip(fine*.004, -.044, .044) + .012*pore
 
-    face_detail(system, base, colour, roughness)
+    face_detail(system, base, colour, roughness, shaved_shadow=(preset == 'male'))
     output.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(colour).save(output/'T_HeroSkin_Color.png')
-    Image.fromarray(quantize(127.5*(normal+1))).save(output/'T_HeroSkin_Normal.png')
+    Image.fromarray(colour).save(output/f'{prefix}_Color.png')
+    Image.fromarray(quantize(127.5*(normal+1))).save(output/f'{prefix}_Normal.png')
     rough = Image.fromarray(quantize(roughness*255))
-    rough.resize((1024, 1024), Image.Resampling.BOX).save(output/'T_HeroSkin_Roughness.png')
+    rough.resize((1024, 1024), Image.Resampling.BOX).save(output/f'{prefix}_Roughness.png')
 
 
 if __name__ == '__main__':
@@ -178,5 +184,6 @@ if __name__ == '__main__':
     parser.add_argument('system_assets', type=Path, help='Unpacked MakeHuman CC0 system asset root')
     parser.add_argument('hm08_base', type=Path, help='The same MakeHuman base.obj used to build the resident')
     parser.add_argument('output', type=Path)
+    parser.add_argument('--preset', choices=('male','female'), default='male')
     args = parser.parse_args()
-    bake(args.system_assets, args.hm08_base, args.output)
+    bake(args.system_assets, args.hm08_base, args.output, args.preset)
