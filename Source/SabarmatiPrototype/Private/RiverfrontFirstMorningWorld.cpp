@@ -477,7 +477,7 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
         TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
     {
         auto* Frosted=UMaterialInstanceDynamic::Create(Lens,Diffuser);
-        Frosted->SetVectorParameterValue(TEXT("LensTint"),FLinearColor::MakeFromColorTemperature(4400.f));
+        Frosted->SetVectorParameterValue(TEXT("LensTint"),FLinearColor::MakeFromColorTemperature(5000.f));
         Frosted->SetScalarParameterValue(TEXT("Glow"),1.6f);
         Diffuser->SetMaterial(0,Frosted);
     }
@@ -491,9 +491,10 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     MirrorLight->SetSourceWidth(5.4f);
     MirrorLight->SetSourceHeight(49.f);
     MirrorLight->SetUseTemperature(true);
-    MirrorLight->SetTemperature(4400.f);
+    MirrorLight->SetTemperature(5000.f);
     MirrorLight->SetIntensityUnits(ELightUnits::Lumens);
-    MirrorLight->SetIntensity(26.f);
+    // The prototype uses a fixed exposure and a 5-lux morning sun.
+    MirrorLight->SetIntensity(.75f);
     MirrorLight->SetAttenuationRadius(220.f);
     MirrorLight->MaxDrawDistance=900.f;
     MirrorLight->MaxDistanceFadeRange=180.f;
