@@ -61,6 +61,7 @@ struct FMorningEvidence
     FRotator OutfitFront = FRotator::ZeroRotator;
     bool bKurtaPreview = false;
     bool bBodyCaptured = false;
+    int32 StartingViewMode = INDEX_NONE;
     FVector WakeOrigin = FVector::ZeroVector;
     double WakeTravel = 0.;
     bool bSawWake = false;
@@ -356,6 +357,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                     State->Results += TEXT("created_female=1\n");
                     if (!GetHUD() || !GetHUD()->bShowHUD || ControlsVisible() || !MapVisible())
                         return Fail(TEXT("initial on-foot HUD"));
+                    State->StartingViewMode = GetWorld()->GetGameViewport()->ViewModeIndex;
                     Next(EMorningStep::HudControls);
                     break;
                 }
@@ -363,6 +365,8 @@ void ARiverfrontPlayerController::RunMorningReview()
                 break;
             }
             case EMorningStep::HudControls:
+                if (GetWorld()->GetGameViewport()->ViewModeIndex != State->StartingViewMode)
+                    return Fail(TEXT("F1 controls shortcut changed the scene renderer"));
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 if (!ControlsVisible() && MapVisible() && !State->Pictures.Contains(TEXT("01-controls.png")))
                 {
