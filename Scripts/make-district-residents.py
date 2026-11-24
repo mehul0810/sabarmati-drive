@@ -6,6 +6,8 @@ import math
 import struct
 from pathlib import Path
 
+from resident_gait import GAITS, SAMPLE_RATE, gait_pose
+
 # Metres, glTF Y-up. All joints, clothes, expressions and animation belong to this export.
 def sub(a,b): return tuple(x-y for x,y in zip(a,b))
 def add(a,b): return tuple(x+y for x,y in zip(a,b))
@@ -133,26 +135,35 @@ def make(source,out,long_garment):
     matrices=[(1,0,0,0,0,1,0,0,0,0,1,0,-x,-y,-z,1) for x,y,z in coords]
     skin={"joints":list(range(len(names))),"inverseBindMatrices":data(matrices,"f","MAT4"),"skeleton":0}
     nodes.append({"name":out.stem,"mesh":0,"skin":0});clips=[]
-    for clip,period,amplitude in (("A_Idle",3.8,0),("A_Walk",1.04,24),("A_WalkAlt",1.18,20),("A_Jog",.72,37)):
-        samplers=[];channels=[];frames=32
+    rest = dict(zip(names, coords))
+    for clip, period in [("A_Idle", 3.8)] + [(name, gait[0]) for name, gait in GAITS.items()]:
+        samplers=[];channels=[]
+        frames=32 if clip=="A_Idle" else round(period*SAMPLE_RATE)
         times=data([(i*period/frames,) for i in range(frames+1)],"f","SCALAR",[0],[period])
-        for i,name in enumerate(names):
-            if name=="Root":continue
-            rotations=[]
-            for f in range(frames+1):
-                phase=f/frames*2*math.pi;side=1 if name.endswith("l") else -1
-                swing=math.sin(phase)*side; pitch=roll=yaw=0.
-                if name.startswith("Shoulder"):roll=-side*32;pitch=amplitude*swing*.72
-                elif name.startswith("Elbow"):pitch=-12.-max(0.,swing)*amplitude*.42
-                elif name.startswith("Hip"):roll=-side*7;pitch=-amplitude*swing
-                elif name.startswith("Knee"):pitch=amplitude*(.12+.98*max(0.,-swing))
-                elif name.startswith("Foot"):pitch=-amplitude*(.09+.45*max(0.,-swing))
-                elif name=="Pelvis":roll=(.5+amplitude*.075)*math.cos(phase);yaw=amplitude*.09*math.sin(phase)
-                elif name=="Chest":yaw=-amplitude*.11*math.sin(phase);pitch=1.2*math.cos(phase)
-                elif name=="Head":yaw=1.4*math.sin(phase);roll=-.8*math.cos(phase)
-                rotations.append(quat_product(axis_quat((0,0,1),roll),quat_product(axis_quat((0,1,0),yaw),axis_quat((1,0,0),pitch))))
-            channels.append({"sampler":len(samplers),"target":{"node":i,"path":"rotation"}})
-            samplers.append({"input":times,"output":data(rotations,"f","VEC4")})
+        def channel(node, path, values, kind):
+            channels.append({"sampler":len(samplers),"target":{"node":node,"path":path}})
+            samplers.append({"input":times,"output":data(values,"f",kind)})
+        if clip in GAITS:
+            poses=[gait_pose(clip, i/frames, rest) for i in range(frames+1)]
+            channel(names.index("Pelvis"), "translation", [pelvis for _,pelvis in poses], "VEC3")
+            for i,name in enumerate(names):
+                if name != "Root":
+                    channel(i, "rotation", [pose[name] for pose,_ in poses], "VEC4")
+        else:
+            for i,name in enumerate(names):
+                if name=="Root":continue
+                rotations=[]
+                for f in range(frames+1):
+                    phase=f/frames*2*math.pi;side=1 if name.endswith("l") else -1
+                    pitch=roll=yaw=0.
+                    if name.startswith("Shoulder"):roll=-side*32
+                    elif name.startswith("Elbow"):pitch=-12.
+                    elif name.startswith("Hip"):roll=-side*7
+                    elif name=="Pelvis":roll=.5*math.cos(phase)
+                    elif name=="Chest":pitch=1.2*math.cos(phase)
+                    elif name=="Head":yaw=1.4*math.sin(phase);roll=-.8*math.cos(phase)
+                    rotations.append(quat_product(axis_quat((0,0,1),roll),quat_product(axis_quat((0,1,0),yaw),axis_quat((1,0,0),pitch))))
+                channel(i, "rotation", rotations, "VEC4")
         clips.append({"name":clip,"samplers":samplers,"channels":channels})
     scene={"asset":{"version":"2.0","generator":"Sabarmati Drive resident pipeline"},"scene":0,"scenes":[{"nodes":[0,len(nodes)-1]}],
       "nodes":nodes,"skins":[skin],"meshes":[{"name":out.stem,"primitives":primitives}],"animations":clips,"materials":materials,
