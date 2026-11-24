@@ -12,6 +12,8 @@ struct FRiverfrontFirstMorningWorld
     static FVector WardrobePoint();
     static FVector ShopPoint();
     static FVector StreetPoint();
+    static FVector FenceApproach();
+    static FVector WallApproach();
     static double HomeYaw() { return -78.; }
     static FTransform WakeStartView();
     static FTransform WakeEndView();

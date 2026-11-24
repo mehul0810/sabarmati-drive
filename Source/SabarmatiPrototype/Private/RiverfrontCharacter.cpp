@@ -223,6 +223,7 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 {
     if (!Model || GetMesh()->GetSkeletalMeshAsset() == Model) return;
 
+    FinishTraversal(true);
     GetMesh()->EmptyOverrideMaterials();
     GetMesh()->SetSkeletalMesh(Model);
     GetMesh()->SetRelativeRotation(FRotator(0, RiverfrontResident::YawToActorForward(*Model), 0));
@@ -244,21 +245,29 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
         ? LoadObject<UBlendSpace1D>(nullptr, *(BlendPath + TEXT(".BS_ResidentGait"))) : nullptr;
     if (LocomotionBlend && LocomotionBlend->GetSkeleton() != Model->GetSkeleton()) LocomotionBlend = nullptr;
     AirClips.Reset(3);
+    FenceVault = WallMantle = nullptr;
     if (LocomotionBlend)
     {
         const FString AirFolder = TEXT("/Game/Sabarmati/Riverfront/People/Motion/") + FString(bKurta ? TEXT("Kurta/") : TEXT("Everyday/"));
-        for (const TCHAR* Clip : {TEXT("MM_Jump"), TEXT("MM_Fall_Loop"), TEXT("MM_Land")})
+        const auto LoadClip = [&](const TCHAR* Clip) -> UAnimSequence*
         {
             const FString Package = AirFolder + Clip;
             auto* Animation = FPackageName::DoesPackageExist(Package)
                 ? LoadObject<UAnimSequence>(nullptr, *(Package + TEXT(".") + Clip)) : nullptr;
-            if (!Animation || Animation->GetSkeleton() != Model->GetSkeleton())
+            return Animation && Animation->GetSkeleton() == Model->GetSkeleton() ? Animation : nullptr;
+        };
+        for (const TCHAR* Clip : {TEXT("MM_Jump"), TEXT("MM_Fall_Loop"), TEXT("MM_Land")})
+        {
+            if (auto* Animation = LoadClip(Clip))
+                AirClips.Add(Animation);
+            else
             {
                 AirClips.Reset();
                 break;
             }
-            AirClips.Add(Animation);
         }
+        FenceVault = LoadClip(TEXT("A_FenceVault"));
+        WallMantle = LoadClip(TEXT("A_WallMantle"));
         StartResidentGait();
     }
     else if (AnimationClips[0])
@@ -273,7 +282,7 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 void ARiverfrontCharacter::StartResidentGait()
 {
     bWasAirborne = bPlayedFall = false;
-    if (AirClips.Num() == 3)
+    if (AirClips.Num() == 3 || FenceVault || WallMantle)
     {
         GetMesh()->SetAnimInstanceClass(URiverfrontLocomotionInstance::StaticClass());
         if (auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance()))
@@ -288,7 +297,7 @@ void ARiverfrontCharacter::StartResidentGait()
 void ARiverfrontCharacter::UpdateAirAnimation()
 {
     auto* Instance = Cast<URiverfrontLocomotionInstance>(GetMesh()->GetAnimInstance());
-    if (!Instance || IsHidden() || AirClips.Num() != 3) return;
+    if (!Instance || IsHidden() || TraversalSource || AirClips.Num() != 3) return;
 
     const bool bAirborne = GetCharacterMovement()->IsFalling();
     const double VerticalSpeed = GetVelocity().Z;
@@ -482,6 +491,7 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
             GetMesh()->SetPlayRate(1.f);
         return;
     }
+    FinishTraversal(true);
     if (!bInFittingPose) bOrientBeforeFitting = Movement->bOrientRotationToMovement;
     bInFittingPose = true;
     Movement->StopMovementImmediately();
@@ -548,6 +558,7 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (bInFittingPose) return;
+    UpdateTraversal();
     const float FlatSpeed = GetVelocity().Size2D();
     UpdateAirAnimation();
     if (!IsHidden() && FlatSpeed > 12.f && GetCharacterMovement()->IsMovingOnGround())
@@ -649,13 +660,15 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 
 void ARiverfrontCharacter::JumpOrTraverse()
 {
+    if (TraversalSource || bInFittingPose) return;
     if (bBlueprintAvatarActive && TryAvatarTraversal()) return;
+    if (TryStreetTraversal()) return;
     Jump();
 }
 
 void ARiverfrontCharacter::MoveForward(float Amount)
 {
-    if (Controller)
+    if (Controller && !TraversalSource)
     {
         AddMovementInput(FRotator(0, Controller->GetControlRotation().Yaw, 0).Vector(), Amount);
     }
@@ -663,7 +676,7 @@ void ARiverfrontCharacter::MoveForward(float Amount)
 
 void ARiverfrontCharacter::MoveSide(float Amount)
 {
-    if (Controller)
+    if (Controller && !TraversalSource)
     {
         AddMovementInput(FRotator(0, Controller->GetControlRotation().Yaw + 90, 0).Vector(), Amount);
     }
@@ -687,6 +700,7 @@ void ARiverfrontCharacter::OpenCarDoor()
 
 void ARiverfrontCharacter::EnterCar()
 {
+    if (TraversalSource) return;
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     if (ARiverfrontCar* Available = Mode ? Mode->FindEnterableCar(*this) : nullptr)
     {
@@ -698,6 +712,7 @@ void ARiverfrontCharacter::EnterCar()
 
 void ARiverfrontCharacter::SetInCar(bool bInCar)
 {
+    FinishTraversal(true);
     SetActorHiddenInGame(bInCar);
     if (bBlueprintAvatarActive) ReceiveAvatarInCar(bInCar);
     SetActorEnableCollision(!bInCar);
@@ -717,6 +732,7 @@ void ARiverfrontCharacter::SetInCar(bool bInCar)
 
 void ARiverfrontCharacter::ResetWalk()
 {
+    FinishTraversal(true);
     GetCharacterMovement()->StopMovementImmediately();
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const FVector Spawn = Mode ? Mode->GetWalkSpawn() : ARiverfrontWorld::SpawnPoint;

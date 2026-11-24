@@ -36,7 +36,7 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 
 | Action | Control |
 |---|---|
-| Walk, look, run, jump | WASD, mouse, left Shift, Space |
+| Walk, look, run, jump, vault or climb | WASD, mouse, left Shift, Space |
 | Enter the nearest available car or leave a stopped car | E |
 | Drive, steer, brake or reverse | W, A/D, S. Space applies the handbrake. |
 | Change chase, cockpit and bonnet views | C |
@@ -51,13 +51,15 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 
 You can walk from the wardrobe in Flat 2B down the apartment stairs to street level and enter three furnished shops. **Sutra Cloth House** is on the ground floor. Across the road, **Kagaz Print House** offers a delivery to the counter at **Nadi Chai**. A public passage runs behind these two shops. The hatch and crossover are parked by the Atal promenade. Cross Atal on foot or use the road bridges to drive between the banks.
 
+Tap **Space** in the open to jump. From the street, face the low iron fence or the raised stone platform beside Kesar and tap **Space** within a step. The avatar vaults the fence with one hand or climbs onto the platform with both hands.
+
 The circular street map sits at the lower left. Use **N** to cycle destinations and **M** to hide or show navigation. Enter a vehicle to see speed, gear, engine speed, fuel and indicators. Press **F1** for the controls. Pause with **Esc** to return to the title and settings controls over the live scene.
 
 ## Optional local avatar import
 
 The offline game includes two fictional adult residents. At the wardrobe in Flat 2B, select **Male** or **Female** to change your avatar on an existing save. Both can wear the cotton shirt and jeans or the fitted kurta, change hairstyle and complexion, and wear the watch. **Inspect face** moves the camera close and **View full outfit** returns to the fitting view. Your purchases, wallet and checkpoint carry over. The two presets also appear among walkers, visitors and families. [Male physique and sources](SourceAssets/RESIDENT-PHYSIQUE.md) · [Female physique and sources](SourceAssets/RESIDENT-FEMALE.md)
 
-The public resident walks at 145 cm/s and runs at 335 cm/s with Shift. A native Unreal 1D Blend Space uses the character's actual horizontal speed and keeps the left and right footfalls in phase while accelerating. The clip authoring script solves the support leg against a planted foot on level ground. It uses the existing resident skeleton.
+The public resident walks at 145 cm/s and runs at 335 cm/s with Shift. A native Unreal 1D Blend Space uses the character's speed to blend planted steps and the Third Person template's arm motion. Character Movement sweeps the capsule during traversal, and Unreal's two-bone IK moves the wrists toward the detected edge.
 
 For a local rig comparison, the editor supports a separately supplied and appropriately licensed `SourceAssets/fictional-rigged.glb` with one skin, 15 joints and Idle, Walk, WalkAlt and Jog clips.
 
@@ -68,7 +70,7 @@ For a local rig comparison, the editor supports a separately supplied and approp
 
 ## Run a native smoke test
 
-For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` exercises both shop previews and restores the saved outfit and balances. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
+For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiJumpReview -SabarmatiTraversalReview` to test the open jump, fence and stone platform. Use `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` exercises both shop previews and restores the saved outfit and balances. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
 
 The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual Shadow Maps, hardware ray tracing and Lumen disabled. This configuration aims to run on an M1 Max while leaving room to tune the M2 Air. It is not a measured performance claim.
 

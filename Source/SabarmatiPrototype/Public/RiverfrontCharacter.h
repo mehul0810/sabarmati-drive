@@ -38,6 +38,7 @@ public:
     FName GetWardrobeAccessory() const { return WardrobeAccessory; }
     bool GetWardrobeShirtColor(FLinearColor& Out) const;
     bool HasWristwatchVisible() const;
+    float GetTraversalHandContact(bool bRight, FVector& OutPalm, FVector& OutElbow) const;
 
 protected:
     // The subclass supplies its own skeletal components, materials and animation Blueprint.
@@ -65,6 +66,16 @@ protected:
 private:
     bool bBlueprintAvatarActive = false;
     void JumpOrTraverse();
+    bool TryStreetTraversal();
+    void UpdateTraversal();
+    void FinishTraversal(bool bInterrupted);
+    uint16 TraversalSource = 0;
+    bool bMantling = false;
+    bool bOrientBeforeTraversal = true;
+    FVector TraversalEdge = FVector::ZeroVector;
+    FVector TraversalFacing = FVector::ForwardVector;
+    UPROPERTY() TObjectPtr<UAnimSequence> FenceVault;
+    UPROPERTY() TObjectPtr<UAnimSequence> WallMantle;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USpringArmComponent> Arm;

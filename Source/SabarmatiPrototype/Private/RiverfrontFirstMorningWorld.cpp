@@ -20,6 +20,8 @@ constexpr double Tread = 30.;
 constexpr int32 Steps = 20;
 constexpr double Rise = (Upper-ApartmentGroundZ)/Steps;
 constexpr double Landing = FirstRiser + Tread*Steps;
+constexpr double FenceX = 782., FenceY = -111.;
+constexpr double WallX = 1234., WallY = -32.;
 
 void Lettering(ARiverfrontWorld& World, const TCHAR* Words, FVector Position, double Yaw,
     float Size, FColor Ink)
@@ -278,6 +280,8 @@ FVector FRiverfrontFirstMorningWorld::HomeStart() { return At(-40,465,Upper+95);
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,ApartmentGroundZ+95); }
 FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,ApartmentGroundZ+95); }
+FVector FRiverfrontFirstMorningWorld::FenceApproach() { return At(FenceX,FenceY-97.,99.); }
+FVector FRiverfrontFirstMorningWorld::WallApproach() { return At(WallX,WallY-205.,99.); }
 
 FTransform FRiverfrontFirstMorningWorld::WakeStartView()
 {
@@ -335,6 +339,24 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
 
     Part(ETint::Retaining,70,330,-2,925,880,12,true);
     Part(ETint::Paving,60,-129,1,925,166,6,true);
+
+    // An open courtyard beside Kesar. The thin iron fence crosses to the same
+    // paving, while the solid stone edge leads onto a raised dispatch landing.
+    Part(ETint::Rail,FenceX,FenceY,90.,318.,9.,12.,true);
+    Part(ETint::Rail,FenceX,FenceY,19.,318.,7.,6.,true);
+    for (int32 Bar = -7; Bar <= 7; ++Bar)
+        Part(ETint::Rail,FenceX+Bar*21.,FenceY,54.,4.,5.,68.,true);
+    for (const double Side : {-1.,1.})
+        Part(ETint::Retaining,FenceX+Side*163.,FenceY,53.,18.,22.,106.,true);
+    Part(ETint::FacadeStone,WallX,WallY,66.,382.,224.,132.,true);
+    Part(ETint::PaleStone,WallX,WallY,132.5,388.,228.,1.);
+    for (const double Row : {33.,65.,97.})
+        Part(ETint::Shadow,WallX,WallY-112.2,Row,381.,.4,1.);
+    for (int32 Step = 0; Step < 8; ++Step)
+    {
+        const double Height = 16.5*(8-Step);
+        Part(ETint::FacadeStone,WallX+203.+Step*26.,WallY,Height*.5,26.,94.,Height,true);
+    }
 
     // A continuous scanned stone finish with narrow divider joints, including at the bedroom threshold.
     for (double Base : {ApartmentGroundZ,Upper})

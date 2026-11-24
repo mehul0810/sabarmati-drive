@@ -2,6 +2,7 @@
 
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCharacter.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontLifeProfile.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
@@ -37,6 +38,8 @@ struct FGaitFrame
     FVector Centre = FVector::ZeroVector;
     double Speed = 0.;
     FLegPose Legs[2];
+    double Hands[2]{};
+    double Elbows[2]{};
 };
 
 struct FGaitStrip
@@ -55,6 +58,9 @@ struct FGaitStrip
     double JumpFloor = 0.;
     double JumpHeight = 0.;
     TSet<FName> JumpClips;
+    FVector TraversalStart = FVector::ZeroVector;
+    bool bTraversalClip = false;
+    double PalmErrors[2]{DBL_MAX,DBL_MAX};
     TArray<FGaitFrame> Samples;
     TWeakObjectPtr<ACameraActor> Lens;
     FString Summary = TEXT("mode,side,frames,seconds,distance_cm,speed_cm_s,knee_min_deg,knee_max_deg,swings,plants,max_plant_drift_cm,min_sole_above_floor_cm,lateral_cm,pass\n");
@@ -252,11 +258,12 @@ void ARiverfrontPlayerController::RunGaitReview()
         *Skin->GetSkeletalMeshAsset()->GetPathName(),*Folder);
     const bool bCapture=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitFrames"));
     const bool bReviewJump=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiJumpReview"));
+    const bool bReviewTraversal=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiTraversalReview"));
     if (bCapture && !IFileManager::Get().MakeDirectory(*FPaths::Combine(Folder,TEXT("Frames")),true))
     { FPlatformMisc::RequestExitWithStatus(false,1); return; }
     State->Started=GetWorld()->GetTimeSeconds();
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
+        [this,State,Folder,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,bReviewTraversal,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
          WallStart=FPlatformTime::Seconds(),bPassed=true](float) mutable
         {
             if (!Who.IsValid() || GetPawn()!=Who.Get() || !State->Lens.IsValid() || FPlatformTime::Seconds()-WallStart>180.)
@@ -270,9 +277,34 @@ void ARiverfrontPlayerController::RunGaitReview()
                 InputKey(FInputKeyEventArgs(GetWorld()->GetGameViewport()->Viewport,FInputDeviceId::CreateFromInternalId(0),
                     K,Action,FPlatformTime::Cycles64()));
             };
-            if (State->Mode==2)
+            const auto ActiveClip=[&]() -> FName
             {
-                if (bReviewJump)
+                const auto* Instance=Who->GetMesh()->GetAnimInstance();
+                const auto* Montage=Instance?Instance->GetCurrentActiveMontage():nullptr;
+                if (Montage && !Montage->SlotAnimTracks.IsEmpty() && !Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.IsEmpty())
+                {
+                    const auto& Clip=Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0].GetAnimReference();
+                    if (Clip) return Clip->GetFName();
+                }
+                return NAME_None;
+            };
+            const auto PlaceTraversal=[&](bool bWall)
+            {
+                const FRotator Facing(0.,90.,0.);
+                SetControlRotation(Facing);
+                if (!Who->TeleportTo(bWall?FRiverfrontFirstMorningWorld::WallApproach():
+                    FRiverfrontFirstMorningWorld::FenceApproach(),Facing)) return false;
+                State->Lens->GetCameraComponent()->SetFieldOfView(54.);
+                State->Lens->SetActorRelativeLocation(FVector(-177.,-393.,63.));
+                State->Lens->SetActorRelativeRotation(FVector(219.,393.,-68.).Rotation());
+                State->Started=Now;
+                State->bPhotographed=State->bPressed=State->bMetricsWritten=State->bTraversalClip=false;
+                State->PalmErrors[0]=State->PalmErrors[1]=DBL_MAX;
+                return true;
+            };
+            if (State->Mode>=2)
+            {
+                if (State->Mode==2 && bReviewJump)
                 {
                     if (Age<.40) return true;
                     if (!State->bPressed)
@@ -288,15 +320,7 @@ void ARiverfrontPlayerController::RunGaitReview()
                     }
                     const double Height=Who->GetActorLocation().Z-State->JumpFloor;
                     State->JumpHeight=FMath::Max(State->JumpHeight,Height);
-                    if (const auto* Instance=Who->GetMesh()->GetAnimInstance())
-                    {
-                        const auto* Montage=Instance->GetCurrentActiveMontage();
-                        if (Montage && !Montage->SlotAnimTracks.IsEmpty() && !Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.IsEmpty())
-                        {
-                            const auto& Clip=Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0].GetAnimReference();
-                            if (Clip) State->JumpClips.Add(Clip->GetFName());
-                        }
-                    }
+                    if (const FName Clip=ActiveClip(); !Clip.IsNone()) State->JumpClips.Add(Clip);
                     if (Height>55. && !State->bPhotographed && !FScreenshotRequest::IsScreenshotRequested())
                     {
                         FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,TEXT("jump-profile.png")),false,false);
@@ -313,6 +337,63 @@ void ARiverfrontPlayerController::RunGaitReview()
                     bPassed &= bJumpPassed;
                 }
                 if (Age<.35 || FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (State->Mode==2 && bReviewTraversal)
+                {
+                    ++State->Mode;
+                    if (PlaceTraversal(false)) return true;
+                    FPlatformMisc::RequestExitWithStatus(false,1);
+                    return false;
+                }
+                if (State->Mode==3 || State->Mode==4)
+                {
+                    const bool bWall=State->Mode==4;
+                    const TCHAR* Image=bWall?TEXT("wall-mantle.png"):TEXT("fence-vault.png");
+                    if (!State->bPressed)
+                    {
+                        State->TraversalStart=Who->GetActorLocation();
+                        Key(EKeys::SpaceBar,IE_Pressed);
+                        State->bPressed=true;
+                    }
+                    if (Age>.49 && !State->bMetricsWritten)
+                    {
+                        Key(EKeys::SpaceBar,IE_Released);
+                        State->bMetricsWritten=true;
+                    }
+                    State->bTraversalClip |= ActiveClip()==(bWall?TEXT("A_WallMantle"):TEXT("A_FenceVault"));
+                    for (int32 Side=0;Side<2;++Side)
+                    {
+                        FVector Palm,Elbow;
+                        if (Who->GetTraversalHandContact(Side!=0,Palm,Elbow)>.86f)
+                        {
+                            const auto Name=Side?TEXT("Handr"):TEXT("Handl");
+                            State->PalmErrors[Side]=FMath::Min(State->PalmErrors[Side],
+                                FVector::Dist(Palm,Who->GetMesh()->GetSocketLocation(Name)));
+                            if (State->PalmErrors[Side]<11. && !State->bPhotographed)
+                            {
+                                FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,Image),false,false);
+                                State->bPhotographed=true;
+                            }
+                        }
+                    }
+                    if (Age<2.3 || FScreenshotRequest::IsScreenshotRequested()) return true;
+                    const FVector Delta=Who->GetActorLocation()-State->TraversalStart;
+                    const bool bMovePassed=State->bTraversalClip && Delta.Y>125. &&
+                        (bWall?Delta.Z>119. && Delta.Z<140.:FMath::Abs(Delta.Z)<7.) &&
+                        Who->GetCharacterMovement()->IsMovingOnGround() &&
+                        State->PalmErrors[0]<13. && (!bWall || State->PalmErrors[1]<13.) &&
+                        IFileManager::Get().FileSize(*FPaths::Combine(Folder,Image))>0;
+                    UE_LOG(LogTemp,Display,TEXT("Sabarmati traversal %s: pass=%d forward_cm=%.1f rise_cm=%.1f palm_error_cm=%.2f/%.2f."),
+                        bWall?TEXT("mantle"):TEXT("vault"),bMovePassed,Delta.Y,Delta.Z,
+                        State->PalmErrors[0],bWall?State->PalmErrors[1]:0.);
+                    bPassed &= bMovePassed;
+                    ++State->Mode;
+                    if (!bWall)
+                    {
+                        if (PlaceTraversal(true)) return true;
+                        FPlatformMisc::RequestExitWithStatus(false,1);
+                        return false;
+                    }
+                }
                 for (const TCHAR* File:{TEXT("walk-profile.png"),TEXT("run-profile.png")})
                     bPassed &= IFileManager::Get().FileSize(*FPaths::Combine(Folder,File))>0;
                 UE_LOG(LogTemp,Display,TEXT("Sabarmati gait review finished: pass=%d %s\n%s"),bPassed,*Folder,*State->Summary);
@@ -405,6 +486,12 @@ void ARiverfrontPlayerController::RunGaitReview()
                 Frame.Legs[Side].Flex=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
                     FVector::DotProduct((K-H).GetSafeNormal(),(F.GetLocation()-K).GetSafeNormal()),-1.,1.)));
                 Frame.Legs[Side].Sole=F.TransformPosition(SoleOffsets[Side]);
+                const FVector Shoulder=Body->GetSocketLocation(Side?TEXT("Shoulderr"):TEXT("Shoulderl"));
+                const FVector Elbow=Body->GetSocketLocation(Side?TEXT("Elbowr"):TEXT("Elbowl"));
+                const FVector Hand=Body->GetSocketLocation(Side?TEXT("Handr"):TEXT("Handl"));
+                Frame.Hands[Side]=(Hand-Shoulder).Dot(Who->GetActorForwardVector());
+                Frame.Elbows[Side]=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+                    (Elbow-Shoulder).GetSafeNormal().Dot((Hand-Elbow).GetSafeNormal()),-1.,1.)));
                 Frame.Legs[Side].Clearance=DBL_MAX;
                 const FCollisionQueryParams Query(SCENE_QUERY_STAT(GaitFootGround),false,Who.Get());
                 for (const FVector Probe:{Frame.Legs[Side].Sole,F.TransformPosition(HeelOffsets[Side]),
@@ -438,13 +525,13 @@ void ARiverfrontPlayerController::RunGaitReview()
             }
             for (int32 Side=0;Side<2;++Side)
                 bPassed &= MeasureLeg(State->Samples,Side,bRun,State->Summary);
-            FString Raw=TEXT("t_s,actor_x,actor_y,speed_cm_s,left_knee_deg,right_knee_deg,left_sole_x,left_sole_y,left_sole_z,right_sole_x,right_sole_y,right_sole_z,left_clearance_cm,right_clearance_cm\n");
+            FString Raw=TEXT("t_s,actor_x,actor_y,speed_cm_s,left_knee_deg,right_knee_deg,left_sole_x,left_sole_y,left_sole_z,right_sole_x,right_sole_y,right_sole_z,left_clearance_cm,right_clearance_cm,left_wrist_forward_cm,right_wrist_forward_cm,left_elbow_deg,right_elbow_deg\n");
             for (const auto& Sample:State->Samples)
             {
                 const auto& L=Sample.Legs[0];const auto& R=Sample.Legs[1];
-                Raw+=FString::Printf(TEXT("%.4f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n"),
-                    Sample.Seconds,Sample.Centre.X,Sample.Centre.Y,Sample.Speed,L.Flex,R.Flex,
-                    L.Sole.X,L.Sole.Y,L.Sole.Z,R.Sole.X,R.Sole.Y,R.Sole.Z,L.Clearance,R.Clearance);
+                Raw+=FString::Printf(TEXT("%.4f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n"),
+                    Sample.Seconds,Sample.Centre.X,Sample.Centre.Y,Sample.Speed,L.Flex,R.Flex,L.Sole.X,L.Sole.Y,L.Sole.Z,
+                    R.Sole.X,R.Sole.Y,R.Sole.Z,L.Clearance,R.Clearance,Sample.Hands[0],Sample.Hands[1],Sample.Elbows[0],Sample.Elbows[1]);
             }
             bPassed &= FFileHelper::SaveStringToFile(Raw,*FPaths::Combine(Folder,bRun?TEXT("run.csv"):TEXT("walk.csv")));
             bPassed &= FFileHelper::SaveStringToFile(State->Summary,*FPaths::Combine(Folder,TEXT("summary.csv")));

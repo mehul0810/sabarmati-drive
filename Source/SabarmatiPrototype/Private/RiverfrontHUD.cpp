@@ -294,7 +294,7 @@ void Controls(FInstruments& Draw,bool City)
         TEXT("C  /  Z X  /  H"), City?TEXT("N  /  V  /  M"):TEXT("N  /  G  /  M"),
         TEXT("T  /  P  /  Y"), TEXT("B  /  F  /  F3"), TEXT("R  /  ESC") };
     const TCHAR* Actions[] = { TEXT("Move or drive  /  Run"), TEXT("Interact or exit  /  Wallet"),
-        TEXT("Jump or brake  /  Door"), TEXT("Camera  /  Indicators  /  Horn"),
+        TEXT("Jump, vault, climb or brake  /  Door"), TEXT("Camera  /  Indicators  /  Horn"),
         City?TEXT("Destination  /  Street travel  /  Map"):TEXT("Destination  /  River run  /  Map"),
         TEXT("Time  /  Weather  /  Clock"), TEXT("Hazards  /  Service  /  Frame timing"),
         TEXT("Reset  /  Pause") };
