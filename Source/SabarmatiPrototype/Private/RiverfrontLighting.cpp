@@ -25,9 +25,9 @@ struct FDistrictSky
 };
 
 constexpr int32 MaxPracticalLights = 14;
-const FDistrictSky DayLighting = {FRotator(-43, 100, 0), 5.1f, 5750.f, .80f, .007f, FLinearColor(.35,.41,.49)};
-const FDistrictSky GoldenLighting = {FRotator(-18, 63, 0), 4.1f, 4900.f, .82f, .010f, FLinearColor(.42,.31,.22)};
-const FDistrictSky NightLighting = {FRotator(-29, -61, 0), .23f, 8400.f, .36f, .006f, FLinearColor(.009,.015,.033)};
+const FDistrictSky DayLighting = {FRotator(-46, 128, 0), 4.35f, 5620.f, .78f, .0048f, FLinearColor(.35,.41,.49)};
+const FDistrictSky GoldenLighting = {FRotator(-18, 112, 0), 3.95f, 4670.f, .76f, .0075f, FLinearColor(.42,.31,.22)};
+const FDistrictSky NightLighting = {FRotator(-31, -61, 0), .24f, 7350.f, .43f, .0038f, FLinearColor(.009,.015,.033)};
 }
 
 const TCHAR* ARiverfrontWorld::TimeName() const
@@ -82,7 +82,10 @@ void ARiverfrontWorld::BuildLighting()
         Sun->SetUseTemperature(true);
         Sun->SetAtmosphereSunLight(true);
         Sun->SetLightSourceAngle(.65f);
-        Sun->ContactShadowLength = .045f;
+        Sun->ContactShadowLength = .08f;
+        Sun->DynamicShadowDistanceMovableLight = 10500.f;
+        Sun->DynamicShadowCascades = 4;
+        Sun->CascadeDistributionExponent = 2.2f;
     }
     if (auto* Actor = World->SpawnActor<ASkyLight>())
     {
@@ -128,11 +131,15 @@ void ARiverfrontWorld::BuildLighting()
         Settings.bOverride_BloomIntensity = true;
         Settings.BloomIntensity = .18f;
         Settings.bOverride_AmbientOcclusionIntensity = true;
-        Settings.AmbientOcclusionIntensity = .67f;
+        Settings.AmbientOcclusionIntensity = .82f;
         Settings.bOverride_AmbientOcclusionRadius = true;
-        Settings.AmbientOcclusionRadius = 62.f;
+        Settings.AmbientOcclusionRadius = 48.f;
         Settings.bOverride_ScreenSpaceReflectionIntensity = true;
-        Settings.ScreenSpaceReflectionIntensity = 72.f;
+        Settings.ScreenSpaceReflectionIntensity = 79.f;
+        Settings.bOverride_ScreenSpaceReflectionQuality = true;
+        Settings.ScreenSpaceReflectionQuality = 65.f;
+        Settings.bOverride_ColorSaturation = true;
+        Settings.ColorSaturation = FVector4(.98, 1., .97, 1.);
     }
     FString Requested;
     FParse::Value(FCommandLine::Get(), TEXT("SabarmatiTime="), Requested);
@@ -249,13 +256,13 @@ void ARiverfrontWorld::RefreshPracticalLights(bool Force)
         Lamp->SetMobility(EComponentMobility::Movable);
         Lamp->SetCastShadows(false);
         Lamp->SetIntensityUnits(ELightUnits::Lumens);
-        Lamp->SetIntensity(360.f);
+        Lamp->SetIntensity(460.f);
         Lamp->SetUseTemperature(true);
         Lamp->SetTemperature(3520.f);
         Lamp->SetInnerConeAngle(36.f);
-        Lamp->SetOuterConeAngle(65.f);
-        Lamp->SetAttenuationRadius(1350.f);
-        Lamp->SetSourceRadius(8.f);
+        Lamp->SetOuterConeAngle(62.f);
+        Lamp->SetAttenuationRadius(1150.f);
+        Lamp->SetSourceRadius(11.f);
         Lamp->SetMaxDrawDistance(7400.f);
         Lamp->MaxDistanceFadeRange = 1800.f;
         Lamp->RegisterComponent();

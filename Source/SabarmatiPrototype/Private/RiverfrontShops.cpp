@@ -1,4 +1,5 @@
 #include "RiverfrontWorld.h"
+#include "Components/RectLightComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
@@ -89,6 +90,26 @@ void ARiverfrontWorld::FitShop(const FVector& Opening, const FRotator& Facing,
         Beam(ETint::Rail,At(Side*SignW*.40,-158,Ceiling+10),At(Side*SignW*.40,SignY,SignZ),4.5);
     }
     Part(ETint::Timber,0,SignY,SignZ,SignW+14,13,SignH+12);
+    // The open shops have a short warm fascia light with a real hood. A
+    // rectangular source softens the wash over the painted lettering.
+    Part(ETint::Rail,0,SignY-24,SignZ+SignH*.5+15,SignW*.72,22,6);
+    auto* SignLight=NewObject<URectLightComponent>(this);
+    AddInstanceComponent(SignLight);
+    SignLight->SetupAttachment(GetRootComponent());
+    SignLight->SetMobility(EComponentMobility::Movable);
+    SignLight->SetIntensityUnits(ELightUnits::Lumens);
+    SignLight->SetIntensity(80.f);
+    SignLight->SetSourceWidth(SignW*.68f);
+    SignLight->SetSourceHeight(6.f);
+    SignLight->SetAttenuationRadius(275.f);
+    SignLight->SetUseTemperature(true);
+    SignLight->SetTemperature(3650.f);
+    SignLight->SetCastShadows(false);
+    SignLight->SetMaxDrawDistance(2700.f);
+    SignLight->SetMaxDistanceFadeRange(700.f);
+    SignLight->SetRelativeLocationAndRotation(At(0,SignY-35,SignZ+SignH*.5+9),
+        (At(0,SignY,SignZ)-At(0,SignY-35,SignZ+SignH*.5+9)).Rotation());
+    SignLight->RegisterComponent();
     const TCHAR* Asset = IsTea ? TEXT("/Game/Sabarmati/Riverfront/M_NadiChaiSign.M_NadiChaiSign")
         : TEXT("/Game/Sabarmati/Riverfront/M_KagazPressSign.M_KagazPressSign");
     if (auto* Mat=LoadObject<UMaterialInterface>(nullptr,Asset))
