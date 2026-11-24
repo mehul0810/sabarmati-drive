@@ -90,6 +90,9 @@ def run():
     motion = ASSETS.load_asset(f"{FOLDER}/DA_AvatarMotion")
     if not motion:
         raise RuntimeError("The retargeted motion data asset was not saved.")
+    for authoring_asset in (source_rig, target_rig, retargeter):
+        if not ASSETS.save_loaded_asset(authoring_asset, only_if_is_dirty=False):
+            raise RuntimeError(f"Could not save {authoring_asset.get_path_name()}")
     ue.log(f"SABARMATI_AUTHORED_MOTION {motion.get_path_name()}")
 
 
