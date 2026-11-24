@@ -36,13 +36,14 @@ struct FInstruments
     const float Scale;
     const float Width;
     const float Height;
-    TArray<FCanvasUVTri> Triangles;
+    TArray<FCanvasUVTri>& Triangles;
 
-    explicit FInstruments(UCanvas& InCanvas)
+    FInstruments(UCanvas& InCanvas,TArray<FCanvasUVTri>& Scratch)
         : Canvas(InCanvas)
         , Scale(FMath::Min(InCanvas.ClipY / 900.f, InCanvas.ClipX / 810.f))
-        , Width(InCanvas.ClipX / Scale), Height(InCanvas.ClipY / Scale)
+        , Width(InCanvas.ClipX / Scale), Height(InCanvas.ClipY / Scale), Triangles(Scratch)
     {
+        Triangles.Reset();
         Triangles.Reserve(600);
     }
 
@@ -366,7 +367,7 @@ void ARiverfrontHUD::DrawHUD()
     const APawn* Pawn = Player->GetPawn();
     if (!Pawn) return;
     using namespace RiverfrontInstruments;
-    FInstruments Draw(*Canvas);
+    FInstruments Draw(*Canvas,HUDTriangles);
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool City = Mode && Mode->IsCityMode();
     const auto* Car = Cast<ARiverfrontCar>(Pawn);

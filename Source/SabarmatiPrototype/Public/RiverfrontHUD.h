@@ -1,5 +1,5 @@
 #pragma once
-#include "CoreMinimal.h"
+#include "Engine/EngineTypes.h"
 #include "GameFramework/HUD.h"
 #include "RiverfrontHUD.generated.h"
 
@@ -11,5 +11,6 @@ public:
     virtual void DrawHUD() override;
 
 private:
+    TArray<FCanvasUVTri> HUDTriangles;
     float WelcomeUntil = -1.f;
 };
