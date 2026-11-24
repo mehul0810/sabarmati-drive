@@ -2,6 +2,7 @@
 #include "RiverfrontWorld.h"
 
 #include "Components/PointLightComponent.h"
+#include "Components/RectLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
@@ -455,6 +456,49 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
         Part(ETint::Brass,X+8,650,Upper+110,3,6,22);
     }
     Mirror(174,651,Upper+115,69,175);
+
+    // The pivoting mirror lamp shines across the dressing spot from above eye level.
+    const FRotator LampAim(0,-143,0);
+    const FVector LampCentre=At(216,643,Upper+175);
+    const FVector LampForward=LampAim.Vector();
+    Part(ETint::Brass,216,651,Upper+175,7,11,9);
+    World.Box(ETint::Brass,LampCentre,FVector(4,7,53),false,LampAim);
+    auto* Diffuser=NewObject<UStaticMeshComponent>(&World,TEXT("WardrobeLampDiffuser"));
+    World.AddInstanceComponent(Diffuser);
+    Diffuser->SetupAttachment(World.GetRootComponent());
+    Diffuser->SetMobility(EComponentMobility::Static);
+    Diffuser->SetStaticMesh(World.BoxMesh);
+    Diffuser->SetRelativeScale3D(FVector(.010,.054,.49));
+    Diffuser->SetRelativeLocationAndRotation(LampCentre+LampForward*2.4,LampAim);
+    Diffuser->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Diffuser->SetCanEverAffectNavigation(false);
+    Diffuser->SetCastShadow(false);
+    if (auto* Lens=LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
+    {
+        auto* Frosted=UMaterialInstanceDynamic::Create(Lens,Diffuser);
+        Frosted->SetVectorParameterValue(TEXT("LensTint"),FLinearColor::MakeFromColorTemperature(4400.f));
+        Frosted->SetScalarParameterValue(TEXT("Glow"),1.6f);
+        Diffuser->SetMaterial(0,Frosted);
+    }
+    Diffuser->RegisterComponent();
+
+    auto* MirrorLight=NewObject<URectLightComponent>(&World,TEXT("WardrobeMirrorLight"));
+    World.AddInstanceComponent(MirrorLight);
+    MirrorLight->SetupAttachment(World.GetRootComponent());
+    MirrorLight->SetMobility(EComponentMobility::Movable);
+    MirrorLight->SetRelativeLocationAndRotation(LampCentre+LampForward*3.2,LampAim);
+    MirrorLight->SetSourceWidth(5.4f);
+    MirrorLight->SetSourceHeight(49.f);
+    MirrorLight->SetUseTemperature(true);
+    MirrorLight->SetTemperature(4400.f);
+    MirrorLight->SetIntensityUnits(ELightUnits::Lumens);
+    MirrorLight->SetIntensity(26.f);
+    MirrorLight->SetAttenuationRadius(220.f);
+    MirrorLight->MaxDrawDistance=900.f;
+    MirrorLight->MaxDistanceFadeRange=180.f;
+    MirrorLight->RegisterComponent();
+
     Part(ETint::Timber,135,688,Upper+222,212,73,8);
     for (int32 I=0; I<7; ++I)
         Part(ETint::Timber,83+I*8,651,Upper+141,2.4,3,133);
