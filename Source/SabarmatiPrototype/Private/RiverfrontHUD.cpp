@@ -12,6 +12,7 @@
 #include "Engine/World.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerInput.h"
 #include "GlobalRenderResources.h"
 
 namespace RiverfrontInstruments
@@ -166,7 +167,7 @@ void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
 void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerController& Player,
     const ARiverfrontTraffic& Traffic,bool City,bool Driving,const FString& Destination)
 {
-    const float Radius = Driving ? 74.f : 64.f;
+    const float Radius = Driving ? 80.f : 72.f;
     const FVector2D Centre(32+Radius,Draw.Height-36-Radius);
     const double MapScale = Radius / (Driving ? 17000. : 11500.);
     const FVector Here = Pawn.GetActorLocation();
@@ -232,9 +233,9 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
         Draw.Fill(Tip,Centre-Nose*(Size*.63)+Side*(Size*.69),Tail,Color);
         Draw.Fill(Tip,Tail,Centre-Nose*(Size*.63)-Side*(Size*.69),Color);
     }
-    Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-10),10,TEXT("Bold"),Ivory,true);
+    Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-11),12,TEXT("Bold"),Ivory,true);
     Draw.Label(City ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
-        FVector2D(Centre.X,Draw.Height-19),11,TEXT("BoldCondensed"),Ivory,true);
+        FVector2D(Centre.X,Draw.Height-19),12,TEXT("BoldCondensed"),Ivory,true);
 }
 
 void DriveCluster(FInstruments& Draw,const ARiverfrontCar& Car)
@@ -251,15 +252,19 @@ void DriveCluster(FInstruments& Draw,const ARiverfrontCar& Car)
             I>=20 ? Warning : Ivory.CopyWithNewOpacity(.85f));
     }
     Draw.Label(FString::FromInt(FMath::RoundToInt(Car.GetSpeedKph())),Centre+FVector2D(0,-7),
-        43,TEXT("BoldCondensedItalic"),Ivory,true);
-    Draw.Label(TEXT("km/h"),Centre+FVector2D(0,22),11,TEXT("Medium"),Ivory,true);
+        47,TEXT("BoldCondensedItalic"),Ivory,true);
+    Draw.Label(TEXT("km/h"),Centre+FVector2D(0,22),12,TEXT("Medium"),Ivory,true);
     const int32 Gear = Car.GetGear();
     const FString GearLabel = Gear<0 ? TEXT("R") : FString::Printf(TEXT("D%d"),Gear);
     const float Fuel = FMath::Clamp(Car.GetFuel(),0.f,1.f);
     Draw.Label(GearLabel,Centre+FVector2D(-36,46),15,TEXT("BoldCondensed"),Gold,true);
     Draw.Stroke(Centre+FVector2D(-14,37),Centre+FVector2D(-14,55),1.f,Silver);
     Draw.Label(FString::Printf(TEXT("%.0f%% fuel"),100.f*Fuel),Centre+FVector2D(-4,46),
-        10,TEXT("Medium"),Fuel<.15f?Warning:Ivory);
+        11,TEXT("Medium"),Fuel<.15f?Warning:Ivory);
+    const FVector2D FuelStart=Centre+FVector2D(-4,58);
+    Draw.Stroke(FuelStart,FuelStart+FVector2D(54,0),2.f,Silver.CopyWithNewOpacity(.32f));
+    if (Fuel>0.f)
+        Draw.Stroke(FuelStart,FuelStart+FVector2D(54*Fuel,0),2.f,Fuel<.15f?Warning:Gold);
     const int32 Signal = Car.GetSignal();
     for (const int32 Side : {-1,1})
     {
@@ -309,17 +314,35 @@ void Controls(FInstruments& Draw,bool City)
     }
 }
 
-float Message(FInstruments& Draw,const FString& Value,float Bottom,double MaxWidth,bool Action)
+FString ActionKey(const ARiverfrontPlayerController& Player,FName Action,const FString& Fallback)
+{
+    const UPlayerInput* Input=Player.PlayerInput;
+    if (!Input) return Fallback;
+
+    const FInputActionKeyMapping* Selected=nullptr;
+    for (const FInputActionKeyMapping& Mapping : Input->GetKeysForAction(Action))
+    {
+        if (!Mapping.Key.IsValid()) continue;
+        if (!Selected) Selected=&Mapping;
+        if (!Mapping.Key.IsGamepadKey()) { Selected=&Mapping; break; }
+    }
+    if (!Selected) return Fallback;
+
+    FString Label;
+    if (Selected->bCtrl) Label+=TEXT("Ctrl + ");
+    if (Selected->bAlt) Label+=TEXT("Alt + ");
+    if (Selected->bShift) Label+=TEXT("Shift + ");
+    if (Selected->bCmd) Label+=TEXT("Cmd + ");
+    return Label+Selected->Key.GetDisplayName().ToString();
+}
+
+float Message(FInstruments& Draw,const FString& Value,const FString& Key,float Bottom,double MaxWidth,bool Action)
 {
     if (Value.IsEmpty()) return Bottom;
-    FString Body=Value, Key;
-    if (Action && Value.Len()>4 && Value.Mid(1,3)==TEXT("   "))
-    {
-        Key=Value.Left(1); Body=Value.Mid(4);
-    }
-    const float Points = Action ? 15.f : 12.f;
+    const FString& Body=Value;
+    const float Points = Action ? 16.f : 13.f;
     const FName Face = Action ? FName(TEXT("Medium")) : FName(TEXT("Regular"));
-    const double KeySpace = Key.IsEmpty()?0.:40.;
+    const double KeySpace = Key.IsEmpty()?0.:FMath::Max(40.,Draw.Measure(Key,TEXT("BoldCondensed"),13)+24.);
     TArray<FString> Lines;
     Lines.Add(Body);
     if (Draw.Measure(Body,Face,Points)>MaxWidth-KeySpace)
@@ -349,8 +372,14 @@ float Message(FInstruments& Draw,const FString& Value,float Bottom,double MaxWid
     if (!Key.IsEmpty())
     {
         const FVector2D P(X+9,Y+H*.5);
-        Draw.Quad(P+FVector2D(0,-12),P+FVector2D(25,-12),P+FVector2D(25,12),P+FVector2D(0,12),Ivory);
-        Draw.Label(Key,P+FVector2D(12.5,0),13,TEXT("BoldCondensed"),Graphite,true);
+        const double KeyWidth=KeySpace-15.;
+        Draw.Quad(P+FVector2D(0,-12),P+FVector2D(KeyWidth,-12),
+            P+FVector2D(KeyWidth,12),P+FVector2D(0,12),Graphite.CopyWithNewOpacity(.96f));
+        Draw.Stroke(P+FVector2D(0,-12),P+FVector2D(KeyWidth,-12),1.f,Gold);
+        Draw.Stroke(P+FVector2D(KeyWidth,-12),P+FVector2D(KeyWidth,12),1.f,Gold);
+        Draw.Stroke(P+FVector2D(KeyWidth,12),P+FVector2D(0,12),1.f,Gold);
+        Draw.Stroke(P+FVector2D(0,12),P+FVector2D(0,-12),1.f,Gold);
+        Draw.Label(Key,P+FVector2D(KeyWidth*.5,0),13,TEXT("BoldCondensed"),Ivory,true);
     }
     for (int32 I=0; I<Lines.Num(); ++I)
         Draw.Label(Lines[I],FVector2D(X+11+KeySpace,Y+H*.5+(I-(Lines.Num()-1)*.5)*24),
@@ -372,12 +401,12 @@ void ARiverfrontHUD::DrawHUD()
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool City = Mode && Mode->IsCityMode();
     const auto* Car = Cast<ARiverfrontCar>(Pawn);
+    const FString Destination=Player->NavigationText();
     if (Player->MapVisible() && Mode && Mode->GetTraffic())
     {
-        const FString Destination=Player->NavigationText();
         StreetMap(Draw,*Pawn,*Player,*Mode->GetTraffic(),City,Car!=nullptr,Destination);
-        if (!Destination.IsEmpty()) Guidance(Draw,*Player,Destination);
     }
+    if (!Destination.IsEmpty()) Guidance(Draw,*Player,Destination);
     if (Car) DriveCluster(Draw,*Car);
     if (City)
     {
@@ -397,18 +426,26 @@ void ARiverfrontHUD::DrawHUD()
         Draw.Label(TEXT("F1  Controls     I  Wallet     Esc  Pause"),FVector2D(33,67),
             11,TEXT("Medium"),Gold.CopyWithNewOpacity(Opacity));
     }
-    FString Prompt=Player->PlacePrompt();
-    if (Prompt.IsEmpty())
+    FString Prompt, Key;
+    const auto* Character=Cast<ARiverfrontCharacter>(Pawn);
+    const auto* Nearby=Character && Mode ? Mode->FindEnterableCar(*Character) : nullptr;
+    if (Nearby)
     {
-        if (Car) Prompt=Car->GetHint();
-        else if (const auto* Character=Cast<ARiverfrontCharacter>(Pawn))
+        Prompt=FString::Printf(TEXT("Enter %s"),Nearby->GetVehicleLabel());
+        Key=ActionKey(*Player,TEXT("Interact"),TEXT("E"));
+    }
+    else
+    {
+        Prompt=Player->PlacePrompt();
+        if (Prompt.Len()>4 && Prompt.Mid(1,3)==TEXT("   "))
         {
-            const auto* Nearby=Mode?Mode->FindEnterableCar(*Character):nullptr;
-            if (Nearby) Prompt=FString::Printf(TEXT("E   Open door  ·  %s"),Nearby->GetVehicleLabel());
+            Key=ActionKey(*Player,Car?FName(TEXT("UsePlace")):FName(TEXT("Interact")),Prompt.Left(1));
+            Prompt=Prompt.Mid(4);
         }
+        if (Prompt.IsEmpty() && Car) Prompt=Car->GetHint();
     }
     const double MaxWidth=FMath::Min(620.,Draw.Width-390.);
-    const float AbovePrompt=Message(Draw,Prompt,Draw.Height-38,MaxWidth,true);
-    Message(Draw,Player->ActivityText(),AbovePrompt,MaxWidth,false);
+    const float AbovePrompt=Message(Draw,Prompt,Key,Draw.Height-38,MaxWidth,true);
+    Message(Draw,Player->ActivityText(),FString(),AbovePrompt,MaxWidth,false);
     Draw.Flush();
 }
