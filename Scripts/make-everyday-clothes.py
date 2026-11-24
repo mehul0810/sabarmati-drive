@@ -272,7 +272,13 @@ def build(base, reference, system, output):
     for face in body_polygons:
         indices = [v for v,_ in face]
         x,y,z = body[indices].mean(axis=0)
-        if y<1 or all(i in hidden for i in indices):
+        # This long-sleeved shirt covers the torso and upper arms. The generic
+        # MakeClothes hide mask leaves some shoulder faces for shorter garments;
+        # cull them even when relaxed sleeves move independently from the body.
+        # Keep a margin of skin inside the open collar and both sleeve cuffs.
+        collar = y>4.20 and min(abs(body[i,0]) for i in indices)<.90
+        cuff = abs(x)>3.05 and y<3.90
+        if (y<6.30 and not collar and not cuff) or all(i in hidden for i in indices):
             continue
         if abs(x)<.39 and 6.50<y<6.65 and z>1.10:
             continue  # The existing lips use their own material.
