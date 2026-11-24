@@ -168,6 +168,16 @@ void ARiverfrontPlayerController::RunGaitReview()
         FPlatformMisc::RequestExitWithStatus(false,1);
         return;
     }
+    if (FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitKurta")))
+    {
+        Walker->ApplyWardrobeLook(TEXT("kurta"),NAME_None);
+        if (Walker->GetMesh()->GetSkeletalMeshAsset()->GetFName() != TEXT("SK_FittedKurta"))
+        {
+            UE_LOG(LogTemp,Error,TEXT("Gait review could not switch to the fitted kurta."));
+            FPlatformMisc::RequestExitWithStatus(false,1);
+            return;
+        }
+    }
     auto State=MakeShared<FGaitStrip>();
     auto* Skin=Walker->GetMesh();
     const auto& Rig=Skin->GetSkeletalMeshAsset()->GetRefSkeleton();

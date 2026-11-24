@@ -53,7 +53,7 @@ You can walk from the wardrobe in Flat 2B down the apartment stairs to street le
 
 ## Optional local avatar import
 
-The editor and installed game use the fictional riverfront resident by default. At the wardrobe in Flat 2B, **Inspect face** shows the hairstyle and complexion up close. **View full outfit** restores the clothing view.
+The editor and installed game use the fictional riverfront resident by default. His lean athletic build carries through the everyday shirt, jeans and fitted kurta. At the wardrobe in Flat 2B, **Inspect face** shows the hairstyle and complexion up close. **View full outfit** restores the clothing view. [Body dimensions and asset sources](SourceAssets/RESIDENT-PHYSIQUE.md)
 
 The public resident walks at 145 cm/s and runs at 335 cm/s with Shift. A native Unreal 1D Blend Space uses the character's actual horizontal speed and keeps the left and right footfalls in phase while accelerating. The clip authoring script solves the support leg against a planted foot on level ground. It uses the existing resident skeleton.
 
@@ -65,6 +65,8 @@ For a local rig comparison, the editor supports a separately supplied and approp
 4. The public cook excludes this local folder automatically. Both clothed public residents ship in the Riverfront content directory.
 
 ## Run a native smoke test
+
+For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` exercises both shop previews and restores the saved outfit and balances. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
 
 The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual Shadow Maps, hardware ray tracing and Lumen disabled. This configuration aims to run on an M1 Max while leaving room to tune the M2 Air. It is not a measured performance claim.
 
