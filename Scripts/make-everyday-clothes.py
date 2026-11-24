@@ -276,7 +276,9 @@ def build(base, reference, system, output):
         # MakeClothes hide mask leaves some shoulder faces for shorter garments;
         # cull them even when relaxed sleeves move independently from the body.
         # Keep a margin of skin inside the open collar and both sleeve cuffs.
-        collar = y>4.20 and min(abs(body[i,0]) for i in indices)<.90
+        # Coarse shoulder quads can span from the neck into the visible yoke.
+        # Keep the full neck above the collar and only its inner faces beneath it.
+        collar = y>5.84 or (y>4.20 and max(abs(body[i,0]) for i in indices)<.65)
         cuff = abs(x)>3.05 and y<3.90
         if (y<6.30 and not collar and not cuff) or all(i in hidden for i in indices):
             continue
