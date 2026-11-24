@@ -146,3 +146,21 @@ def gait_pose(name, phase, rest):
                                          turn(Z, -sign*(30. if run else 34.)))
         pose["Elbow"+side] = turn(X, (-42. if run else 0.) + (13. if run else 5.)*swing)
     return pose, pelvis
+
+
+def idle_pose(phase, rest):
+    """Settle the original bent, outward-pointing bind arms beside the body."""
+    pose = {bone: IDENTITY for bone in rest}
+    breath = math.sin(math.tau*phase)
+    pose["Spine"] = turn(X, .35*breath)
+    pose["Head"] = multiply(turn(X, -.25*breath), turn(Y, .65*breath))
+    for side, sign in (("l", 1), ("r", -1)):
+        arm = sub(rest["Elbow"+side], rest["Shoulder"+side])
+        forearm = sub(rest["Hand"+side], rest["Elbow"+side])
+        upper = align(arm, (sign*.053, -.225, -.015))
+        hanging = (sign*.008, -.218, .050 + .003*breath)
+        lower = multiply(align(rotate(upper, forearm), hanging), upper)
+        pose["Shoulder"+side] = upper
+        pose["Elbow"+side] = multiply(inverse(upper), lower)
+        pose["Hip"+side] = turn(Z, -sign*7.)
+    return pose, rest["Pelvis"]

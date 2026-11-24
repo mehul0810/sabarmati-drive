@@ -6,7 +6,7 @@ import math
 import struct
 from pathlib import Path
 
-from resident_gait import GAITS, SAMPLE_RATE, gait_pose
+from resident_gait import GAITS, SAMPLE_RATE, gait_pose, idle_pose
 
 # Metres, glTF Y-up. All joints, clothes, expressions and animation belong to this export.
 def sub(a,b): return tuple(x-y for x,y in zip(a,b))
@@ -20,11 +20,6 @@ def distance_line(p,a,b):
     ab=sub(b,a)
     t=min(1,max(0,dot(sub(p,a),ab)/max(.000001,dot(ab,ab))))
     return norm(sub(p,add(a,mul(ab,t))))
-def axis_quat(ax,degrees):
-    h=math.radians(degrees)*.5
-    return (*mul(ax,math.sin(h)),math.cos(h))
-def quat_product(a,b):
-    return (*add(add(mul(b[:3],a[3]),mul(a[:3],b[3])),cross(a[:3],b[:3])),a[3]*b[3]-dot(a[:3],b[:3]))
 
 PALETTE={"skin":(.40,.21,.127),"lips":(.34,.13,.104),"hair":(.028,.020,.015),"sclera":(.60,.54,.43),
          "iris":(.05,.032,.015),"top_teal_woven":(.13,.27,.24),"top_seams":(.13,.16,.15),
@@ -138,32 +133,17 @@ def make(source,out,long_garment):
     rest = dict(zip(names, coords))
     for clip, period in [("A_Idle", 3.8)] + [(name, gait[0]) for name, gait in GAITS.items()]:
         samplers=[];channels=[]
-        frames=32 if clip=="A_Idle" else round(period*SAMPLE_RATE)
+        frames=round(period*(30 if clip=="A_Idle" else SAMPLE_RATE))
         times=data([(i*period/frames,) for i in range(frames+1)],"f","SCALAR",[0],[period])
         def channel(node, path, values, kind):
             channels.append({"sampler":len(samplers),"target":{"node":node,"path":path}})
             samplers.append({"input":times,"output":data(values,"f",kind)})
-        if clip in GAITS:
-            poses=[gait_pose(clip, i/frames, rest) for i in range(frames+1)]
-            channel(names.index("Pelvis"), "translation", [pelvis for _,pelvis in poses], "VEC3")
-            for i,name in enumerate(names):
-                if name != "Root":
-                    channel(i, "rotation", [pose[name] for pose,_ in poses], "VEC4")
-        else:
-            for i,name in enumerate(names):
-                if name=="Root":continue
-                rotations=[]
-                for f in range(frames+1):
-                    phase=f/frames*2*math.pi;side=1 if name.endswith("l") else -1
-                    pitch=roll=yaw=0.
-                    if name.startswith("Shoulder"):roll=-side*32
-                    elif name.startswith("Elbow"):pitch=-12.
-                    elif name.startswith("Hip"):roll=-side*7
-                    elif name=="Pelvis":roll=.5*math.cos(phase)
-                    elif name=="Chest":pitch=1.2*math.cos(phase)
-                    elif name=="Head":yaw=1.4*math.sin(phase);roll=-.8*math.cos(phase)
-                    rotations.append(quat_product(axis_quat((0,0,1),roll),quat_product(axis_quat((0,1,0),yaw),axis_quat((1,0,0),pitch))))
-                channel(i, "rotation", rotations, "VEC4")
+        poses=[idle_pose(i/frames, rest) if clip == "A_Idle" else gait_pose(clip, i/frames, rest)
+               for i in range(frames+1)]
+        channel(names.index("Pelvis"), "translation", [pelvis for _,pelvis in poses], "VEC3")
+        for i,name in enumerate(names):
+            if name != "Root":
+                channel(i, "rotation", [pose[name] for pose,_ in poses], "VEC4")
         clips.append({"name":clip,"samplers":samplers,"channels":channels})
     scene={"asset":{"version":"2.0","generator":"Sabarmati Drive resident pipeline"},"scene":0,"scenes":[{"nodes":[0,len(nodes)-1]}],
       "nodes":nodes,"skins":[skin],"meshes":[{"name":out.stem,"primitives":primitives}],"animations":clips,"materials":materials,

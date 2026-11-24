@@ -5,7 +5,7 @@ from pathlib import Path
 import unreal as ue
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from resident_gait import GAITS, SAMPLE_RATE, gait_pose
+from resident_gait import GAITS, SAMPLE_RATE, gait_pose, idle_pose
 
 PEOPLE = "/Game/Sabarmati/Riverfront/People"
 LIB = ue.AnimPoseExtensions
@@ -25,10 +25,10 @@ def bake(path, name):
             raise ValueError("Expected axis-aligned resident bind pose on " + name_str)
         rest[name_str] = (p.x*.01, p.z*.01, p.y*.01)
         local[name_str] = LIB.get_ref_bone_pose(source, bone_name, ue.AnimPoseSpaces.LOCAL)
-    period, _ = GAITS[name]
-    fps = SAMPLE_RATE
+    period, fps = (3.8, 30) if name == "A_Idle" else (GAITS[name][0], SAMPLE_RATE)
     count = round(period*fps)
-    samples = [gait_pose(name, i/count, rest) for i in range(count+1)]
+    samples = [(idle_pose(i/count, rest) if name == "A_Idle" else gait_pose(name, i/count, rest))
+               for i in range(count+1)]
     controller = sequence.controller
     controller.open_bracket("Bake planted resident gait", False)
     try:
@@ -55,5 +55,5 @@ def bake(path, name):
 
 
 for folder in (PEOPLE, PEOPLE + "/Kurta"):
-    for clip in GAITS:
+    for clip in ("A_Idle", *GAITS):
         bake(folder + "/" + clip, clip)
