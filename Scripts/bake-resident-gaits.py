@@ -1,21 +1,57 @@
-"""Rebuild native locomotion sequences on both resident skeletons using Unreal's animation controller."""
+"""Bake planted locomotion plus the installed Third Person template's unarmed arm motion.
+
+Run in Unreal Editor with the template Mannequins under /Game/Characters/Mannequins.
+The baked sequences keep only resident skeleton tracks and run entirely offline.
+"""
 import sys
 from pathlib import Path
 
 import unreal as ue
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from resident_gait import GAITS, SAMPLE_RATE, gait_pose, idle_pose
+from resident_gait import GAITS, SAMPLE_RATE, TRAVERSALS, add, gait_pose, idle_pose, scale, sub, traversal_pose, unit
 
 PEOPLE = "/Game/Sabarmati/Riverfront/People"
 LIB = ue.AnimPoseExtensions
+OPTIONS = ue.AnimPoseEvaluationOptions()
+TEMPLATE = "/Game/Characters/Mannequins/Anims/Unarmed"
 
 
-def bake(path, name):
-    sequence = ue.load_asset(path)
-    if not sequence:
-        raise RuntimeError("Missing resident animation " + path)
-    source = LIB.get_anim_pose_at_time(sequence, 0., ue.AnimPoseEvaluationOptions())
+def sample_arms(mode, first, last, count):
+    path = f"{TEMPLATE}/{mode}/MF_Unarmed_{mode}_Fwd"
+    clip = ue.load_asset(path)
+    if not clip:
+        raise RuntimeError(f"Missing the installed Third Person template clip {path}")
+    keys = []
+    for i in range(count+1):
+        time = clip.get_play_length() * (first+(last-first)*i/count)
+        sample = LIB.get_anim_pose_at_time(clip, time, OPTIONS)
+        arms = {}
+        for side in ("l", "r"):
+            points = []
+            for bone in ("upperarm", "lowerarm", "hand", "middle_01"):
+                p = LIB.get_bone_pose(sample, f"{bone}_{side}", ue.AnimPoseSpaces.WORLD).translation
+                points.append((p.x, p.z, p.y))
+            arms[side] = [unit(sub(b,a)) for a,b in zip(points,points[1:])]
+        keys.append(arms)
+    result = []
+    for i, key in enumerate(keys):
+        arms = {}
+        for side, directions in key.items():
+            # Remove the small endpoint mismatch between measured left-foot strikes.
+            a, b = keys[0][side], keys[-1][side]
+            upper, fore, palm = [unit(add(d, scale(sub(x,y), i/count-.5)))
+                                for d,x,y in zip(directions,a,b)]
+            upper = (.66*upper[0], upper[1], upper[2]*(.95 if mode == "Jog" else .72))
+            lower = (.70*fore[0], fore[1]-(.04 if mode == "Jog" else .34),
+                     fore[2]*(.92 if mode == "Jog" else .62))
+            arms[side] = (upper, lower, add(unit(lower), scale(sub(palm,fore), .54)))
+        result.append(arms)
+    return result
+
+
+def reference_rig(sequence):
+    source = LIB.get_anim_pose_at_time(sequence, 0., OPTIONS)
     rest, local = {}, {}
     for bone_name in LIB.get_bone_names(source):
         name_str = str(bone_name)
@@ -25,12 +61,13 @@ def bake(path, name):
             raise ValueError("Expected axis-aligned resident bind pose on " + name_str)
         rest[name_str] = (p.x*.01, p.z*.01, p.y*.01)
         local[name_str] = LIB.get_ref_bone_pose(source, bone_name, ue.AnimPoseSpaces.LOCAL)
-    period, fps = (3.8, 30) if name == "A_Idle" else (GAITS[name][0], SAMPLE_RATE)
-    count = round(period*fps)
-    samples = [(idle_pose(i/count, rest) if name == "A_Idle" else gait_pose(name, i/count, rest))
-               for i in range(count+1)]
+    return rest, local
+
+
+def bake(sequence, local, samples, fps):
+    count = len(samples)-1
     controller = sequence.controller
-    controller.open_bracket("Bake planted resident gait", False)
+    controller.open_bracket("Bake resident motion", False)
     try:
         controller.set_frame_rate(ue.FrameRate(numerator=fps, denominator=1), False)
         controller.set_number_of_frames(ue.FrameNumber(value=count), False)
@@ -50,10 +87,31 @@ def bake(path, name):
     finally:
         controller.close_bracket(False)
     if not ue.EditorAssetLibrary.save_loaded_asset(sequence, only_if_is_dirty=False):
-        raise RuntimeError("Unable to save " + path)
-    print("RESIDENT_GAIT_SAVED", path, count, fps)
+        raise RuntimeError("Unable to save " + sequence.get_path_name())
+    print("RESIDENT_MOTION_SAVED", sequence.get_path_name(), count, fps)
 
 
-for folder in (PEOPLE, PEOPLE + "/Kurta"):
+for outfit, folder in (("Everyday", PEOPLE), ("Kurta", PEOPLE + "/Kurta")):
+    reference = ue.load_asset(folder + "/A_Idle")
+    rest, local = reference_rig(reference)
     for clip in ("A_Idle", *GAITS):
-        bake(folder + "/" + clip, clip)
+        sequence = ue.load_asset(folder + "/" + clip)
+        period, fps = (3.8, 30) if clip == "A_Idle" else (GAITS[clip][0], SAMPLE_RATE)
+        count = round(period*fps)
+        if clip == "A_Idle":
+            samples = [idle_pose(i/count, rest) for i in range(count+1)]
+        else:
+            # Use one left-to-left stride from each multistride source clip.
+            arms = sample_arms("Jog", .286, .613, count) if clip == "A_Jog" else sample_arms("Walk", .400, .900, count)
+            samples = [gait_pose(clip, i/count, rest, arm_sample) for i,arm_sample in enumerate(arms)]
+        bake(sequence, local, samples, fps)
+    motion_folder = f"{PEOPLE}/Motion/{outfit}"
+    for clip, (period, _) in TRAVERSALS.items():
+        sequence = ue.EditorAssetLibrary.load_asset(motion_folder + "/" + clip)
+        if not sequence:
+            factory = ue.AnimSequenceFactory()
+            factory.set_editor_property("target_skeleton", reference.get_editor_property("skeleton"))
+            sequence = ue.AssetToolsHelpers.get_asset_tools().create_asset(clip, motion_folder, ue.AnimSequence, factory)
+        fps = 30
+        count = round(period*fps)
+        bake(sequence, local, [traversal_pose(clip, i/count, rest) for i in range(count+1)], fps)

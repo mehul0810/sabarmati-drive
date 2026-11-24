@@ -56,7 +56,22 @@ def rotate(q, v):
 
 def align(a, b):
     a, b = unit(a), unit(b)
-    return unit((*cross(a, b), 1. + dot(a, b)))
+    d = dot(a, b)
+    if d < -.99999:
+        return turn(unit(cross(a, X if abs(a[0]) < .85 else Y)), 180.)
+    return unit((*cross(a, b), 1. + d))
+
+
+def arm_directions(rest, pose, side, upper, lower, palm, twist=0.):
+    """Aim the upper arm, forearm and wrist in chest space."""
+    upper_bind = sub(rest["Elbow"+side], rest["Shoulder"+side])
+    fore_bind = sub(rest["Hand"+side], rest["Elbow"+side])
+    shoulder = align(upper_bind, upper)
+    forearm = multiply(align(rotate(shoulder, fore_bind), lower), shoulder)
+    hand = multiply(turn(unit(palm), twist), multiply(align(rotate(forearm, fore_bind), palm), forearm))
+    pose["Shoulder"+side] = shoulder
+    pose["Elbow"+side] = multiply(inverse(shoulder), forearm)
+    pose["Hand"+side] = multiply(inverse(forearm), hand)
 
 
 def spline(t, knots):
@@ -109,7 +124,7 @@ def leg(rest, pose, hip, target, pelvis_rotation, side, foot_pitch):
     pose["Foot"+side] = multiply(inverse(lower), turn(X, foot_pitch))
 
 
-def gait_pose(name, phase, rest):
+def gait_pose(name, phase, rest, sampled_arms=None):
     """Return local rotations and the pelvis position in the fixed root frame."""
     period, speed = GAITS[name]
     run = name == "A_Jog"
@@ -141,10 +156,14 @@ def gait_pose(name, phase, rest):
         clearance = .012*math.sin(math.pi*(t-stance)/(1.-stance))**2 if t > stance else 0.
         target = (sign*(.096 + clearance), height, fore)
         leg(rest, pose, hip, target, pelvis_rotation, side, pitch)
-        swing = math.cos(t*math.tau-.18)
-        pose["Shoulder"+side] = multiply(turn(X, (29. if run else 17.)*swing + (5. if run else 1.)),
-                                         turn(Z, -sign*(30. if run else 34.)))
-        pose["Elbow"+side] = turn(X, (-42. if run else 0.) + (13. if run else 5.)*swing)
+        if sampled_arms:
+            upper, lower, palm = sampled_arms[side]
+        else:
+            swing = -math.cos(t*math.tau-.18)
+            upper = (sign*.18, -1., (.63 if run else .26)*swing - .05)
+            lower = (-sign*.10, -.56 if run else -1., (.57 if run else .24)*swing + (.87 if run else .23))
+            palm = (lower[0], lower[1]-.06, lower[2]-.05)
+        arm_directions(rest, pose, side, upper, lower, palm, sign*(4. if run else 1.))
     return pose, pelvis
 
 
@@ -155,12 +174,62 @@ def idle_pose(phase, rest):
     pose["Spine"] = turn(X, .35*breath)
     pose["Head"] = multiply(turn(X, -.25*breath), turn(Y, .65*breath))
     for side, sign in (("l", 1), ("r", -1)):
-        arm = sub(rest["Elbow"+side], rest["Shoulder"+side])
-        forearm = sub(rest["Hand"+side], rest["Elbow"+side])
-        upper = align(arm, (sign*.053, -.225, -.015))
         hanging = (sign*.008, -.218, .050 + .003*breath)
-        lower = multiply(align(rotate(upper, forearm), hanging), upper)
-        pose["Shoulder"+side] = upper
-        pose["Elbow"+side] = multiply(inverse(upper), lower)
+        arm_directions(rest, pose, side, (sign*.053, -.225, -.015), hanging, (0., -.22, .031))
         pose["Hip"+side] = turn(Z, -sign*7.)
     return pose, rest["Pelvis"]
+
+
+# Phase, torso lean, pelvis drop, right foot lift/reach, left foot lift/reach.
+# The right knee leads each move. A vault uses the left palm and a climb uses both.
+TRAVERSALS = {
+    "A_FenceVault": (.82, (
+        (0.,    4., -.025, .0,   .11, .0,   -.16),
+        (.15,  24., -.20,  .04,  .16, .015, -.20),
+        (.35,  48., -.39,  .41,  .28, .13,  -.26),
+        (.54,  33., -.26,  .25,  .45, .29,   .11),
+        (.73,  15., -.16,  .05,  .32, .20,   .05),
+        (.88,   9., -.20,  .00,  .18, .07,  -.16),
+        (1.,    4., -.04,  .00,  .10, .00,  -.12),
+    )),
+    "A_WallMantle": (1.24, (
+        (0.,    3., -.025, .0,   .07, .0,   -.13),
+        (.16,  17., -.18,  .02,  .12, .0,   -.14),
+        (.33,  38., -.31,  .36,  .26, .11,  -.21),
+        (.52,  47., -.41,  .31,  .25, .18,  -.22),
+        (.69,  43., -.42,  .10,  .26, .22,  -.12),
+        (.84,  24., -.30,  .00,  .21, .08,  -.04),
+        (1.,    4., -.04,  .00,  .10, .00,  -.115),
+    )),
+}
+
+
+def traversal_pose(name, phase, rest):
+    _, frames = TRAVERSALS[name]
+    lean, drop, right_lift, right_reach, left_lift, left_reach = (
+        spline(phase, [(frame[0], frame[i], 0.) for frame in frames]) for i in range(1, 7))
+    mantle = name == "A_WallMantle"
+    reach = spline(phase, [(0., 0., 0.), (.29, 1., 0.), (.48, .9, 0.), (.76, .34, 0.), (1., 0., 0.)])
+    pell = rest["Pelvis"]
+    pelvis = add(pell, (-.023*reach if not mantle else 0., drop, .054*reach))
+    pose = {bone: IDENTITY for bone in rest}
+    pelvis_rotation = multiply(turn(X, .36*lean), turn(Y, -5.*reach if not mantle else 0.))
+    pose["Pelvis"] = pelvis_rotation
+    pose["Spine"] = turn(X, .48*lean)
+    pose["Chest"] = turn(X, .16*lean)
+    pose["Neck"] = turn(X, -.56*lean)
+    pose["Head"] = turn(X, -.31*lean)
+    for side, sign, lift, fore in (("l", 1, left_lift, left_reach), ("r", -1, right_lift, right_reach)):
+        hip = add(pelvis, rotate(pelvis_rotation, sub(rest["Hip"+side], pell)))
+        foot = rest["Foot"+side]
+        leg(rest, pose, hip, (sign*.12, foot[1]+lift, fore), pelvis_rotation, side, 14.*reach)
+        support = 1. if mantle or sign == 1 else 0.
+        upper = (sign*(.20+(.13 if support else .91)*reach), -1.+.57*reach,
+                 .12+reach*(.85 if support else -.47))
+        lower = (sign*.05, -.85+.35*reach, .55+.22*reach)
+        palm = (sign*.06, -.62, .55)
+        if support:
+            along_edge = rotate(turn(X, -lean), (sign*.06, -.09, .98))
+            palm = add(scale(palm, 1.-reach), scale(along_edge, reach))
+        arm_directions(rest, pose, side, upper, lower, palm, -sign*13.*reach)
+    return pose, pelvis
