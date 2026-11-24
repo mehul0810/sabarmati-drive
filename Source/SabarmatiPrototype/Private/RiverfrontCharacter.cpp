@@ -154,6 +154,25 @@ void ARiverfrontCharacter::BeginPlay()
     StoneStep=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_FootStone.S_FootStone"));
     GritStep=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_FootGrit.S_FootGrit"));
 
+    if (bUseBlueprintAvatar)
+    {
+        TInlineComponentArray<USkeletalMeshComponent*> Bodies;
+        GetComponents(Bodies, true);
+        bBlueprintAvatarActive = Bodies.ContainsByPredicate([](const USkeletalMeshComponent* Body)
+        {
+            return Body && Body->GetSkeletalMeshAsset();
+        });
+        if (bBlueprintAvatarActive)
+        {
+            PreviewRig->SetVisibility(false, true);
+            PreviewRig->SetHiddenInGame(true, true);
+            ReceiveAvatarAppearance(WardrobeOutfit, WardrobeAccessory, WardrobeTone, bCroppedHair);
+            return;
+        }
+        UE_LOG(LogTemp, Warning, TEXT("Sabarmati avatar %s has no assembled skeletal mesh; loading the riverfront character."),
+            *GetClass()->GetPathName());
+    }
+
     // A cooked Unreal Skeletal Mesh, not a runtime read of the raw GLB.
     if (USkeletalMesh* ImportedMesh = LoadOptionalAvatarAsset<USkeletalMesh>(TEXT("SK_Sabarmati")))
     {
@@ -227,13 +246,20 @@ void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 
 bool ARiverfrontCharacter::SupportsPublicHaircut() const
 {
+    if (bBlueprintAvatarActive) return bSupportsBlueprintHaircuts;
     return DefaultAvatarMesh && Hair->GetStaticMesh() &&
         DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
 }
 
 void ARiverfrontCharacter::SetCroppedHair(bool bCropped)
 {
+    const bool bChanged = bCroppedHair != bCropped;
     bCroppedHair = bCropped;
+    if (bBlueprintAvatarActive)
+    {
+        if (bChanged) ReceiveAvatarAppearance(WardrobeOutfit, WardrobeAccessory, WardrobeTone, bCroppedHair);
+        return;
+    }
     UpdateHair();
 }
 
@@ -265,6 +291,11 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     WardrobeOutfit = Outfit.IsNone() ? FName(TEXT("cotton-sand")) : Outfit;
     WardrobeAccessory = Accessory;
     WardrobeTone = Tone;
+    if (bBlueprintAvatarActive)
+    {
+        ReceiveAvatarAppearance(WardrobeOutfit, WardrobeAccessory, WardrobeTone, bCroppedHair);
+        return;
+    }
     if (!DefaultAvatarMesh) return;
 
     const bool bIndigo = WardrobeOutfit == TEXT("shirt-indigo");
@@ -348,7 +379,8 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
         if (!bInFittingPose) return;
         bInFittingPose = false;
         Movement->bOrientRotationToMovement = bOrientBeforeFitting;
-        GetMesh()->SetPlayRate(1.f);
+        if (bBlueprintAvatarActive) ReceiveAvatarFittingPose(false);
+        else GetMesh()->SetPlayRate(1.f);
         return;
     }
     if (!bInFittingPose) bOrientBeforeFitting = Movement->bOrientRotationToMovement;
@@ -356,6 +388,11 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
     Movement->StopMovementImmediately();
     ConsumeMovementInputVector();
     Movement->bOrientRotationToMovement = false;
+    if (bBlueprintAvatarActive)
+    {
+        ReceiveAvatarFittingPose(true);
+        return;
+    }
     if (!AnimationClips.IsValidIndex(0) || !AnimationClips[0]) return;
 
     // Menus can pause the world before the next animation tick. Evaluate a
@@ -424,6 +461,7 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
             if (Step) UGameplayStatics::PlaySoundAtLocation(this,Step,Foot,.18f+FMath::Min(Rate/1600.f,.3f),.94f+(StepIndex%4)*.042f);
         }
     }
+    if (bBlueprintAvatarActive) return;
     const double FlatSpeed = GetVelocity().Size2D();
     if (bUsesImportedMesh)
     {
@@ -471,7 +509,7 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
     Input->BindAxis(TEXT("Side"), this, &ARiverfrontCharacter::MoveSide);
     Input->BindAxis(TEXT("LookYaw"), this, &APawn::AddControllerYawInput);
     Input->BindAxis(TEXT("LookPitch"), this, &APawn::AddControllerPitchInput);
-    Input->BindAction(TEXT("BrakeOrJump"), IE_Pressed, this, &ACharacter::Jump);
+    Input->BindAction(TEXT("BrakeOrJump"), IE_Pressed, this, &ARiverfrontCharacter::JumpOrTraverse);
     Input->BindAction(TEXT("BrakeOrJump"), IE_Released, this, &ACharacter::StopJumping);
     Input->BindAction(TEXT("Sprint"), IE_Pressed, this, &ARiverfrontCharacter::Sprint);
     Input->BindAction(TEXT("Sprint"), IE_Released, this, &ARiverfrontCharacter::StopSprint);
@@ -479,6 +517,12 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
     Input->BindAction(TEXT("VehicleDoor"),IE_Pressed,this,&ARiverfrontCharacter::OpenCarDoor);
     Input->BindAction(TEXT("Reset"), IE_Pressed, this, &ARiverfrontCharacter::ResetWalk);
     Input->BindAction(TEXT("DebugStats"), IE_Pressed, this, &ARiverfrontCharacter::ToggleStats);
+}
+
+void ARiverfrontCharacter::JumpOrTraverse()
+{
+    if (bBlueprintAvatarActive && TryAvatarTraversal()) return;
+    Jump();
 }
 
 void ARiverfrontCharacter::MoveForward(float Amount)
@@ -527,6 +571,7 @@ void ARiverfrontCharacter::EnterCar()
 void ARiverfrontCharacter::SetInCar(bool bInCar)
 {
     SetActorHiddenInGame(bInCar);
+    if (bBlueprintAvatarActive) ReceiveAvatarInCar(bInCar);
     SetActorEnableCollision(!bInCar);
     SetActorTickEnabled(!bInCar);
     GetCharacterMovement()->StopMovementImmediately();

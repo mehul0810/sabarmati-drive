@@ -26,6 +26,25 @@ ARiverfrontGameMode::ARiverfrontGameMode()
 void ARiverfrontGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
     Super::InitGame(MapName, Options, ErrorMessage);
+    if (!PlayerAvatarClass.IsNull() && !FParse::Param(FCommandLine::Get(), TEXT("SabarmatiPublicAvatar")))
+    {
+        UClass* Avatar = PlayerAvatarClass.Get();
+        if (!Avatar && FPackageName::DoesPackageExist(PlayerAvatarClass.ToSoftObjectPath().GetLongPackageName()))
+        {
+            Avatar = PlayerAvatarClass.LoadSynchronous();
+        }
+        if (Avatar && Avatar->IsChildOf(ARiverfrontCharacter::StaticClass()) &&
+            !Avatar->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+        {
+            DefaultPawnClass = Avatar;
+            UE_LOG(LogTemp, Display, TEXT("Sabarmati player class: %s"), *Avatar->GetPathName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Sabarmati player class %s is unavailable or incompatible; using %s."),
+                *PlayerAvatarClass.ToString(), *GetNameSafe(DefaultPawnClass.Get()));
+        }
+    }
     bCityRequested = UGameplayStatics::HasOption(Options, TEXT("SabarmatiCity"));
 #if !UE_BUILD_SHIPPING
     bCityRequested |= !UGameplayStatics::HasOption(Options, TEXT("SabarmatiRiverfront")) &&

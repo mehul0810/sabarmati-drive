@@ -10,7 +10,7 @@ class ARiverfrontWorld;
 class ARiverfrontTraffic;
 class APlayerStart;
 
-UCLASS()
+UCLASS(Config=Game)
 class SABARMATIPROTOTYPE_API ARiverfrontGameMode : public AGameModeBase
 {
     GENERATED_BODY()
@@ -29,6 +29,10 @@ public:
     double GetSpawnYaw() const { return SpawnYaw; }
 
 private:
+    // Optional locally assembled player. A blank setting uses the native riverfront character.
+    UPROPERTY(Config)
+    TSoftClassPtr<ARiverfrontCharacter> PlayerAvatarClass;
+
     FVector WalkSpawn = FVector::ZeroVector;
     double SpawnYaw = 0.0;
     bool bCityRequested = false;

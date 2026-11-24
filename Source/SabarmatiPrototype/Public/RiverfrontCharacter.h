@@ -33,7 +33,33 @@ public:
     bool GetWardrobeShirtColor(FLinearColor& Out) const;
     bool HasWristwatchVisible() const;
 
+protected:
+    // The subclass supplies its own skeletal components, materials and animation Blueprint.
+    UPROPERTY(EditDefaultsOnly, Category="Avatar")
+    bool bUseBlueprintAvatar = false;
+
+    UPROPERTY(EditDefaultsOnly, Category="Avatar", meta=(EditCondition="bUseBlueprintAvatar"))
+    bool bSupportsBlueprintHaircuts = false;
+
+    // Delivered on spawn, profile restoration and temporary wardrobe previews.
+    UFUNCTION(BlueprintImplementableEvent, Category="Avatar", meta=(DisplayName="Apply Avatar Appearance"))
+    void ReceiveAvatarAppearance(FName Outfit, FName Accessory, FName Tone, bool bCropped);
+
+    UFUNCTION(BlueprintImplementableEvent, Category="Avatar", meta=(DisplayName="Set Avatar Fitting Pose"))
+    void ReceiveAvatarFittingPose(bool bFitting);
+
+    // Child actor assemblies can mirror their parent's vehicle visibility here.
+    UFUNCTION(BlueprintImplementableEvent, Category="Avatar", meta=(DisplayName="Set Avatar In Car"))
+    void ReceiveAvatarInCar(bool bInCar);
+
+    // Return true only if the traversal system actually started a move.
+    UFUNCTION(BlueprintImplementableEvent, Category="Avatar", meta=(DisplayName="Try Avatar Traversal"))
+    bool TryAvatarTraversal();
+
 private:
+    bool bBlueprintAvatarActive = false;
+    void JumpOrTraverse();
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USpringArmComponent> Arm;
     UPROPERTY(VisibleAnywhere)
