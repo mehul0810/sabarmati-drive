@@ -61,8 +61,7 @@ void ARiverfrontPlayerController::BeginLifeSession()
     bHasExperiencedWake = Profile->bFirstMorningSeen;
     bParcelInHand = Profile->bPrintDeliveryActive;
     bParcelDelivered = Profile->CompletedPrintDeliveries > 0;
-    Walker->ApplyWardrobeLook(Profile->EquippedOutfit, Profile->EquippedAccessory, Profile->AppearanceTone);
-    Walker->SetCroppedHair(Profile->bCroppedHair);
+    Walker->ApplyProfileAppearance(*Profile);
     const bool bReturning = Profile->bHasLifeCheckpoint && Profile->CheckpointDistrict == District;
     bool bPlaced = false;
     if (bReturning)
@@ -118,8 +117,7 @@ void ARiverfrontPlayerController::RefreshLifeAppearance()
     if (auto* Walker = Cast<ARiverfrontCharacter>(GetPawn()))
         if (const auto* Profile = RiverfrontLife::Load(ProfileSlot))
         {
-            Walker->ApplyWardrobeLook(Profile->EquippedOutfit, Profile->EquippedAccessory, Profile->AppearanceTone);
-            Walker->SetCroppedHair(Profile->bCroppedHair);
+            Walker->ApplyProfileAppearance(*Profile);
         }
 }
 

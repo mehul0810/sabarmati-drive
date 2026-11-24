@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "RiverfrontResidentAppearance.h"
 #include "RiverfrontCharacter.generated.h"
 
 class UCameraComponent;
@@ -13,6 +14,7 @@ class UStaticMeshComponent;
 class UAnimSequence;
 class UBlendSpace1D;
 class UMaterialInterface;
+class URiverfrontLocalProfile;
 
 UCLASS()
 class SABARMATIPROTOTYPE_API ARiverfrontCharacter : public ACharacter
@@ -28,6 +30,9 @@ public:
     void SetFittingPose(bool bFitting);
     bool SupportsPublicHaircut() const;
     void SetCroppedHair(bool bCropped);
+    void ApplyProfileAppearance(const URiverfrontLocalProfile& Profile);
+    UFUNCTION(BlueprintPure, Category="Avatar")
+    ERiverfrontGender GetAvatarGender() const { return AvatarGender; }
     void ApplyWardrobeLook(FName Outfit, FName Accessory, FName AppearanceTone = NAME_None);
     FName GetWardrobeOutfit() const { return WardrobeOutfit; }
     FName GetWardrobeAccessory() const { return WardrobeAccessory; }
@@ -98,7 +103,7 @@ private:
     bool bInFittingPose = false;
     bool bOrientBeforeFitting = true;
     UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;
-    UPROPERTY() TObjectPtr<USkeletalMesh> KurtaMesh;
+    ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     UPROPERTY() TObjectPtr<UMaterialInterface> CottonMaterial;
     UPROPERTY() TObjectPtr<UMaterialInterface> FaceMaterial;
     UPROPERTY() TObjectPtr<UMaterialInterface> TailoredCloth;

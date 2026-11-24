@@ -1,4 +1,5 @@
 #include "RiverfrontCharacter.h"
+#include "RiverfrontLocalProfile.h"
 #include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
 #include "Kismet/GameplayStatics.h"
@@ -45,8 +46,7 @@ USkeletalMesh* LoadPlayerMesh()
             return Local;
     }
 
-    if (auto* Everyday = LoadObject<USkeletalMesh>(nullptr,
-        TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Everyday/SK_RiverEveryday.SK_RiverEveryday")))
+    if (auto* Everyday = RiverfrontResident::LoadOutfitMesh(ERiverfrontGender::Male, false))
         return Everyday;
     return LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Sabarmati/Riverfront/People/SK_RiverResident.SK_RiverResident"));
 }
@@ -301,6 +301,13 @@ void ARiverfrontCharacter::UpdateHair()
     }
 }
 
+void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile& Profile)
+{
+    AvatarGender = Profile.AvatarGender;
+    bCroppedHair = Profile.bCroppedHair;
+    ApplyWardrobeLook(Profile.EquippedOutfit, Profile.EquippedAccessory, Profile.AppearanceTone);
+}
+
 void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FName Tone)
 {
     WardrobeOutfit = Outfit.IsNone() ? FName(TEXT("cotton-sand")) : Outfit;
@@ -316,12 +323,22 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     const bool bIndigo = WardrobeOutfit == TEXT("shirt-indigo");
     const bool bKurta = WardrobeOutfit == TEXT("kurta");
     const bool bPublic = DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
-    if (bPublic && bKurta && !KurtaMesh)
+    USkeletalMesh* Model = DefaultAvatarMesh;
+    bool bUsingKurtaRig = false;
+    if (bPublic && (bKurta || AvatarGender == ERiverfrontGender::Female))
     {
-        KurtaMesh = LoadObject<USkeletalMesh>(nullptr,
-            TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Tailored/SK_FittedKurta.SK_FittedKurta"));
+        if (USkeletalMesh* Fitted = RiverfrontResident::LoadOutfitMesh(AvatarGender, bKurta))
+        {
+            Model = Fitted;
+            bUsingKurtaRig = bKurta;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("No fitted wardrobe mesh for avatar %d, outfit %s."),
+                static_cast<int32>(AvatarGender), *WardrobeOutfit.ToString());
+        }
     }
-    UseWardrobeMesh(bPublic && bKurta && KurtaMesh ? KurtaMesh.Get() : DefaultAvatarMesh.Get(), bPublic && bKurta);
+    UseWardrobeMesh(Model, bUsingKurtaRig);
 
     // The fabric is UV-mapped on the garment and moves with the animated body.
     const FColor Shirt = bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
@@ -352,8 +369,10 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     // The everyday shirt and jeans have their own complete clothing UV atlas and normal maps.
     // Passing a null override keeps the material assigned to each skeletal mesh section.
     UMaterialInterface* Cloth = nullptr;
-    if (GetMesh()->GetSkeletalMeshAsset()->GetFName() != TEXT("SK_RiverEveryday"))
-        Cloth = bPublic && !bKurta && TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
+    if (!bPublic || bUsingKurtaRig)
+        Cloth = CottonMaterial.Get();
+    else if (Model->GetFName() == TEXT("SK_RiverResident"))
+        Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
     SetSurface(TEXT("bottom_denim"), Cloth, Trousers);

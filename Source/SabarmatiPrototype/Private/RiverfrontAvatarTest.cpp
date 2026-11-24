@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "RiverfrontCharacter.h"
+#include "RiverfrontLocalProfile.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -32,7 +33,13 @@ bool FSabarmatiAuthoredAvatar::RunTest(const FString& Parameters)
     Body->SetAnimationMode(EAnimationMode::AnimationBlueprint);
     Character->DispatchBeginPlay();
     Character->SetFittingPose(true);
-    Character->ApplyWardrobeLook(TEXT("kurta"), TEXT("watch"), TEXT("warm"));
+    auto* Profile = NewObject<URiverfrontLocalProfile>();
+    Profile->AvatarGender = ERiverfrontGender::Female;
+    Profile->EquippedOutfit = TEXT("kurta");
+    Profile->EquippedAccessory = TEXT("watch");
+    Profile->AppearanceTone = TEXT("warm");
+    Character->ApplyProfileAppearance(*Profile);
+    TestEqual(TEXT("Authored avatar can read its selected gender"), Character->GetAvatarGender(), ERiverfrontGender::Female);
     Character->SetCroppedHair(true);
     Character->SetFittingPose(false);
     Character->Tick(.016f);
