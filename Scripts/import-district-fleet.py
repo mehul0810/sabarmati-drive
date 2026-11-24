@@ -11,6 +11,7 @@ def asset(name,kind,factory):
     path=folder+"/"+name
     return assets.load_asset(path) if assets.does_asset_exist(path) else tools.create_asset(name,folder,kind,factory)
 base=asset("M_TrafficFinish",ue.Material,ue.MaterialFactoryNew())
+base.set_editor_property("used_with_instanced_static_meshes", True)
 lib.delete_all_material_expressions(base)
 for prop,param,default in (("BASE_COLOR","Tint",ue.LinearColor(.2,.2,.2,1)),("ROUGHNESS","Rough",.48),("METALLIC","Metal",.35)):
     expr=lib.create_material_expression(base,ue.MaterialExpressionVectorParameter if prop=="BASE_COLOR" else ue.MaterialExpressionScalarParameter,0,0)
@@ -32,12 +33,12 @@ pipeline=ue.InterchangeGenericAssetsPipeline()
 pipeline.get_editor_property("material_pipeline").set_editor_property("import_materials",False)
 params=ue.ImportAssetParameters()
 params.set_editor_property("is_automated",True)
+params.set_editor_property("replace_existing",True)
 params.set_editor_property("override_pipelines",[ue.SoftObjectPath(pipeline.get_path_name())])
 for file in sorted(src.glob("SM_Traffic*.glb")):
     path=folder+"/"+file.stem
-    if not assets.does_asset_exist(path):
-        data=manager.create_source_data(str(file))
-        if not manager.import_asset(folder,data,params): raise RuntimeError(file.stem)
+    data=manager.create_source_data(str(file))
+    if not manager.import_asset(folder,data,params): raise RuntimeError(file.stem)
     mesh=assets.load_asset(path)
     if not isinstance(mesh,ue.StaticMesh): raise RuntimeError(path)
     for i,slot in enumerate(mesh.get_editor_property("static_materials")):

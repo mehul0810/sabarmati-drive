@@ -34,10 +34,12 @@ class Body:
             r=min(width*.14,(top-bottom)*.23,.19)
             rings.append([(x,y,z) for x,y in ((-width/2+r,bottom),(-width/2,bottom+r),(-width/2,top-r),(-width/2+r,top),
                 (width/2-r,top),(width/2,top-r),(width/2,bottom+r),(width/2-r,bottom))])
-        self.poly(name,list(reversed(rings[0])))
+        # These cross sections are clockwise when viewed from the nose.
+        # Keep outward normals on the paint, including the ends of each panel.
+        self.poly(name,rings[0])
         for a,b in zip(rings,rings[1:]):
-            for i in range(8): self.poly(name,[a[i],a[(i+1)%8],b[(i+1)%8],b[i]])
-        self.poly(name,rings[-1])
+            for i in range(8): self.poly(name,[a[i],b[i],b[(i+1)%8],a[(i+1)%8]])
+        self.poly(name,list(reversed(rings[-1])))
     def rod(self,name,a,b,r):
         vec=[b[i]-a[i] for i in range(3)]
         size=sum(v*v for v in vec)**.5
@@ -51,7 +53,9 @@ class Body:
             self.poly(name,pts)
 
 def glazing(body,x,z0,z1,base,height,side):
-    body.poly("glass",[(x,base,z0),(x,base,z1),(x*.91,base+height,z1-.15),(x*.91,base+height,z0+.12)])
+    pane=[(x,base,z0),(x,base,z1),(x*.91,base+height,z1-.15),(x*.91,base+height,z0+.12)]
+    body.poly("glass",list(reversed(pane)) if side>0 else pane)
+    body.rod("iron",(x*.91,base+height,z1-.15),(x,base,z1),.026)
     body.rod("iron",(x*.91,base+height,z0+.12),(x,base,z0),.026)
 
 def passenger(name,L,W,H,hood,roof,finish):
@@ -114,8 +118,19 @@ def commercial(kind,L,W,H):
     roof_z=H if not tall else H-.26
     b.loft("cream",[(begin+.04,W*.92,roof_z-.17,roof_z-.07),(begin+.27,W*.98,roof_z-.17,roof_z),(L*.43,W*.96,roof_z-.17,roof_z),(L*.478,W*.88,roof_z-.19,roof_z-.06)])
     b.poly("glass",[(-W*.45,1.24,L*.494),(W*.45,1.24,L*.494),(W*.427,roof_z-.17,L*.464),(-W*.427,roof_z-.17,L*.464)])
+    b.box("cream",0,roof_z-.202,L*.462,W*.86,.10,.108)
+    b.box("iron",0,.59,L*.492,W*.87,.18,.13)
+    rear=L*.49 if not tall else cab-L*.5
+    b.box("cream",0,1.36,-rear,W*.90,.24,.065)
+    b.poly("glass",[(W*.44,1.45,-rear),(-W*.44,1.45,-rear),(-W*.42,roof_z-.17,-rear+.08),(W*.42,roof_z-.17,-rear+.08)])
+    if not tall:
+        b.box("iron",0,.59,-L*.49,W*.90,.16,.14)
+        b.box("panel",0,.88,-L*.499,.37,.115,.033)
     for s in (-1,1):
         count=9 if bus else 3 if not tall else 1
+        b.rod("cream",(s*W*.475,1.30,begin+.06),(s*W*.455,1.30,L*.465),.037)
+        b.rod("cream",(s*W*.436,roof_z-.21,begin+.095),(s*W*.43,roof_z-.21,L*.464),.032)
+        b.rod("iron",(s*W*.448,1.37,-rear),(s*W*.423,roof_z-.19,-rear+.08),.031)
         for i in range(count):
             z0=begin+.15+(cab-.45)*i/count; z1=begin+.15+(cab-.45)*(i+1)/count
             glazing(b,s*W*.482,z0,z1,1.31,roof_z-1.50,s)
@@ -125,7 +140,7 @@ def commercial(kind,L,W,H):
         b.box("iron",s*W*.58,1.79,L*.40,.09,.25,.08)
         if bus:
             for row in range(8): b.box("upholstery",s*W*.31,1.42,begin+.72+row*.87,.37,.46,.12)
-        if kind=="Ambulance": b.box("amber",s*W*.491,1.27,-.49,.025,.14,L*.55)
+        if kind=="Ambulance": b.box("amber",s*W*.491,1.225,-.49,.025,.085,L*.55)
     if tall:
         cargoL=L-cab-.15
         b.box("panel",0,(H+.63)/2,-L*.5+cargoL/2,W*.98,H-.63,cargoL)
