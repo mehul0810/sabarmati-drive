@@ -71,7 +71,8 @@ if [[ "$mode" == package ]]; then
 fi
 
 if [[ "$mode" != standalone && "$skip_build" == false ]]; then
-    bash "$mac_build" SabarmatiPrototypeEditor Mac Development "$project" -WaitMutex
+    # The launcher starts a fresh process, including when another editor window is open.
+    bash "$mac_build" SabarmatiPrototypeEditor Mac Development "$project" -WaitMutex -NoHotReloadFromIDE
 fi
 
 if [[ "$mode" == editor ]]; then
