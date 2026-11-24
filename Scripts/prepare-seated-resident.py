@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 import runpy
 
-def build(input_file,out,phone=False):
+def build(input_file,out,phone=False,female=False):
     helpers=runpy.run_path(str(Path(__file__).with_name("prepare-riverfront-hatch.py")))
     write=runpy.run_path(str(Path(__file__).with_name("prepare-riverfront-doors.py")))["store_mesh"]
     g,raw=helpers["read_glb"](input_file)
@@ -79,8 +79,10 @@ def build(input_file,out,phone=False):
         centre=add(palm,(.017,.031,.007))
         handset("phone_case",centre,(.070,.143,.008),(.035,.040,.041),.41)
         handset("phone_screen",add(centre,rotate((0.,0.,-.0045),18,"x")),(.062,.129,.001),(.09,.16,.18),.21)
-    write("SM_PhoneResident" if phone else "SM_SeatedResident",baked,mats,(0,0,0),out)
+    prefix = "SM_Female" if female else "SM_"
+    write(prefix + ("PhoneResident" if phone else "SeatedResident"),baked,mats,(0,0,0),out)
 if __name__=="__main__":
     p=argparse.ArgumentParser();p.add_argument("clothed",type=Path);p.add_argument("output",type=Path)
     p.add_argument("--phone",action="store_true",help="Prepare the standing handset pose instead of the seated rider")
-    a=p.parse_args();build(a.clothed,a.output,a.phone)
+    p.add_argument("--female",action="store_true",help="Name the posed assets for the female everyday input mesh")
+    a=p.parse_args();build(a.clothed,a.output,a.phone,a.female)

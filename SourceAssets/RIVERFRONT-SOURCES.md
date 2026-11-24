@@ -103,7 +103,7 @@ Upper-floor windows use a cropped, tone-mapped interior panorama in a view-depen
 
 The center-mounted instrument panel, headlamp internals, grille and street utilities are project-authored. The dashboard receives actual road speed, engine RPM and gear. A seated version of the public clothed resident rides the two- and three-wheelers. Thirteen original synthesized clips cover vehicles, footfalls, shop bell, weather, river, distant traffic and market voices. The market voices contain no identifiable speech or recordings.
 
-The phone user and seated residents on promenade benches derive from the same public clothed mesh. The 70 × 143 mm phone is original geometry. The mapped streets share the Jacaranda canopy and a new dry ground shader derived from the credited Concrete 034 aggregate. These props and materials follow local art direction.
+The phone users, bench occupants and traffic passengers use seated and standing poses baked from both fictional residents. For the female variant, run `Scripts/prepare-seated-resident.py` on the dressed female everyday GLB with `--female` for the seated pose and `--female --phone` for the standing pose. Set `SABARMATI_POSE_SOURCE` to that output directory when running `Scripts/import-posed-female.py` in the Unreal Editor. The static meshes reuse the female skin, eyes, fabric, leather and handset materials through native material instances. The 70 × 143 mm phone is original geometry. The mapped streets share the Jacaranda canopy and a new dry ground shader derived from the credited Concrete 034 aggregate. These props and materials follow local art direction.
 
 ## Riverfront service elevations and asphalt repairs
 
