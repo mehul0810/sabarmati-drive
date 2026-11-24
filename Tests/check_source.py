@@ -133,7 +133,9 @@ class SourceTests(unittest.TestCase):
     def test_game_launchers_use_a_fitted_window(self):
         launch = (ROOT / "Scripts" / "run-mac.sh").read_text()
         self.assertIn('launcher=("$editor" "$project" -game)', launch)
-        self.assertIn('launcher=(/usr/bin/open -n "$bundle" --args)', launch)
+        self.assertIn('launcher=(/usr/bin/open)', launch)
+        self.assertIn('if [[ "$review" == true || "$explicit_data" == true ]]; then', launch)
+        self.assertIn('launcher+=("$sabarmati_app" --args)', launch)
         self.assertIn('exec "${launcher[@]}" -windowed "-ResX=$width" "-ResY=$height"', launch)
         self.assertNotIn("-fullscreen", launch)
         self.assertIn("screen.visibleFrame", launch)

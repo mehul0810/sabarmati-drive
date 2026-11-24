@@ -20,7 +20,7 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine Entry map may look empty in the editor; the district appears when you press **Play**. Click the viewport once if needed to capture the pointer, then look around without mouse drag. Click **Stop** (or use the keyboard shortcut shown by Unreal) to release the editor viewport. After a successful build you can launch without compiling again with `bash Scripts/run-mac.sh --no-build`. The first C++ build and shader preparation can take time.
 
-Open **Play Sabarmati Drive.command** for the standard window or **Play Sabarmati Drive 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `Saved/MacPackage/SabarmatiPrototype.app` directly in Finder. **Finder and both shortcuts use the same offline profile** on your Mac, including your wallet, wardrobe and checkpoint.
+Open **Play Sabarmati Drive.command** for the standard window or **Play Sabarmati Drive 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `~/Applications/Sabarmati Drive.app` directly in Finder. **Finder and both shortcuts use the same offline profile** on your Mac, including your wallet, wardrobe and checkpoint.
 
 On your first visit, create a local display name and choose **Start**. You wake at 07:15 in Flat 2B, Kesar Apartments, with ₹1,00,000 in cash and ₹5,00,000 in the bank. On later visits, **Continue** restores your last saved checkpoint. If you saved while driving, you resume on foot beside the last safe vehicle position. **Quit Game** is on the title screen and the **Esc** menu. [Play through the first morning](Docs/First-morning.md) · [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg)
 
@@ -80,7 +80,7 @@ The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual
 bash Scripts/run-mac.sh --package
 ```
 
-The command cooks and ad-hoc signs a self-contained Apple Silicon Development app. Double-click `Saved/MacPackage/SabarmatiPrototype.app` in Finder. It reads its local cooked containers and starts in a window. Distribution signing and notarization are separate.
+The command cooks and ad-hoc signs a self-contained Apple Silicon Development app. Each successful build replaces the game in your user Applications folder. Double-click `~/Applications/Sabarmati Drive.app` in Finder. It reads its local cooked containers and starts in a window. Distribution signing and notarization are separate.
 
 ## Source checks and limits
 

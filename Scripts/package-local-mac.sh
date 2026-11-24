@@ -4,9 +4,30 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 engine="${UE_ROOT:-/Users/Shared/Epic Games/UE_5.8}"
 uat="$engine/Engine/Build/BatchFiles/RunUAT.sh"
-stage="$root/Saved/MacPackage"
+# Serialize the Unreal build product shared by packaging invocations in this checkout.
+mkdir -p "$root/Saved"
+exec 9>>"$root/Saved/.sabarmati-package.lock"
+python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
+build_app="$root/Binaries/Mac/SabarmatiPrototype.app"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/sabarmati-local-package.XXXXXXXX")"
-trap 'rm -rf "$scratch"' EXIT
+# Xcode registers its build and staging products with Launch Services. Remove
+# those two exact registrations before retiring their generated bundles.
+cleanup() {
+    local status=$? product identifier
+    local register=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    for product in "$build_app" "$scratch/stage/Mac/SabarmatiPrototype.app"; do
+        [[ -d "$product" && ! -L "$product" ]] || continue
+        identifier=$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$product/Contents/Info.plist" 2>/dev/null) || continue
+        [[ "$identifier" == com.YourCompany.SabarmatiPrototype ]] || continue
+        if [[ -x "$register" ]]; then "$register" -u "$product" >/dev/null 2>&1 || true; fi
+        if [[ "$product" == "$build_app" ]]; then
+            mv "$product" "$scratch/compiled-product" || status=1
+        fi
+    done
+    rm -rf "$scratch"
+    exit "$status"
+}
+trap cleanup EXIT
 printf '%s\n' 'CODE_SIGNING_ALLOWED = NO' > "$scratch/LocalBuild.xcconfig"
 export XCODE_XCCONFIG_FILE="$scratch/LocalBuild.xcconfig"
 if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]]; then
@@ -26,9 +47,9 @@ sign_local_bundle() {
 
 args=(BuildCookRun "-project=$root/SabarmatiPrototype.uproject" -platform=Mac -architecture=arm64
     -clientconfig=Development -map=/Engine/Maps/Entry)
-bash "$uat" "${args[@]}" -build -cook "$@"
-sign_local_bundle "$root/Binaries/Mac/SabarmatiPrototype.app" build
-bash "$uat" "${args[@]}" -skipbuild -skipcook -stage -pak -iostore -package -archive "-archivedirectory=$scratch/output" "$@"
+bash "$uat" "${args[@]}" -build -cook "$@" 9>&-
+sign_local_bundle "$build_app" build
+bash "$uat" "${args[@]}" -skipbuild -skipcook -stage -pak -iostore -package -archive "-stagingdirectory=$scratch/stage" "-archivedirectory=$scratch/output" "$@" 9>&-
 app="$scratch/output/Mac/SabarmatiPrototype.app"
 if [[ ! -d "$app" ]]; then app="$scratch/output/SabarmatiPrototype.app"; fi
 content="$app/Contents/UE/SabarmatiPrototype/Content/Paks"
@@ -42,12 +63,4 @@ if [[ -e "$app/Contents/UE/ue.projectstore" ]]; then
     exit 1
 fi
 sign_local_bundle "$app" archive
-mkdir -p "$stage"
-destination="$stage/SabarmatiPrototype.app"
-if [[ -e "$destination" ]]; then mv "$destination" "$scratch/previous.app"; fi
-if ! mv "$app" "$destination"; then
-    if [[ -e "$scratch/previous.app" ]]; then mv "$scratch/previous.app" "$destination"; fi
-    exit 1
-fi
-app="$destination"
-printf 'Local Development app: %s\n' "$app"
+python3 "$root/Scripts/install-mac-game.py" "$app"

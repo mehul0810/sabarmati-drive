@@ -13,6 +13,7 @@ SPEC.loader.exec_module(profiles)
 
 class MacGameLauncherTests(unittest.TestCase):
     def test_size_presets_start_the_same_game(self):
+        import shlex
         import shutil
         import subprocess
 
@@ -22,6 +23,8 @@ class MacGameLauncherTests(unittest.TestCase):
             root = Path(directory)
             scripts = root / "Scripts"
             scripts.mkdir()
+            app = root / "Applications/Sabarmati Drive.app"
+            (scripts / "mac-game-path.sh").write_text("sabarmati_app=" + shlex.quote(str(app)) + "\n")
             (scripts / "run-mac.sh").write_text('printf "%s\\n" "$@"\n')
             for name in launchers:
                 shutil.copyfile(project / name, root / name)
@@ -31,7 +34,7 @@ class MacGameLauncherTests(unittest.TestCase):
 
             self.assertEqual(arguments(launchers[0]), ["--game", "--no-build", "--", "-SabarmatiPublicAvatar"])
             self.assertEqual(arguments(launchers[1]), ["--game", "--no-build", "--4k", "--", "-SabarmatiPublicAvatar"])
-            binary = root / "Saved/MacPackage/SabarmatiPrototype.app/Contents/MacOS/SabarmatiPrototype"
+            binary = app / "Contents/MacOS/SabarmatiPrototype"
             binary.parent.mkdir(parents=True)
             binary.touch(mode=0o755)
             self.assertEqual(arguments(launchers[0]), ["--standalone"])

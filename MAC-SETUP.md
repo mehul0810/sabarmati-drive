@@ -42,7 +42,7 @@ Check each newly adopted module or plugin in a packaged offline build on the M1 
 
 ### Local riverfront art verification
 
-Open **Play Sabarmati Drive.command** for a standard window or **Play Sabarmati Drive 4K.command** for a Retina window fitted to the desktop. After packaging, you can also double-click `Saved/MacPackage/SabarmatiPrototype.app` in Finder. All three open the same offline profile on your Mac.
+Open **Play Sabarmati Drive.command** for a standard window or **Play Sabarmati Drive 4K.command** for a Retina window fitted to the desktop. After packaging, you can also double-click `~/Applications/Sabarmati Drive.app` in Finder. All three open the same offline profile on your Mac.
 
 For a fresh profile, enter a display name and choose **Start**. You wake in Flat 2B at Kesar Apartments with ₹1,00,000 cash and ₹5,00,000 in the bank. Walk down the apartment stairs to **Sutra Cloth House**, then cross the street to the furnished interiors of **Kagaz Print House** and **Nadi Chai**. On a later launch, **Continue** restores your last saved checkpoint and keeps your balances and clothing. **Explore Ahmedabad** in the title or pause menu opens the wider city map. **Quit Game** closes the game from either menu. [First-morning play guide](Docs/First-morning.md) · [City map sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
 
@@ -91,4 +91,4 @@ For a sustained test through the normal fitted launcher, run `bash Scripts/bench
 
 ### Copying the standalone app
 
-After packaging, use `bash Scripts/archive-local-mac.sh` for a local ZIP under `Saved/MacPackage`. The script copies the bundle without Finder attributes, verifies its ad-hoc signature in the clean copy and tests the ZIP. Synced Documents folders can attach Finder metadata that affects strict signature inspection of the expanded folder. The game executable and its local cooked assets run directly from the checkout. This archive is for local Development testing.
+After packaging, use `bash Scripts/archive-local-mac.sh` for a local ZIP under `Saved/MacPackage`. The script copies the bundle without Finder attributes, verifies its ad-hoc signature in the clean copy and tests the ZIP. Play the installed app from your user Applications folder. Packaging updates that copy in place. Keep the ZIP compressed when playing on this Mac. This archive is for local Development testing.

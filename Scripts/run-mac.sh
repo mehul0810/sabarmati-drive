@@ -9,7 +9,7 @@ Both game presets open a resizable window. The default targets 1600x900; --4k
 uses Retina backing pixels up to 3840x2160. Both fit the desktop work area.
 --editor opens the source for Play and import.
 --standalone starts the cooked offline app with the same window fit and local player profile.
---package cooks a local Development .app under Saved/MacPackage (local ad-hoc signature).
+--package replaces ~/Applications/Sabarmati Drive.app with the local Development build.
 USAGE
 }
 
@@ -79,15 +79,6 @@ if [[ "$mode" == editor ]]; then
 fi
 
 launcher=("$editor" "$project" -game)
-if [[ "$mode" == standalone ]]; then
-    bundle="$root/Saved/MacPackage/SabarmatiPrototype.app"
-    if [[ ! -x "$bundle/Contents/MacOS/SabarmatiPrototype" ]]; then
-        printf '%s\n' 'Build the standalone game with --package first.' >&2
-        exit 1
-    fi
-    launcher=(/usr/bin/open -n "$bundle" --args)
-fi
-
 # Keep normal editor-game and standalone progress together. The packaged app can
 # open its own Application Support folder without asking to read all of Documents.
 explicit_data=false
@@ -98,6 +89,19 @@ for argument in "$@"; do
         -SabarmatiBenchmark|-Sabarmati*Review|-SabarmatiEndurance=*) review=true ;;
     esac
 done
+if [[ "$mode" == standalone ]]; then
+    source "$root/Scripts/mac-game-path.sh"
+    if [[ ! -x "$sabarmati_app/Contents/MacOS/SabarmatiPrototype" ]]; then
+        printf '%s\n' 'Install the game with bash Scripts/run-mac.sh --package first.' >&2
+        exit 1
+    fi
+    launcher=(/usr/bin/open)
+    if [[ "$review" == true || "$explicit_data" == true ]]; then
+        # Isolated test profiles need their own process. Normal play reopens the current game.
+        launcher+=(-n)
+    fi
+    launcher+=("$sabarmati_app" --args)
+fi
 if [[ "$explicit_data" == false && ( "$review" == false || "$mode" == standalone ) ]]; then
     data_dir="$(/usr/bin/osascript -l JavaScript <<'JXA'
 ObjC.import('Foundation');

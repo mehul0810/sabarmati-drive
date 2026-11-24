@@ -7,7 +7,8 @@ if [[ $# -gt 2 || ! "$minutes" =~ ^([1-9]|[1-5][0-9]|60)$ || ( $# == 2 && "${2:-
     exit 2
 fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-app="$root/Saved/MacPackage/SabarmatiPrototype.app"
+source "$root/Scripts/mac-game-path.sh"
+app="$sabarmati_app"
 if [[ ! -x "$app/Contents/MacOS/SabarmatiPrototype" ]]; then
     printf '%s\n' 'Build the standalone game with bash Scripts/run-mac.sh --package first.' >&2
     exit 1
