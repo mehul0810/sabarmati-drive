@@ -1,6 +1,7 @@
 #include "RiverfrontCharacter.h"
 #include "RiverfrontLocomotionInstance.h"
 
+#include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -17,6 +18,43 @@ struct FTraversalKey
     double Distance;
     double Height;
 };
+
+FRiverfrontTraversalSection MakeTraversalSection(UObject* Outer, TConstArrayView<FTraversalKey> Keys,
+    int32 First, int32 Last, const FVector& Origin, const FVector& Forward)
+{
+    const FTraversalKey& Begin = Keys[First];
+    const FTraversalKey& End = Keys[Last];
+    FRiverfrontTraversalSection Section;
+    Section.Start = Origin + Forward * Begin.Distance + FVector::UpVector * Begin.Height;
+    Section.End = Origin + Forward * End.Distance + FVector::UpVector * End.Height;
+    Section.From = Begin.Time;
+    Section.To = End.Time;
+    Section.Offset = NewObject<UCurveVector>(Outer);
+    const float Span = Section.To - Section.From;
+    for (const int32 Axis : {0, 2})
+    {
+        const auto Value = [Axis](const FTraversalKey& Key) { return Axis == 0 ? Key.Distance : Key.Height; };
+        const double Total = Value(End) - Value(Begin);
+        FRichCurve& Channel = Section.Offset->FloatCurves[Axis];
+        for (int32 Index = First; Index <= Last; ++Index)
+        {
+            const auto& Key = Keys[Index];
+            const float T = (Key.Time - Section.From) / Span;
+            double Slope = 0.;
+            if (Index > 0 && Index + 1 < Keys.Num())
+            {
+                const double In = (Value(Key) - Value(Keys[Index - 1])) / (Key.Time - Keys[Index - 1].Time);
+                const double Out = (Value(Keys[Index + 1]) - Value(Key)) / (Keys[Index + 1].Time - Key.Time);
+                if (In * Out > 0.) Slope = 2. * In * Out / (In + Out);
+            }
+            FRichCurveKey& OffsetKey = Channel.GetKey(Channel.AddKey(T, Value(Key) - Value(Begin) - T * Total));
+            OffsetKey.InterpMode = RCIM_Cubic;
+            OffsetKey.TangentMode = RCTM_User;
+            OffsetKey.ArriveTangent = OffsetKey.LeaveTangent = Slope * Span - Total;
+        }
+    }
+    return Section;
+}
 }
 
 bool ARiverfrontCharacter::TryStreetTraversal()
@@ -100,52 +138,38 @@ bool ARiverfrontCharacter::TryStreetTraversal()
         : TArray<FTraversalKey, TInlineAllocator<8>>{{0.f, 0., 0.}, {.18f, Approach*.78, ObstacleHeight*.16},
             {.30f, Approach, ObstacleHeight*.43}, {.45f, Approach, Apex}, {.65f, Advance-19., Apex},
             {.82f, Advance-4., ObstacleHeight*.49}, {1.f, Advance, LandHeight}};
-    const FVector Target = Start + Direction * Advance + FVector::UpVector * LandHeight;
-    auto* Curve = NewObject<UCurveVector>(this);
-    for (int32 I = 0; I < Keys.Num(); ++I)
-    {
-        const auto& K = Keys[I];
-        for (const int32 Axis : {0, 2})
-        {
-            const bool bVertical = Axis == 2;
-            const auto Value = [bVertical](const FTraversalKey& Point){ return bVertical ? Point.Height : Point.Distance; };
-            const double Total = bVertical ? LandHeight : Advance;
-            auto& Channel = Curve->FloatCurves[Axis];
-            FRichCurveKey& Key = Channel.GetKey(Channel.AddKey(K.Time, Value(K) - K.Time * Total));
-            // Keep the absolute path monotonic through each clearance gate,
-            // with a continuous velocity as we leave the ground and touch down.
-            double Slope = 0.;
-            if (I > 0 && I + 1 < Keys.Num())
-            {
-                const double In = (Value(K)-Value(Keys[I-1]))/(K.Time-Keys[I-1].Time);
-                const double Out = (Value(Keys[I+1])-Value(K))/(Keys[I+1].Time-K.Time);
-                if (In*Out > 0.) Slope = 2. * In * Out / (In + Out);
-            }
-            Key.InterpMode = RCIM_Cubic;
-            Key.TangentMode = RCTM_User;
-            Key.ArriveTangent = Key.LeaveTangent = Slope - Total;
-        }
-    }
-
-    // Preflight the same curve and capsule that Character Movement will sweep.
+    // Character Movement sweeps straight to each frame's target. Separate the
+    // hand plant, lift, crossing and landing so a long frame cannot skip them.
     const FCollisionShape Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
     const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
     const FRotator Facing = Direction.Rotation();
+    TArray<FRiverfrontTraversalSection> Sections;
+    Sections.Reserve(4);
     FVector Previous = Start;
-    for (int32 Step = 1; Step <= 32; ++Step)
+    int32 First = 0;
+    for (const int32 Last : {2, 3, 4, Keys.Num() - 1})
     {
-        const float T = Step / 32.f;
-        const FVector Next = FMath::Lerp(Start, Target, T) + Facing.RotateVector(Curve->GetVectorValue(T));
-        FHitResult Block;
-        if (World->SweepSingleByChannel(Block, Previous, Next, FQuat::Identity, Capsule->GetCollisionObjectType(),
-            Shape, Query, Responses) && (Block.bStartPenetrating || Block.Time < .999f)) return false;
-        Previous = Next;
+        const auto& Section = Sections.Add_GetRef(MakeTraversalSection(this, Keys, First, Last, Start, Direction));
+        for (int32 Step = 1; Step <= 8; ++Step)
+        {
+            const float T = Step / 8.f;
+            const FVector Next = FMath::Lerp(Section.Start, Section.End, T) + Facing.RotateVector(Section.Offset->GetVectorValue(T));
+            FHitResult Block;
+            if (World->SweepSingleByChannel(Block, Previous, Next, FQuat::Identity, Capsule->GetCollisionObjectType(),
+                Shape, Query, Responses) && (Block.bStartPenetrating || Block.Time < .999f)) return false;
+            Previous = Next;
+        }
+        First = Last;
     }
 
     StopJumping();
     ConsumeMovementInputVector();
-    const float Duration = Clip->GetPlayLength();
-    if (!Anim->PlaySlotAnimationAsDynamicMontage(Clip, TEXT("DefaultSlot"), .085f, .12f)) return false;
+    UAnimMontage* Montage = Anim->PlaySlotAnimationAsDynamicMontage(Clip, TEXT("DefaultSlot"), .085f, .12f);
+    if (!Montage) return false;
+    TraversalSections = MoveTemp(Sections);
+    TraversalSection = 0;
+    TraversalDuration = Clip->GetPlayLength();
+    TraversalMontage = Montage;
     bMantling = bWall;
     TraversalEdge = Top.ImpactPoint;
     TraversalFacing = Direction;
@@ -154,16 +178,22 @@ bool ARiverfrontCharacter::TryStreetTraversal()
     Move->bOrientRotationToMovement = false;
     SetActorRotation(Facing);
     Move->SetMovementMode(MOVE_Flying);
+    StartTraversalSection();
+    return true;
+}
+
+void ARiverfrontCharacter::StartTraversalSection()
+{
+    const auto& Section = TraversalSections[TraversalSection];
     auto Motion = MakeShared<FRootMotionSource_MoveToForce>();
     Motion->InstanceName = TEXT("StreetTraversal");
     Motion->Priority = 100;
-    Motion->Duration = Duration;
-    Motion->StartLocation = Start;
-    Motion->TargetLocation = Target;
-    Motion->PathOffsetCurve = Curve;
+    Motion->Duration = (Section.To - Section.From) * TraversalDuration;
+    Motion->StartLocation = Section.Start;
+    Motion->TargetLocation = Section.End;
+    Motion->PathOffsetCurve = Section.Offset;
     Motion->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
-    TraversalSource = Move->ApplyRootMotionSource(Motion);
-    return true;
+    TraversalSource = GetCharacterMovement()->ApplyRootMotionSource(Motion);
 }
 
 void ARiverfrontCharacter::UpdateTraversal()
@@ -171,15 +201,29 @@ void ARiverfrontCharacter::UpdateTraversal()
     if (!TraversalSource) return;
     auto* Move = GetCharacterMovement();
     const auto Motion = StaticCastSharedPtr<FRootMotionSource_MoveToForce>(Move->GetRootMotionSourceByID(TraversalSource));
-    if (!Motion || Motion->Status.HasFlag(ERootMotionSourceStatusFlags::Finished))
+    const auto& Section = TraversalSections[TraversalSection];
+    const bool bFinished = !Motion || Motion->Status.HasFlag(ERootMotionSourceStatusFlags::Finished);
+    const float T = bFinished ? 1.f : FMath::Clamp(Motion->GetTime() / Motion->Duration, 0.f, 1.f);
+    const FVector Expected = FMath::Lerp(Section.Start, Section.End, T)
+        + TraversalFacing.Rotation().RotateVector(Section.Offset->GetVectorValue(T));
+    if (!Move->IsFlying() || FVector::DistSquared(Expected, GetActorLocation()) > FMath::Square(bFinished ? 5. : 30.))
+    {
+        FinishTraversal(true);
+        return;
+    }
+    if (!bFinished) return;
+    if (TraversalSection + 1 == TraversalSections.Num())
     {
         FinishTraversal(false);
         return;
     }
-    const float T = FMath::Clamp(Motion->GetTime() / Motion->Duration, 0.f, 1.f);
-    const FVector Expected = FMath::Lerp(Motion->StartLocation, Motion->TargetLocation, T) + Motion->GetPathOffsetInWorldSpace(T);
-    if (!Move->IsFlying() || FVector::DistSquared(Expected, GetActorLocation()) > FMath::Square(30.))
-        FinishTraversal(true);
+    // The animation clock may have advanced further than the capsule during a long frame.
+    if (UAnimMontage* Montage = TraversalMontage.Get())
+        if (auto* Anim = GetAvatarMesh()->GetAnimInstance(); Anim && Anim->Montage_IsActive(Montage))
+            Anim->Montage_SetPosition(Montage, Section.To * TraversalDuration);
+    Move->RemoveRootMotionSourceByID(TraversalSource);
+    ++TraversalSection;
+    StartTraversalSection();
 }
 
 void ARiverfrontCharacter::FinishTraversal(bool bInterrupted)
@@ -188,6 +232,8 @@ void ARiverfrontCharacter::FinishTraversal(bool bInterrupted)
     auto* Move = GetCharacterMovement();
     Move->RemoveRootMotionSourceByID(TraversalSource);
     TraversalSource = 0;
+    TraversalSections.Reset();
+    TraversalMontage.Reset();
     Move->bOrientRotationToMovement = bOrientBeforeTraversal;
     Move->StopMovementImmediately();
     if (Move->IsFlying())
@@ -207,7 +253,8 @@ float ARiverfrontCharacter::GetTraversalHandContact(bool bRight, FVector& OutPal
     if (!TraversalSource || (!bMantling && bRight)) return 0.f;
     const auto Motion = GetCharacterMovement()->GetRootMotionSourceByID(TraversalSource);
     if (!Motion) return 0.f;
-    const float T = Motion->GetTime() / Motion->Duration;
+    const auto& Section = TraversalSections[TraversalSection];
+    const float T = FMath::Lerp(Section.From, Section.To, FMath::Clamp(Motion->GetTime() / Motion->Duration, 0.f, 1.f));
     const float Reach = FMath::SmoothStep(.10f, bMantling ? .25f : .21f, T);
     const float Release = FMath::SmoothStep(bMantling ? .35f : .27f, bMantling ? .51f : .43f, T);
     const FVector Across = FVector::CrossProduct(FVector::UpVector, TraversalFacing) * (bRight ? 1. : -1.);

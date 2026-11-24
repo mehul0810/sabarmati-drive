@@ -5,6 +5,21 @@
 #include "RiverfrontResidentAppearance.h"
 #include "RiverfrontCharacter.generated.h"
 
+class UAnimMontage;
+class UCurveVector;
+
+USTRUCT()
+struct FRiverfrontTraversalSection
+{
+    GENERATED_BODY()
+
+    FVector Start = FVector::ZeroVector;
+    FVector End = FVector::ZeroVector;
+    float From = 0.f;
+    float To = 0.f;
+    UPROPERTY(Transient) TObjectPtr<UCurveVector> Offset;
+};
+
 class UCameraComponent;
 class USpringArmComponent;
 class USceneComponent;
@@ -76,9 +91,14 @@ private:
     void BindAuthoredAvatarMotion(USkeletalMeshComponent* Body);
     void JumpOrTraverse();
     bool TryStreetTraversal();
+    void StartTraversalSection();
     void UpdateTraversal();
     void FinishTraversal(bool bInterrupted);
     uint16 TraversalSource = 0;
+    int32 TraversalSection = 0;
+    float TraversalDuration = 0.f;
+    UPROPERTY(Transient) TArray<FRiverfrontTraversalSection> TraversalSections;
+    TWeakObjectPtr<UAnimMontage> TraversalMontage;
     bool bMantling = false;
     bool bOrientBeforeTraversal = true;
     FVector TraversalEdge = FVector::ZeroVector;

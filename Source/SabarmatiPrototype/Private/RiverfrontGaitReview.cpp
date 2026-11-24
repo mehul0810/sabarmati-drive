@@ -60,6 +60,8 @@ struct FGaitStrip
     double CaptureStart = 0.;
     bool bClockWasFixed = false;
     double OriginalDelta = 0.;
+    bool bVaultHitchInjected = false;
+    bool bRestoreVaultClock = false;
     double JumpFloor = 0.;
     double JumpHeight = 0.;
     TSet<FName> JumpClips;
@@ -288,13 +290,20 @@ void ARiverfrontPlayerController::RunGaitReview()
     const bool bCapture=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiGaitFrames"));
     const bool bReviewJump=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiJumpReview"));
     const bool bReviewTraversal=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiTraversalReview"));
+    const bool bReviewVaultHitch = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiVaultHitchReview"));
     if (bCapture && !IFileManager::Get().MakeDirectory(*FPaths::Combine(Folder,TEXT("Frames")),true))
     { FPlatformMisc::RequestExitWithStatus(false,1); return; }
     State->Started=GetWorld()->GetTimeSeconds();
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Bones,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,bReviewTraversal,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
+        [this,State,Folder,Bones,SoleOffsets,HeelOffsets,ToeOffsets,bCapture,bReviewJump,bReviewTraversal,bReviewVaultHitch,ResetStrip,Who=TWeakObjectPtr<ARiverfrontCharacter>(Walker),
          WallStart=FPlatformTime::Seconds(),bPassed=true](float) mutable
         {
+            if (State->bRestoreVaultClock)
+            {
+                FApp::SetFixedDeltaTime(State->OriginalDelta);
+                FApp::SetUseFixedTimeStep(State->bClockWasFixed);
+                State->bRestoreVaultClock = false;
+            }
             if (!Who.IsValid() || GetPawn()!=Who.Get() || !State->Lens.IsValid() || FPlatformTime::Seconds()-WallStart>180.)
             {
                 UE_LOG(LogTemp,Error,TEXT("Gait review lost the actor or timed out."));
@@ -389,6 +398,16 @@ void ARiverfrontPlayerController::RunGaitReview()
                         State->bMetricsWritten=true;
                     }
                     State->bTraversalClip |= ActiveClip()==(bWall?TEXT("A_WallMantle"):TEXT("A_FenceVault"));
+                    if (!bWall && bReviewVaultHitch && !State->bVaultHitchInjected && State->bTraversalClip && Age >= .24)
+                    {
+                        // Reproduce a long frame just before the capsule clears the fence.
+                        State->OriginalDelta = FApp::GetFixedDeltaTime();
+                        State->bClockWasFixed = FApp::UseFixedTimeStep();
+                        State->bVaultHitchInjected = State->bRestoreVaultClock = true;
+                        FApp::SetFixedDeltaTime(.34);
+                        FApp::SetUseFixedTimeStep(true);
+                        UE_LOG(LogTemp, Display, TEXT("Sabarmati vault review injecting a 340 ms frame."));
+                    }
                     for (int32 Side=0;Side<2;++Side)
                     {
                         FVector Palm,Elbow;
@@ -407,6 +426,7 @@ void ARiverfrontPlayerController::RunGaitReview()
                     const FVector Delta=Who->GetActorLocation()-State->TraversalStart;
                     const bool bMovePassed=State->bTraversalClip && Delta.Y>125. &&
                         (bWall?Delta.Z>119. && Delta.Z<140.:FMath::Abs(Delta.Z)<7.) &&
+                        (bWall || !bReviewVaultHitch || State->bVaultHitchInjected) &&
                         Who->GetCharacterMovement()->IsMovingOnGround() &&
                         State->PalmErrors[0]<13. && (!bWall || State->PalmErrors[1]<13.) &&
                         IFileManager::Get().FileSize(*FPaths::Combine(Folder,Image))>0;
