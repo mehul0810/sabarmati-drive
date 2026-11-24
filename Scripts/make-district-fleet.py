@@ -53,10 +53,8 @@ class Body:
             self.poly(name,pts)
 
 def glazing(body,x,z0,z1,base,height,side):
-    pane=[(x,base,z0),(x,base,z1),(x*.91,base+height,z1-.15),(x*.91,base+height,z0+.12)]
+    pane=[(x,base,z0+.016),(x,base,z1-.016),(x*.91,base+height,z1-.016),(x*.91,base+height,z0+.016)]
     body.poly("glass",list(reversed(pane)) if side>0 else pane)
-    body.rod("iron",(x*.91,base+height,z1-.15),(x,base,z1),.026)
-    body.rod("iron",(x*.91,base+height,z0+.12),(x,base,z0),.026)
 
 def passenger(name,L,W,H,hood,roof,finish):
     b=Body()
@@ -133,7 +131,10 @@ def commercial(kind,L,W,H):
         b.rod("iron",(s*W*.448,1.37,-rear),(s*W*.423,roof_z-.19,-rear+.08),.031)
         for i in range(count):
             z0=begin+.15+(cab-.45)*i/count; z1=begin+.15+(cab-.45)*(i+1)/count
-            glazing(b,s*W*.482,z0,z1,1.31,roof_z-1.50,s)
+            glass_x=s*W*.482
+            glazing(b,glass_x,z0,z1,1.31,roof_z-1.50,s)
+            b.rod("iron",(glass_x*.91,roof_z-.18,z0),(glass_x,1.31,z0),.024)
+        b.rod("iron",(glass_x*.91,roof_z-.18,z1),(glass_x,1.31,z1),.024)
         b.rod("iron",(s*W*.47,1.30,L*.49),(s*W*.43,roof_z-.14,L*.46),.046)
         b.box("lamp",s*W*.36,.93,L*.499,.30,.16,.04); b.box("red",s*W*.38,1.0,-L*.489,.20,.16,.04)
         b.rod("iron",(s*W*.47,1.89,L*.37),(s*W*.58,1.89,L*.40),.021)
