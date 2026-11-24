@@ -22,3 +22,25 @@ python3 Scripts/prepare-hero-skin.py /path/to/unpacked/system-assets /path/to/ba
 ```
 
 The 2048 × 2048 colour texture uses sRGB. The 2048 × 2048 normal texture is tangent-space DirectX, and the 1024 × 1024 roughness texture is linear grayscale. All three use the resident's native UV0 and the same mapping across the face, lips and hands. The Unreal material and imported textures live under `Content/Sabarmati/Riverfront/People/Hero`.
+
+## Shared facial sculpt
+
+Both playable outfits use the same authored adult face. The standard hm08 target in `SourceAssets/river-resident-adult.target` contains vertex offsets in the MakeHuman base model's native units. The shape broadens the mandibular angle, gives the chin slightly more projection and adds volume over the cheekbones. A separate local adjustment brings the upper and lower lip into contact at rest. It moves each lip by at most 0.77 mm.
+
+The lower-face blend uses MakeHuman's generic CC0 targets. Their headers credit Manuel Bastioni in 2014, followed by Data Collection AB, Joel Palmius and Jonas Hauquier in 2020. The table records the weights before a smooth spatial mask protects the eyes, mouth, ears, scalp and neck. Lip closure was authored on the original mouth topology after the blend. [Head targets](https://github.com/makehumancommunity/makehuman/tree/master/makehuman/data/targets/head) · [Chin targets](https://github.com/makehumancommunity/makehuman/tree/master/makehuman/data/targets/chin) · [Cheek targets](https://github.com/makehumancommunity/makehuman/tree/master/makehuman/data/targets/cheek)
+
+| Source target | Weight |
+| --- | --- |
+| `head-square` | 0.47 |
+| `chin-bones-incr` | 0.29 |
+| `chin-width-incr` | 0.53 |
+| `chin-prominent-incr` | 0.51 |
+| `l-cheek-bones-incr` and `r-cheek-bones-incr` | 0.27 and 0.25 |
+| `l-cheek-volume-incr` and `r-cheek-volume-incr` | 0.26 and 0.24 |
+
+Apply the committed sculpt after generating the original everyday and fitted-kurta GLBs, before their standard Unreal imports. The tool transfers the same offsets and normal corrections to each duplicate skin vertex at UV or material boundaries. It adjusts the two skin sections and leaves the wardrobe geometry, rig, animation and UVs intact. Point each Unreal importer at the finished GLB and its usual companion artwork.
+
+```sh
+python3 Scripts/sculpt-resident-face.py /path/to/base.obj neutral/SK_RiverEveryday.glb finished/SK_RiverEveryday.glb
+python3 Scripts/sculpt-resident-face.py /path/to/base.obj neutral/SK_RiverTailoredKurta.glb finished/SK_RiverTailoredKurta.glb
+```

@@ -172,6 +172,18 @@ def build(base, reference, system, output):
                     if n not in ("Neck","Head"):
                         weights[(y>1.48)&(np.abs(positions[:,0])<.18)] = 0
                     influences[selected,i] = weights[selected]
+        if slot == "top_teal_woven":
+            # The rig has no clavicles. The shirt yoke follows the chest until it
+            # crosses the shoulder; sleeves progressively pick up the arm joints.
+            sleeve = smooth(.124,.240,np.abs(positions[:,0]))
+            chest = smooth(1.12,1.29,y)
+            for n in ("Shoulderl","Elbowl","Handl","Shoulderr","Elbowr","Handr"):
+                i = rank[n]
+                retained = influences[:,i] * sleeve
+                transferred = influences[:,i] - retained
+                influences[:,rank["Chest"]] += chest*transferred
+                influences[:,rank["Spine"]] += (1-chest)*transferred
+                influences[:,i] = retained
         ids = np.argsort(-influences,axis=1,kind="stable")[:,:4]
         vals = np.take_along_axis(influences,ids,axis=1)
         if slot not in ("shoe","bottom_denim"):
@@ -229,6 +241,23 @@ def build(base, reference, system, output):
         if name==SUIT:
             # Buttons/collar and the shirt form one connected garment. The jeans have their own waistband.
             parts = {i:("bottom_denim" if fitted[comps==i,1].min()<0 else "top_teal_woven") for i in set(comps)}
+            shirt = np.array([parts[i]=="top_teal_woven" for i in comps])
+            # The neutral hm08 body has a narrow waist. Ease the untucked shirt
+            # from rib cage to hem, preserving its native collar, placket and cuffs.
+            x, y = np.abs(fitted[:,0]), fitted[:,1].copy()
+            torso = shirt * (1-smooth(1.75,2.15,x))
+            drape = smooth(1.1,2.9,y)*(1-smooth(3.65,4.75,y))
+            hem = 1-smooth(.65,1.8,y)
+            fitted[:,0] += np.sign(fitted[:,0])*torso*(.32*drape-.046*hem)*smooth(.10,1.5,x)
+            # Let the outer shoulder slope away from the collar when the arm rests.
+            cap = shirt*smooth(1.15,1.90,x)*(1-smooth(2.20,2.72,x))*smooth(4.8,5.65,y)
+            fitted[:,1] -= .15*cap
+            # Tuck the waistband beneath the untucked shirt as the hip flexes.
+            # Leave the visible pockets, thigh and knee silhouettes at their authored width.
+            jeans = np.array([parts[i]=="bottom_denim" for i in comps])
+            waist = smooth(.40,1.30,fitted[:,1])*jeans
+            fitted[:,0] *= 1-.07*waist
+            fitted[:,2] = .13+(fitted[:,2]-.13)*(1-.16*waist)
         else:
             parts = dict.fromkeys(comps,"shoe")
         panels = defaultdict(list)
