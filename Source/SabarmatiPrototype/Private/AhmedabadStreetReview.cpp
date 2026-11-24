@@ -5,6 +5,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "RiverfrontCharacter.h"
+#include "RiverfrontPedestrian.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/AnimationAsset.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontWorld.h"
 #include "Containers/Ticker.h"
@@ -34,9 +37,10 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
     {
         int32 Stop=0,Stage=0,Count=0;
         double Since=0,Last=0,Walked=0,Driven=0,TravelMs=0;
+        bool bSawMaleResident=false, bSawFemaleResident=false;
         FKey Pending;
         FVector From=FVector::ZeroVector;
-        FString Rows=TEXT("place,plots_within_150m,walk_m,measured_frames,p95_wall_ms,street_travel_call_ms\n");
+        FString Rows=TEXT("place,plots_within_150m,walk_m,measured_frames,p95_wall_ms,street_travel_call_ms,male_pedestrians,female_pedestrians\n");
         TArray<double> Frames;
     };
     auto State=MakeShared<FVisit>();State->Since=FPlatformTime::Seconds();
@@ -114,11 +118,29 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
                     if (Face.Dot((Who->GetActorLocation()-State->From).GetSafeNormal2D())<.90)
                         return Fail(TEXT("walking backwards relative to the visible face"));
                 }
+                int32 MaleResidents=0, FemaleResidents=0;
+                for (TActorIterator<ARiverfrontPedestrian> Person(GetWorld()); Person; ++Person)
+                {
+                    auto* Body=Person->FindComponentByClass<USkeletalMeshComponent>();
+                    auto* Model=Body ? Body->GetSkeletalMeshAsset() : nullptr;
+                    auto* Instance=Body ? Body->GetSingleNodeInstance() : nullptr;
+                    auto* Clip=Instance ? Instance->GetCurrentAsset() : nullptr;
+                    if (!Model || !Clip || Clip->GetSkeleton()!=Model->GetSkeleton())
+                        return Fail(TEXT("city pedestrian missing body or compatible animation"));
+                    const FName Name=Model->GetFName();
+                    const bool bFemale=Person->GetAvatarGender()==ERiverfrontGender::Female;
+                    const bool bExpected=bFemale ? (Name==TEXT("SK_FemaleEveryday") || Name==TEXT("SK_FemaleKurta"))
+                        : (Name==TEXT("SK_RiverEveryday") || Name==TEXT("SK_FittedKurta"));
+                    if (!bExpected) return Fail(TEXT("city pedestrian visible body disagrees with cast preset"));
+                    if (bFemale) ++FemaleResidents; else ++MaleResidents;
+                }
+                State->bSawMaleResident |= MaleResidents>0;
+                State->bSawFemaleResident |= FemaleResidents>0;
                 Shot(Target->Id.ToString());
                 State->Frames.Sort();
                 const double P95=State->Frames[FMath::CeilToInt(.95*State->Frames.Num())-1];
-                State->Rows+=FString::Printf(TEXT("%s,%d,%.2f,%d,%.3f,%.3f\n"),*Target->Id.ToString(),
-                    City->CityBuildingsNear(Target->Point,15000.),State->Walked,State->Frames.Num(),P95,State->TravelMs);
+                State->Rows+=FString::Printf(TEXT("%s,%d,%.2f,%d,%.3f,%.3f,%d,%d\n"),*Target->Id.ToString(),
+                    City->CityBuildingsNear(Target->Point,15000.),State->Walked,State->Frames.Num(),P95,State->TravelMs,MaleResidents,FemaleResidents);
                 Next(3);
             }
             else if (State->Stage==3 && Age>.65) { ++State->Stop;Next(0); }
@@ -141,6 +163,7 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
             else if (State->Stage==7 && Age>.7)
             {
                 if (GetPawn()!=Who.Get()) return Fail(TEXT("street exit"));
+                if (!State->bSawMaleResident || !State->bSawFemaleResident) return Fail(TEXT("missing resident mesh variety across city stops"));
                 if (!FFileHelper::SaveStringToFile(State->Rows,*FPaths::Combine(Folder,TEXT("visits.csv"))) ||
                     !FFileHelper::SaveStringToFile(FString::Printf(TEXT("drive_m=%.2f\ncontacts=4\nexit=1\n"),State->Driven),*FPaths::Combine(Folder,TEXT("drive.txt"))))
                     return Fail(TEXT("evidence output"));
