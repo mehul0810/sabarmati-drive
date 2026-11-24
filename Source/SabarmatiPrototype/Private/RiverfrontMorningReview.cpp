@@ -47,6 +47,8 @@ struct FMorningEvidence
 {
     EMorningStep Step = EMorningStep::Title;
     double Since = FPlatformTime::Seconds();
+    double StartPressedAt = 0.;
+    double StartToControlMs = -1.;
     double LastFrame = 0.;
     double WalkCm = 0.;
     int32 NextLeg = 1;
@@ -321,11 +323,19 @@ void ARiverfrontPlayerController::RunMorningReview()
                 break;
             }
             case EMorningStep::Start:
+                State->StartPressedAt = FPlatformTime::Seconds();
                 if (!PressMorningButton(Overlay,TEXT("MorningStart"))) return Fail(TEXT("title primary action"));
                 Next(bContinue ? EMorningStep::Continue : EMorningStep::Home);
                 break;
             case EMorningStep::Home:
             {
+                if (State->StartToControlMs < 0. && !bWaking && !IsPaused() && !IsShowingMenu()
+                    && !IsMoveInputIgnored() && !IsLookInputIgnored())
+                {
+                    State->StartToControlMs = (FPlatformTime::Seconds() - State->StartPressedAt) * 1000.;
+                    UE_LOG(LogTemp, Display, TEXT("Sabarmati morning: Start to player control %.1f ms."),
+                        State->StartToControlMs);
+                }
                 if (bWaking && WakeupSequence.IsValid() && LifeCamera.IsValid() && GetViewTarget() == LifeCamera.Get() && PlayerCameraManager)
                 {
                     auto* SequencePlayer=WakeupSequence->GetSequencePlayer();
@@ -350,7 +360,8 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (!Walker->GetWardrobeShirtColor(State->OriginalShirt)) return Fail(TEXT("starter outfit material"));
                 Shot(TEXT("01-apartment"));
                 const auto Size = GetWorld()->GetGameViewport()->Viewport->GetSizeXY();
-                State->Results = FString::Printf(TEXT("viewport=%dx%d\nwake_camera_displacement_cm=%.2f\nstarting_cash=100000\nstarting_bank=500000\n"),Size.X,Size.Y,State->WakeTravel);
+                State->Results = FString::Printf(TEXT("viewport=%dx%d\nwake_camera_displacement_cm=%.2f\nstart_to_control_ms=%.1f\nstarting_cash=100000\nstarting_bank=500000\n"),
+                    Size.X, Size.Y, State->WakeTravel, State->StartToControlMs);
                 if (bGenderReview)
                 {
                     if (const FString Error = CheckCrowdBodies(*GetWorld(),State->Results); !Error.IsEmpty()) return Fail(Error);
