@@ -120,7 +120,7 @@ class SourceTests(unittest.TestCase):
         storage = (SOURCE / "Public" / "RiverfrontLocalProfile.h").read_text()
         self.assertIn("public USaveGame", storage)
         life = (PRIVATE / "RiverfrontLifeProfile.cpp").read_text()
-        self.assertIn("RiverfrontLife::Create(ProfileSlot, Clean)", source)
+        self.assertIn("RiverfrontLife::Create(ProfileSlot, Clean, Gender)", source)
         self.assertIn("RiverfrontLife::Load(ProfileSlot)", source)
         self.assertIn("UGameplayStatics::SaveGameToSlot", life)
         self.assertIn("UGameplayStatics::LoadGameFromSlot", life)
