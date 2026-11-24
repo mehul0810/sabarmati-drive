@@ -277,10 +277,14 @@ public:
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
                             [
-                                SNew(STextBlock)
-                                .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 55))
-                                .ColorAndOpacity(Paper)
-                                .Text(bIsPause ? LOCTEXT("Paused", "Paused") : LOCTEXT("Title", "Sabarmati Drive"))
+                                SNew(SScaleBox).Stretch(EStretch::ScaleToFitX)
+                                .StretchDirection(EStretchDirection::DownOnly).HAlign(HAlign_Left)
+                                [
+                                    SNew(STextBlock)
+                                    .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 55))
+                                    .ColorAndOpacity(Paper)
+                                    .Text(bIsPause ? LOCTEXT("Paused", "Paused") : LOCTEXT("Title", "Sabarmati Drive"))
+                                ]
                             ]
                             + SVerticalBox::Slot().AutoHeight()
                             [
