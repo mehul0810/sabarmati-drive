@@ -74,16 +74,21 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         TailLens=Fit(TEXT("red"),FLinearColor(.69,.027,.012));
         UpdateLights(false,false,false);
     }
-    if (auto* Person=MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident")))
+    if (auto* Seated = MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident")))
     {
+        auto* FemaleSeated = MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Female/Poses/SM_FemaleSeatedResident"));
+        const auto Occupant = [Seated, FemaleSeated](int32 Seat)
+        {
+            return (Seat % 2 == 0 && FemaleSeated) ? FemaleSeated : Seated;
+        };
         const bool Open=S.WheelCount<4;
         const double DriverX=Open?(S.WheelCount==3?41.:2.):(S.Length>600?S.Length*.35:S.Length*.035);
         const double SeatZ=Open?(S.WheelCount==3?-2.:6.):(S.Length>600?44.:0.);
         const double Side=Open?0.:S.Width*.21;
-        Visual(Person,Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
+        Visual(Occupant(Variant),Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
         if (Style%12==3)
             for (int32 Row=0;Row<3;++Row)
-                Visual(Person,Bounds,FVector(75-Row*104.,-56.,38.-S.Wheel),FRotator(0,-90,0),FVector(.9));
+                Visual(Occupant(Variant+Row+1),Bounds,FVector(75-Row*104.,-56.,38.-S.Wheel),FRotator(0,-90,0),FVector(.9));
     }
     const int32 Count=S.WheelCount;
     for (int32 I=0; I<Count;++I)

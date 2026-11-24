@@ -620,6 +620,9 @@ void ARiverfrontWorld::BuildStreetFurniture()
     };
     auto* Seated=ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident.SM_SeatedResident"));
     auto* Phone=ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/SM_PhoneResident.SM_PhoneResident"));
+    auto* FemaleSeated = ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Female/Poses/SM_FemaleSeatedResident.SM_FemaleSeatedResident"));
+    auto* FemalePhone = ResidentBatch(TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Female/Poses/SM_FemalePhoneResident.SM_FemalePhoneResident"));
+    int32 BenchResidents = 0, PhoneUsers = 0;
     for (const double Bank : {-1.0, 1.0})
     {
         for (double X = -6900; X <= 6900; X += 850)
@@ -690,12 +693,16 @@ void ARiverfrontWorld::BuildStreetFurniture()
                 if (Seated && BenchIndex%3==1)
                 {
                     const FRotator Facing(0,Bank>0?0.:180.,0);
-                    Seated->AddInstance(FTransform(Facing,FVector(BenchX-28.,BenchY,-9.),FVector(.96)));
+                    auto* Sitting = (BenchResidents % 2 == 0 && FemaleSeated) ? FemaleSeated : Seated;
+                    ++BenchResidents;
+                    Sitting->AddInstance(FTransform(Facing,FVector(BenchX-28.,BenchY,-9.),FVector(.96)));
                     if (Phone && BenchIndex%2==1)
                     {
                         const FVector Standing(BenchX+104.,BenchY+Bank*51.,2.);
                         const FRotator Looking(0,Bank>0?137.:-32.,0);
-                        Phone->AddInstance(FTransform(Looking,Standing,FVector(1.02)));
+                        auto* UsingPhone = (PhoneUsers % 2 == 1 && FemalePhone) ? FemalePhone : Phone;
+                        ++PhoneUsers;
+                        UsingPhone->AddInstance(FTransform(Looking,Standing,FVector(1.02)));
                     }
                 }
                 // Player contact matches the slat seat, not the floor void under each leg.
@@ -703,7 +710,7 @@ void ARiverfrontWorld::BuildStreetFurniture()
             }
         }
     }
-    UE_LOG(LogTemp,Display,TEXT("Sabarmati promenade: %d seated residents, %d phone users."),Seated?Seated->GetInstanceCount():0,Phone?Phone->GetInstanceCount():0);
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati promenade: %d seated residents, %d phone users."),BenchResidents,PhoneUsers);
     UE_LOG(LogTemp, Display, TEXT("Sabarmati riverfront: %d detailed trees; %d masked foliage cards."),
         DetailedTreeCount, LeafCardCount);
 }
