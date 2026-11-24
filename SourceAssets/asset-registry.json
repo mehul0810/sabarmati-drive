@@ -313,6 +313,18 @@
       "lod": "Texture mipmaps; geometry unloads with its tile.",
       "location": "Content/Sabarmati/Riverfront/M_StreetGround.uasset",
       "verification": "Unreal material commandlet and street-level capture."
+    },
+    {
+      "id": "promenade-pigeon",
+      "category": "wildlife",
+      "source": "Pigeon mesh, textures and animations by vinish.dev, https://vinish.dev/free-3d-models/birds",
+      "license": "CC BY 4.0, https://creativecommons.org/licenses/by/4.0/",
+      "geometry": "One imported skeletal mesh with idle, peck, flight and glide sequences.",
+      "textures": "The source's plumage, feather, leg and eye maps.",
+      "collision": "Nonblocking birds. Placement and the departing flight path are checked against world geometry.",
+      "lod": "Three Unreal skeletal mesh LODs, with animation updates based on visibility and a 27.5 m draw distance.",
+      "location": "Content/Sabarmati/Riverfront/Wildlife/Pigeon/SK_Pigeon.uasset",
+      "verification": "The M2 Air gameplay review captured three pigeons on the promenade, observed pecking, and confirmed flapping and gliding after the player approached on foot."
     }
   ]
 }

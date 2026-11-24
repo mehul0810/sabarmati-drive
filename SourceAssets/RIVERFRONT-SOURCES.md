@@ -93,6 +93,20 @@ The public pedestrians use the generic MakeHuman hm08 mesh. The preparation scri
 
 The shop signs, furnishings, service station, small-vehicle fleet and synthesized sounds are project-authored. The two opening front doors use the credited hatchback geometry. Road routing uses the existing offline ODbL street network. [SRFDCL promenade](https://www.sabarmatiriverfront.com/river-promenade.html) · [HCP Ravivari Market](https://hcp.co.in/urbanism/71) · [OSM copyright and attribution](https://www.openstreetmap.org/copyright)
 
+## Promenade pigeons
+
+The animated **Pigeon** model and textures are by [vinish.dev](https://vinish.dev/free-3d-models/birds),
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The project
+imports the original GLB, keeps four clips, removes the unused physics asset,
+and generates three skeletal mesh detail levels. The promenade placement and
+flight paths are original project work.
+
+To rebuild, point `SABARMATI_PIGEON_SOURCE` at the creator's Pigeon GLB and run
+`Scripts/import-riverfront-pigeons.py` with Unreal Editor's
+`-ExecutePythonScript` option in a project without the imported pigeon assets.
+The reviewed GLB has SHA-256
+`872acf11c18735c5841f752db0ff09e237e5b227afd84d14f9b86805dd9889d9`.
+
 The playable resident's everyday button-front shirt and jeans use MakeHuman's `male_casualsuit03` geometry, and the slip-ons use `shoes01`. The asset pack provides the geometry, fitting information and surface maps under CC0. The project fit them to the resident skeleton and prepared the fabric for the saved sand and indigo dyes. [MakeHuman system assets and license](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html)
 
 ## Canopy, glazing, instruments and street sound

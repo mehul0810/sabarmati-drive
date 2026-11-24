@@ -11,6 +11,7 @@
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontHUD.h"
 #include "RiverfrontPedestrian.h"
+#include "RiverfrontPigeon.h"
 #include "RiverfrontTraffic.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontWorld.h"
@@ -87,6 +88,7 @@ void ARiverfrontGameMode::BeginPlay()
         {
             River->Build();
             ARiverfrontPedestrian::SpawnRiverfrontCrowd(*GetWorld());
+            ARiverfrontPigeon::SpawnPromenadeFlock(*River);
         }
     }
 

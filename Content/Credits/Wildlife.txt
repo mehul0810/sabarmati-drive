@@ -1,0 +1,7 @@
+Pigeon by vinish.dev
+Source: https://vinish.dev/free-3d-models/birds
+License: Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+
+Adapted for Sabarmati Drive with Unreal Engine mesh detail levels and
+the original idle, peck, flight and glide animations.
