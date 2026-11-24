@@ -195,18 +195,20 @@ URiverfrontLocalProfile* RiverfrontLife::Load(const FString& Slot)
     return FRiverfrontProfileSlot::ForLaunch(Slot).Load();
 }
 
-bool RiverfrontLife::Create(const FString& Slot, const FString& DisplayName)
+bool RiverfrontLife::Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender)
 {
     const FString CleanName = URiverfrontLocalProfile::CleanDisplayName(DisplayName);
     const auto Lock = LockWriter();
     const FRiverfrontProfileSlot Storage = FRiverfrontProfileSlot::ForLaunch(Slot);
-    if (CleanName.IsEmpty() || !Lock.IsValid() || Storage.Exists())
+    if (CleanName.IsEmpty() || !StaticEnum<ERiverfrontGender>()->IsValidEnumValue(static_cast<int64>(Gender)) ||
+        !Lock.IsValid() || Storage.Exists())
     {
         return false;
     }
     auto* Profile = CastChecked<URiverfrontLocalProfile>(
         UGameplayStatics::CreateSaveGameObject(URiverfrontLocalProfile::StaticClass()));
     Profile->DisplayName = CleanName;
+    Profile->AvatarGender = Gender;
     StartLife(*Profile);
     return Storage.Write(*Profile);
 }
@@ -268,6 +270,17 @@ FText RiverfrontLife::Equip(const FString& Slot, FName Id)
             return LOCTEXT("NotOwned", "Purchase this item first.");
         }
         Wear(Profile, *Item);
+        return FText::GetEmpty();
+    });
+}
+
+FText RiverfrontLife::SetAvatarGender(const FString& Slot, ERiverfrontGender Gender)
+{
+    if (!StaticEnum<ERiverfrontGender>()->IsValidEnumValue(static_cast<int64>(Gender)))
+        return LOCTEXT("UnknownGender", "That avatar is unavailable.");
+    return Update(Slot, [Gender](URiverfrontLocalProfile& Profile)
+    {
+        Profile.AvatarGender = Gender;
         return FText::GetEmpty();
     });
 }

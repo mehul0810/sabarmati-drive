@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "RiverfrontResidentAppearance.h"
 #include "RiverfrontLocalProfile.generated.h"
 
 /** Single-device profile. The game does not ask for credentials or communicate with a server. */
@@ -25,6 +26,8 @@ public:
     UPROPERTY(SaveGame) TArray<FName> OwnedItems;
     UPROPERTY(SaveGame) FName EquippedOutfit;
     UPROPERTY(SaveGame) FName EquippedAccessory;
+    // Tagged saves written before the avatar selector inherit the original resident.
+    UPROPERTY(SaveGame) ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     UPROPERTY(SaveGame) FName AppearanceTone;
     UPROPERTY(SaveGame) bool bCroppedHair = false;
     UPROPERTY(SaveGame) FString LastReceipt;

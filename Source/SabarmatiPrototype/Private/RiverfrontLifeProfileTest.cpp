@@ -43,6 +43,7 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestEqual(TEXT("original trial"), Profile->BestRiverRunSeconds, Old->BestRiverRunSeconds);
     TestEqual(TEXT("starting cash"), Profile->CashRupees, int64(100000));
     TestEqual(TEXT("starting bank"), Profile->BankRupees, int64(500000));
+    TestEqual(TEXT("existing profile retains the original avatar"), Profile->AvatarGender, ERiverfrontGender::Male);
     TestFalse(TEXT("wake pending"), Profile->bFirstMorningSeen);
     TestTrue(TEXT("reference catalogue"), RiverfrontLife::Catalog().Num() >= 4);
     TestTrue(TEXT("unowned watch cannot be equipped"), !RiverfrontLife::Equip(Slot, TEXT("watch")).IsEmpty());
@@ -67,6 +68,7 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
 
     TestTrue(TEXT("retry bank purchase"), RiverfrontLife::BuyAndEquip(Slot, TEXT("watch"), true).IsEmpty());
     TestTrue(TEXT("set complexion"), RiverfrontLife::SetAppearanceTone(Slot, TEXT("umber")).IsEmpty());
+    TestTrue(TEXT("change avatar in an existing profile"), RiverfrontLife::SetAvatarGender(Slot, ERiverfrontGender::Female).IsEmpty());
     TestTrue(TEXT("choose cropped haircut"), RiverfrontLife::SetCroppedHair(Slot, true).IsEmpty());
     TestTrue(TEXT("save apartment checkpoint"), RiverfrontLife::SaveCheckpoint(Slot, TEXT("riverfront"), FVector(100, 200, 125), 70.f));
     TestTrue(TEXT("merge legacy exploration"), RiverfrontLife::MergeExploration(Slot, Old->DisplayName, {FName(TEXT("atelier"))}, 0.f));
@@ -84,6 +86,7 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestEqual(TEXT("no second starting grant"), Profile->CashRupees, int64(98750));
     TestEqual(TEXT("delivery count"), Profile->CompletedPrintDeliveries, 1);
     TestEqual(TEXT("accessory persisted"), Profile->EquippedAccessory, FName(TEXT("watch")));
+    TestEqual(TEXT("chosen avatar survives wardrobe edits and reopening"), Profile->AvatarGender, ERiverfrontGender::Female);
     TestTrue(TEXT("cropped hairstyle survives reopening"), Profile->bCroppedHair);
     TestEqual(TEXT("complexion persisted"), Profile->AppearanceTone, FName(TEXT("umber")));
     TestTrue(TEXT("wake complete and saved"), Profile->bFirstMorningSeen && Profile->bHasLifeCheckpoint);
@@ -91,10 +94,11 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestTrue(TEXT("exploration survives independent shop and delivery saves"), Profile->VisitedSites.Contains(TEXT("atelier")));
     TestEqual(TEXT("original best survives all operations"), Profile->BestRiverRunSeconds, Old->BestRiverRunSeconds);
 
-    TestTrue(TEXT("create a new player"), RiverfrontLife::Create(Fresh, TEXT("New Player")));
+    TestTrue(TEXT("create a new player"), RiverfrontLife::Create(Fresh, TEXT("New Player"), ERiverfrontGender::Female));
     TestFalse(TEXT("repeated creation cannot reset a save"), RiverfrontLife::Create(Fresh, TEXT("New Player")));
     Profile = RiverfrontLife::Load(Fresh);
     if (!TestNotNull(TEXT("reload new player"), Profile)) return false;
+    TestEqual(TEXT("avatar chosen at creation"), Profile->AvatarGender, ERiverfrontGender::Female);
     TestEqual(TEXT("new player cash"), Profile->CashRupees, int64(100000));
     TestEqual(TEXT("new player bank"), Profile->BankRupees, int64(500000));
     Profile->CashRupees = 30;

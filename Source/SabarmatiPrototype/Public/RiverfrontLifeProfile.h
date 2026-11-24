@@ -32,10 +32,11 @@ namespace RiverfrontLife
     const TArray<FRiverfrontWearable>& Catalog();
     bool Exists(const FString& Slot);
     URiverfrontLocalProfile* Load(const FString& Slot);
-    bool Create(const FString& Slot, const FString& DisplayName);
+    bool Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender = ERiverfrontGender::Male);
     bool MergeExploration(const FString& Slot, const FString& DisplayName, const TArray<FName>& Visits, float BestTime);
     FText BuyAndEquip(const FString& Slot, FName Item, bool bPayFromBank);
     FText Equip(const FString& Slot, FName Item);
+    FText SetAvatarGender(const FString& Slot, ERiverfrontGender Gender);
     FText SetAppearanceTone(const FString& Slot, FName Tone);
     FText SetCroppedHair(const FString& Slot, bool bCropped);
     bool SaveCheckpoint(const FString& Slot, FName District, FVector Location, float Yaw, bool bFinishedWakeup = true);
