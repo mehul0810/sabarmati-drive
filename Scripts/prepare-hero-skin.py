@@ -76,8 +76,12 @@ def brow_card(system):
     # Orthographic projector in native hm08 space. The artwork follows the
     # accessory artist's hand-fit left and right cards, with their separate UVs.
     positions, uvs, triangles = mesh(system/(BROW+'.obj'))
-    rgba = np.asarray(Image.open(system/(BROW+'.png')).convert('RGBA'), dtype=np.float32)/255
-    rgba[:, :, :3] *= rgba[:, :, 3:4]
+    # Filter premultiplied hair coverage before projection into the lower-
+    # resolution head chart. Keep deep brown strands and softer edges in motion.
+    brow = Image.open(system/(BROW+'.png')).convert('RGBa').filter(ImageFilter.GaussianBlur(1.65))
+    rgba = np.asarray(brow, dtype=np.float32)/255
+    rgba[:, :, :3] = .88*rgba[:, :, :3] + .12*rgba[:, :, 3:4]*[.27, .18, .13]
+    rgba *= .86
     # Set the fictional resident's resting brow roughly 11 mm lower than the
     # stock card on this particular neutral face.
     positions[:, 1] -= .11
