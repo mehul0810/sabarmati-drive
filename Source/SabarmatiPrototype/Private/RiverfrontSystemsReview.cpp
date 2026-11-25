@@ -223,10 +223,10 @@ public:
                     return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f, yaw %.1f; %s"),
                         Here.X,Here.Y,Car->GetActorRotation().Yaw,*PC.NavigationText()));
                 }
-                // Use the open space between the lane queues, steer on real keys,
-                // and slow for any vehicle turning across the route at the bridge.
-                constexpr double RoadCentre=4090.;
-                const double Aim=FMath::RadiansToDegrees(FMath::Atan2(RoadCentre-Here.Y,FMath::Max(620.,Velocity*.91)));
+                // Follow the northbound left-hand lane, including its signal and
+                // traffic queue. Oncoming vehicles use the other side of the bank road.
+                constexpr double LaneY=4090.-222.;
+                const double Aim=FMath::RadiansToDegrees(FMath::Atan2(LaneY-Here.Y,FMath::Max(620.,Velocity*.91)));
                 const double Error=FMath::FindDeltaAngleDegrees(Car->GetActorRotation().Yaw,Aim);
                 TrialSteer(Error>2.4?1:Error< -2.4?-1:0);
                 const double Limit=FMath::Abs(Here.X-3150.)<1000.?590.:1280.;
@@ -241,7 +241,7 @@ public:
                     const double ProjectedHalfWidth=FMath::Abs(Route.Y)*It->HalfLength+FMath::Abs(Route.X)*It->HalfWidth;
                     const double ProjectedHalfLength=FMath::Abs(Route.X)*It->HalfLength+FMath::Abs(Route.Y)*It->HalfWidth;
                     const double Gap=Other.X-Here.X-ProjectedHalfLength-212.;
-                    const double FutureY=FMath::Lerp(Here.Y,RoadCentre,FMath::Clamp(Gap/900.,0.,1.));
+                    const double FutureY=FMath::Lerp(Here.Y,LaneY,FMath::Clamp(Gap/900.,0.,1.));
                     // Look across the bridge approach too. A turning driver can
                     // cross the trial before their present footprint touches it.
                     if (ToStopLine>=0. && ToStopLine<2400. && FMath::Abs(Other.X-3150.)<770.)
@@ -249,8 +249,8 @@ public:
                         const FVector Motion=Traffic->RoadVelocity(*It);
                         const double LaterY=Other.Y+Motion.Y*2.8;
                         const double Margin=ProjectedHalfWidth+138.;
-                        if (FMath::Abs(Route.Y)>.2 && FMath::Min(Other.Y,LaterY)<RoadCentre+Margin
-                            && FMath::Max(Other.Y,LaterY)>RoadCentre-Margin)
+                        if (FMath::Abs(Route.Y)>.2 && FMath::Min(Other.Y,LaterY)<LaneY+Margin
+                            && FMath::Max(Other.Y,LaterY)>LaneY-Margin)
                             bYieldAtBridge=true;
                     }
                     if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<ProjectedHalfWidth+97.)
