@@ -134,6 +134,7 @@ private:
     void RunGaitReview();
     void RunSystemsReview();
     void RunRiverReview();
+    void RunImpactReview();
     void RunNeighbourhoodReview();
     int32 ReviewGraphicsPreset = INDEX_NONE;
     double LastStreetTravelMs=0.;
