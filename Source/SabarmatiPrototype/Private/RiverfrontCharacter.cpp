@@ -1,4 +1,5 @@
 #include "RiverfrontCharacter.h"
+#include "Components/PoseableMeshComponent.h"
 #include "SabarmatiDistrict.h"
 #include "RiverfrontAvatarMotion.h"
 #include "RiverfrontLocalProfile.h"
@@ -428,6 +429,7 @@ void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile&
 
 void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FName Tone)
 {
+    EndChangingPose();
     WardrobeOutfit = Outfit.IsNone() ? FName(TEXT("cotton-sand")) : Outfit;
     WardrobeAccessory = Accessory;
     WardrobeTone = Tone;
@@ -439,6 +441,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     }
     if (!DefaultAvatarMesh) return;
 
+    const bool bBaseLayer = WardrobeOutfit == TEXT("fitting-base");
     const bool bIndigo = WardrobeOutfit == TEXT("shirt-indigo");
     const bool bKurta = WardrobeOutfit == TEXT("kurta");
     const bool bPublic = DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
@@ -460,9 +463,9 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     UseWardrobeMesh(Model, bUsingKurtaRig);
 
     // The fabric is UV-mapped on the garment and moves with the animated body.
-    const FColor Shirt = bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
-    const FColor Trim = bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
-    const FColor Trousers = bIndigo ? FColor(169, 153, 121) : bKurta ? FColor(209, 201, 178) : FColor(53, 62, 73);
+    const FColor Shirt = bBaseLayer ? FColor(214,214,202) : bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
+    const FColor Trim = bBaseLayer ? FColor(186,184,172) : bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
+    const FColor Trousers = bBaseLayer ? FColor(108,109,103) : bIndigo ? FColor(169, 153, 121) : bKurta ? FColor(209, 201, 178) : FColor(53, 62, 73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
@@ -488,7 +491,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     // The everyday shirt and jeans have their own complete clothing UV atlas and normal maps.
     // Passing a null override keeps the material assigned to each skeletal mesh section.
     UMaterialInterface* Cloth = nullptr;
-    if (!bPublic || bUsingKurtaRig)
+    if (bBaseLayer || !bPublic || bUsingKurtaRig)
         Cloth = CottonMaterial.Get();
     else if (Model->GetFName() == TEXT("SK_RiverResident"))
         Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
@@ -531,6 +534,59 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     if (bInFittingPose) SetFittingPose(true);
 }
 
+void ARiverfrontCharacter::EndChangingPose()
+{
+    if (!ChangingMesh) return;
+    for (auto* Part : { Hair.Get(), Wristwatch.Get() })
+        if (Part && Part->GetAttachParent()==ChangingMesh)
+            Part->AttachToComponent(GetMesh(),FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
+    GetMesh()->SetVisibility(true);
+    ChangingMesh->DestroyComponent();
+    ChangingMesh=nullptr;
+}
+
+void ARiverfrontCharacter::PoseChangingSleeves(float Lift)
+{
+    auto* Source=GetMesh();
+    if (!bInFittingPose || bBlueprintAvatarActive || !Source->GetSkeletalMeshAsset()) return;
+    if (!ChangingMesh)
+    {
+        if (!Source->IsVisible() || Source->GetBoneIndex(TEXT("Shoulderl"))==INDEX_NONE) return;
+        ChangingMesh=NewObject<UPoseableMeshComponent>(this);
+        AddInstanceComponent(ChangingMesh);
+        ChangingMesh->SetupAttachment(Source);
+        ChangingMesh->SetSkinnedAssetAndUpdate(Source->GetSkeletalMeshAsset());
+        ChangingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        for (int32 I=0;I<Source->GetNumMaterials();++I) ChangingMesh->SetMaterial(I,Source->GetMaterial(I));
+        ChangingMesh->RegisterComponent();
+        for (auto* Part : { Hair.Get(), Wristwatch.Get() })
+            if (Part && Part->GetAttachParent()==Source)
+                Part->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
+        Source->SetVisibility(false);
+    }
+    ChangingMesh->CopyPoseFromSkeletalComponent(Source);
+    for (int32 Index=0;Index<2;++Index)
+    {
+        const FString Side=Index?TEXT("r"):TEXT("l");
+        const double Sign=Index?1.:-1.;
+        const auto Aim=[&](const TCHAR* Joint,const TCHAR* Next,const FVector& Direction)
+        {
+            const FName Bone(*(FString(Joint)+Side)), Child(*(FString(Next)+Side));
+            auto Transform=ChangingMesh->GetBoneTransformByName(Bone,EBoneSpaces::ComponentSpace);
+            const FVector From=(ChangingMesh->GetBoneLocationByName(Child,EBoneSpaces::ComponentSpace)-Transform.GetLocation()).GetSafeNormal();
+            const FVector To=Source->GetRelativeRotation().UnrotateVector(Direction.GetSafeNormal());
+            const FQuat Delta=FQuat::Slerp(FQuat::Identity,FQuat::FindBetweenNormals(From,To),Lift);
+            Transform.SetRotation(Delta*Transform.GetRotation());
+            ChangingMesh->SetBoneTransformByName(Bone,Transform,EBoneSpaces::ComponentSpace);
+        };
+        Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.6,.45*Sign,-.35));
+        Aim(TEXT("Elbow"),TEXT("Hand"),FVector(.15,-.57*Sign,.9));
+    }
+    // The fitting room pauses the world; publish the pose on Slate's active timer.
+    ChangingMesh->RefreshBoneTransforms();
+    ChangingMesh->MarkRenderDynamicDataDirty();
+}
+
 bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
 {
     auto* Body=GetAvatarMesh();
@@ -551,10 +607,10 @@ void ARiverfrontCharacter::UpdateBedPose()
 {
     auto* Body=GetAvatarMesh();
     // Feet point towards the footboard (+body Z runs towards the pillow).
-    const float Breath=FMath::Sin(BedTime*1.6f);
-    const FQuat BedAxes=FRotationMatrix::MakeFromXZ(FVector(.34,0,1),FVector::RightVector).ToQuat();
+    const float BreathingOffset=.38f*FMath::Sin(BedTime*1.6f);
+    const FQuat BedAxes=FRotationMatrix::MakeFromXZ(FVector(-.88,0,.45),FVector::RightVector).ToQuat();
     const FQuat Rotation=BedAxes*BeforeBed.GetRotation();
-    const FVector Pillow=BedHead+FVector(0,0,.38f*Breath);
+    const FVector Pillow=BedHead+FVector(0,0,BreathingOffset);
     Body->SetWorldLocationAndRotation(Pillow-Rotation.RotateVector(HeadInMesh*Body->GetComponentScale()),Rotation);
 }
 
@@ -571,6 +627,7 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
     auto* Movement = GetCharacterMovement();
     if (!bFitting)
     {
+        EndChangingPose();
         if (!bInFittingPose) return;
         bInFittingPose = false;
         Movement->bOrientRotationToMovement = bOrientBeforeFitting;

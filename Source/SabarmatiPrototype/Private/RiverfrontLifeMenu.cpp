@@ -1,4 +1,5 @@
 #include "RiverfrontLifeMenu.h"
+#include "Framework/Application/SlateApplication.h"
 #include "RiverfrontGenderSelector.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCharacter.h"
@@ -99,7 +100,6 @@ public:
         {
             if (bWardrobe)
             {
-                AddCaption(Body,TEXT("Avatar"));
                 Body->AddSlot().AutoHeight()
                 [
                     SNew(SRiverfrontGenderSelector)
@@ -131,6 +131,7 @@ public:
                 SNew(SButton).Tag(TEXT("LifeEquip")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
                 .ContentPadding(FMargin(10,8)).HAlign(HAlign_Center)
                 .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected) && !Wearing(Selected)); })
+                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid(); })
                 .OnClicked_Lambda([this]{ return Complete(RiverfrontLife::Equip(Slot,Selected),TEXT("Outfit updated.")); })
                 [Label(Copy(TEXT("Wear now")),13,Panel,true)]
             ];
@@ -289,6 +290,9 @@ private:
     bool bPortrait = false;
     FText Feedback;
     TWeakObjectPtr<UWorld> AudioWorld;
+    TWeakPtr<FActiveTimerHandle> DressingTimer;
+    double DressStageStart=0.;
+    int32 DressStage=0;
     TStrongObjectPtr<USoundBase> SelectionTick, CounterBell;
 
     float PanelScale() const
@@ -437,12 +441,57 @@ private:
             })[Label(Copy(bCropped ? TEXT("Cropped") : TEXT("Swept")),13,Paper)];
     }
 
+    ARiverfrontCharacter* Resident() const
+    {
+        return AudioWorld.IsValid() ? Cast<ARiverfrontCharacter>(UGameplayStatics::GetPlayerCharacter(AudioWorld.Get(),0)) : nullptr;
+    }
+
+    void StopDressing()
+    {
+        if (auto Handle=DressingTimer.Pin()) UnRegisterActiveTimer(Handle.ToSharedRef());
+        DressingTimer.Reset();
+        if (auto* Walker=Resident()) Walker->EndChangingPose();
+    }
+
+    EActiveTimerReturnType AdvanceDressing(double Now,float)
+    {
+        auto* Walker=Resident();
+        if (!Walker || !Preview) { DressingTimer.Reset(); return EActiveTimerReturnType::Stop; }
+        constexpr double Seconds[]={.35,.45,.4};
+        const float Alpha=FMath::Clamp(float((Now-DressStageStart)/Seconds[DressStage]),0.f,1.f);
+        const float Ease=FMath::SmoothStep(0.f,1.f,Alpha);
+        Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease);
+        if (Alpha<1.f) return EActiveTimerReturnType::Continue;
+        ++DressStage;
+        DressStageStart=Now;
+        if (DressStage==1) Preview(TEXT("fitting-base"),Accessory,Tone);
+        else if (DressStage==2) Preview(Selected,Accessory,Tone);
+        else
+        {
+            Walker->EndChangingPose();
+            DressingTimer.Reset();
+            return EActiveTimerReturnType::Stop;
+        }
+        Walker->PoseChangingSleeves(1.f);
+        return EActiveTimerReturnType::Continue;
+    }
+
     FReply Select(FName Id)
     {
         if (Selected != Id) PlayFeedback(SelectionTick.Get(),.13f,1.40f);
         Selected = Id;
         const FRiverfrontWearable* Chosen = Item(Id);
-        if (Chosen && Preview)
+        auto* Walker=Resident();
+        const bool ChangeClothes=Page==ERiverfrontLifeMenu::Wardrobe && Chosen && !Chosen->bAccessory
+            && Walker && Walker->GetWardrobeOutfit()!=Id && Preview;
+        StopDressing();
+        if (ChangeClothes)
+        {
+            DressStage=0;
+            DressStageStart=FSlateApplication::Get().GetCurrentTime();
+            DressingTimer=RegisterActiveTimer(1.f/30.f,FWidgetActiveTimerDelegate::CreateSP(this,&SRiverfrontLifeMenu::AdvanceDressing));
+        }
+        else if (Chosen && Preview)
             Preview(Chosen->bAccessory ? Outfit : Id, Chosen->bAccessory ? Id : Accessory, Tone);
         Feedback = FText::GetEmpty();
         return FReply::Handled();
@@ -458,6 +507,7 @@ private:
     FReply Complete(const FText& Error, const FString& Success, bool bReceipt=false)
     {
         if (!Error.IsEmpty()) { Feedback = Error; return FReply::Handled(); }
+        StopDressing();
         const int64 CashBefore = Cash, BankBefore = Bank;
         Reload();
         if (!bAvailable) { Feedback = Copy(TEXT("The saved profile could not be reopened.")); return FReply::Handled(); }
@@ -472,6 +522,7 @@ private:
 
     FReply Close()
     {
+        StopDressing();
         if (bAvailable && Preview && Page != ERiverfrontLifeMenu::Wallet) Preview(Outfit,Accessory,Tone);
         OnClose.ExecuteIfBound();
         return FReply::Handled();

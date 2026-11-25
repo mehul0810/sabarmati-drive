@@ -48,6 +48,8 @@ public:
     void SetFittingPose(bool bFitting);
     bool LieOnBed(const FVector& Pillow);
     void LeaveBed();
+    void PoseChangingSleeves(float Lift);
+    void EndChangingPose();
     bool IsLyingOnBed() const { return bLyingOnBed; }
     bool SupportsPublicHaircut() const;
     void SetCroppedHair(bool bCropped);
@@ -160,6 +162,7 @@ private:
     int32 StepIndex=0;
     double GaitPhase = 0.0;
     bool bUsesImportedMesh = false;
+    UPROPERTY(Transient) TObjectPtr<class UPoseableMeshComponent> ChangingMesh;
     bool bLyingOnBed=false;
     FTransform BeforeBed;
     FVector BedHead, HeadInMesh;
