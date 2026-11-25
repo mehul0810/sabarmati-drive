@@ -1,12 +1,78 @@
 #if WITH_EDITOR
 
+#include "Components/ChildActorComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Containers/Ticker.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "Misc/PackageName.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontWorld.h"
+
+namespace
+{
+void PrepareSampleHuman(UWorld& World)
+{
+    const TWeakObjectPtr<UWorld> PreviewWorld(&World);
+    const double Started = FPlatformTime::Seconds();
+    FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([PreviewWorld, Started](float)
+    {
+        UWorld* World = PreviewWorld.Get();
+        if (!World) return false;
+        APlayerController* Controller = World->GetFirstPlayerController();
+        APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+        if (!World->HasBegunPlay() || !Pawn)
+        {
+            if (FPlatformTime::Seconds() - Started < 120.) return true;
+            UE_LOG(LogTemp, Error, TEXT("Sample human preview could not find a possessed pawn."));
+            return false;
+        }
+
+        const FString Package = TEXT("/Game/MetaHumans/Kellan/BP_Kellan");
+        UClass* HumanClass = FPackageName::DoesPackageExist(Package)
+            ? LoadClass<AActor>(nullptr, TEXT("/Game/MetaHumans/Kellan/BP_Kellan.BP_Kellan_C")) : nullptr;
+        TInlineComponentArray<UChildActorComponent*> Children;
+        Pawn->GetComponents(Children);
+        auto* Visual = Children.FindByPredicate([](const UChildActorComponent* Child)
+        {
+            return Child && Child->ComponentHasTag(TEXT("VisualOverride"));
+        });
+        auto* Driver = Visual ? Cast<USkeletalMeshComponent>((*Visual)->GetAttachParent()) : nullptr;
+        if (!HumanClass || !Visual || !Driver)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Sample human preview needs Kellan and the sample visual override."));
+            return false;
+        }
+
+        UClass* PreviousClass = (*Visual)->GetChildActorClass();
+        (*Visual)->SetChildActorClass(HumanClass);
+        AActor* Human = (*Visual)->GetChildActor();
+        TInlineComponentArray<USkeletalMeshComponent*> Parts;
+        if (Human) Human->GetComponents(Parts);
+        const bool bHasRetargetBody = Parts.ContainsByPredicate([](USkeletalMeshComponent* Part)
+        {
+            return Part && Part->ComponentHasTag(TEXT("RTG_UEFN_to_Metahuman_nrw")) &&
+                Part->GetSkeletalMeshAsset() && Part->GetAnimClass();
+        });
+        if (!bHasRetargetBody)
+        {
+            (*Visual)->SetChildActorClass(PreviousClass);
+            UE_LOG(LogTemp, Error, TEXT("Sample human preview could not find Kellan's retargeted body."));
+            return false;
+        }
+        Driver->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+        Driver->SetVisibility(false, false);
+        UE_LOG(LogTemp, Display, TEXT("Sabarmati sample human preview: Kellan is driven by %s."),
+            *Pawn->GetClass()->GetPathName());
+        return false;
+    }), .1f);
+}
+}
 
 void PrepareRiverfrontSampleApartment(const FActorsInitializedParams& Params)
 {
@@ -76,6 +142,7 @@ void PrepareRiverfrontSampleApartment(const FActorsInitializedParams& Params)
     }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati sample apartment staged: mode=%s start=%s"),
         *RequestedMode, *Start->GetActorLocation().ToCompactString());
+    if (World->URL.HasOption(TEXT("SabarmatiSampleHuman"))) PrepareSampleHuman(*World);
 }
 
 #endif
