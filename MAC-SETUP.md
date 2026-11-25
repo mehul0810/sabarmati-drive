@@ -98,7 +98,7 @@ bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity -SabarmatiNeighbourh
 bash Scripts/run-mac.sh --package
 ```
 
-For the interactive preview of Ashram Road, CG Road and the SG Highway service road, launch `bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity -SabarmatiStreetPreview`. Select a street with **N** and travel with **V** on foot or in a stopped car. The Atal west approach is a return stop. The ordinary city starts in the original central area. [Mapped areas and data sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
+To play the current 1 km × 1 km Ahmedabad district from the development checkout, run `bash Scripts/run-mac.sh --game --no-build -- -SabarmatiCity`. The area includes the Atal west approach, Riverside chai lane, Riverfront tree walk and Market approach. Press **N** to select a destination and **V** to travel on foot or in a stopped car. [Mapped areas and data sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
 
 The shared profile lives at `~/Library/Application Support/Sabarmati Drive/Saved/SaveGames/SabarmatiPlayerProfileV1.sav`. When that file is absent, a shortcut can seed it from an existing checkout save. A direct Finder launch can migrate a valid older app save. Each keeps the original file. Later launches use the shared copy.
 
