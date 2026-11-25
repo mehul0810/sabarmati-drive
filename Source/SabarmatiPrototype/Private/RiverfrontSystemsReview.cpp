@@ -128,6 +128,20 @@ public:
             Tap(EKeys::G);break;
         case 10:
             if (PC.NavigationText().IsEmpty()) return Fail(TEXT("time trial guidance"));
+            // Measure acceleration and braking on a clear stretch, then run the
+            // traffic-aware four-gate drive separately below.
+            {
+                bool Clear=false;
+                for (double X:{-34500.,-30000.,-25000.,7000.,28500.})
+                {
+                    const FVector Start(X,4090.,72.);
+                    const FCollisionQueryParams Query(SCENE_QUERY_STAT(BrakeTestLane),false,Car.Get());
+                    if (PC.GetWorld()->SweepTestByChannel(Start,Start+FVector(11000.,0,0),FQuat::Identity,
+                        ECC_Pawn,FCollisionShape::MakeBox(FVector(215.,97.,45.)),Query)) continue;
+                    if (Car->TeleportTo(Start,FRotator::ZeroRotator)) { Clear=true;break; }
+                }
+                if (!Clear) return Fail(TEXT("clear approach for braking distance"));
+            }
             Origin=Car->GetActorLocation();Key(EKeys::W,IE_Pressed);break;
         case 11:
             if (FVector::Dist2D(Car->GetActorLocation(),Origin)<5200 && Age<14.) return true;

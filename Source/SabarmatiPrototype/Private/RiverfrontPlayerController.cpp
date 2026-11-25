@@ -86,7 +86,7 @@ bool CheckCorridorRoutes(UWorld& World)
         }
     }
     int32 Bridges = 0;
-    for (const double X : {-64400.0, 59310.0})
+    for (const double X : {-64400.0, RiverfrontCrossings::CentralRoadX, 59310.0})
     {
         for (const double Y : {4090.0, -1800.0, -10960.0, -19500.0, -26010.0})
         {
@@ -94,7 +94,7 @@ bool CheckCorridorRoutes(UWorld& World)
         }
     }
     int32 Underpasses = 0;
-    for (double X : {-64400., 58600.})
+    for (double X : {-64400., RiverfrontCrossings::CentralRoadX, 58600.})
     {
         for (double Y : {2350., -24270.})
         {
@@ -109,7 +109,7 @@ bool CheckCorridorRoutes(UWorld& World)
             Underpasses += !Blocked && Supported;
         }
     }
-    UE_LOG(LogTemp, Display, TEXT("Sabarmati crossings: %d/4 continuous, grounded standing-capsule routes."), Underpasses);
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati crossings: %d/6 continuous, grounded standing-capsule routes."), Underpasses);
     int32 OpenSeams = 0;
     for (const double Y : {4090.0, -26010.0})
     {
@@ -135,14 +135,15 @@ bool CheckCorridorRoutes(UWorld& World)
     {
         for (const double BankEdge : {2205.,-24125.})
         {
-            OpenCentralLanes += !World.SweepTestByObjectType(FVector(X,BankEdge+205.,39.),FVector(X,BankEdge-205.,39.),
+            OpenCentralLanes += !World.SweepTestByObjectType(FVector(X,BankEdge+205.,39.+RiverfrontCrossings::DeckZ(BankEdge+205.)),
+                FVector(X,BankEdge-205.,39.+RiverfrontCrossings::DeckZ(BankEdge-205.)),
                 FQuat::Identity,FCollisionObjectQueryParams(ECC_WorldStatic),FCollisionShape::MakeBox(FVector(96.,210.,29.)));
         }
     }
     UE_LOG(LogTemp, Display,
-        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/10, road seams=%d/4, foot seams=%d/4, central lanes=%d/4."),
+        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/15, road seams=%d/4, foot seams=%d/4, central lanes=%d/4."),
         Road, Walk, Bridges, OpenSeams, OpenFootSeams, OpenCentralLanes);
-    return Road==16 && Walk==16 && Bridges==10 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==4 && OpenCentralLanes==4;
+    return Road==16 && Walk==16 && Bridges==15 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==6 && OpenCentralLanes==4;
 }
 #endif
 
