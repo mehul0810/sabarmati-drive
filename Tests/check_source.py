@@ -103,7 +103,8 @@ class SourceTests(unittest.TestCase):
         def numeric(text, field):
             return float(re.search(rf"{field} = (-?[\d.]+)", text).group(1))
 
-        bridge_x = numeric(world, "BridgeX")
+        self.assertIn("BridgeX = RiverfrontCrossings::CentralRoadX", world)
+        bridge_x = numeric((PRIVATE / "RiverfrontCrossings.h").read_text(), "CentralRoadX")
         atal_x = numeric(header, "AtalX")
         centre = numeric(source, "MidY")
         half_length = numeric(source, "HalfLength")
