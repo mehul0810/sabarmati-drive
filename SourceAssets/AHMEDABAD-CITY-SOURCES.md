@@ -64,7 +64,7 @@ The Atal west-bank reference area shows elongated flat-roofed buildings, seconda
 
 Major road sections within about 530 m of the city start receive precast kerbs, footpaths and drain grilles. The mesh builder checks adjacent mapped road widths and leaves openings at junctions. Width, drainage positions and façade details are inferred.
 
-## Named street preview
+## Named street districts
 
 Three 0.008° square windows were sampled around Ashram Road, CG Road and an SG Highway service road. The 1,264 incoming building records yielded 243, 559 and 362 exterior shells respectively. The preparation step filters roads, water and overlap with the central 1,422 footprints. The binary companion manifest records all three query boxes and the SHA-256 digest. The heights, glazing and frontage materials are estimates. The service road is a local segment beside the highway.
 

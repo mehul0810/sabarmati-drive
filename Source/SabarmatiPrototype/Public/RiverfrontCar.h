@@ -115,7 +115,7 @@ private:
     UPROPERTY() TObjectPtr<USoundWave> ImpactSound;
     float HitSoundDelay=0.f, Fuel=1.f, Condition=1.f;
     void UpdateSignalLenses(float DeltaTime);
-    bool SampleWheels(const FVector& Centre, double Yaw, double (&Heights)[4]) const;
+    bool SampleWheels(const FVector& Centre, double Yaw, double (&Heights)[4], bool bRequireCityRoad = false) const;
     int32 Gear = 1, Signal = 0, ViewMode = 0, ContactCount = 0;
     float EngineRpm=850.f, Wetness=0.f, TravelYaw=0.f, BodyRoll=0.f, BlinkTime=0.f, LastSpeed=0.f;
     float ViewBlend=1.f;

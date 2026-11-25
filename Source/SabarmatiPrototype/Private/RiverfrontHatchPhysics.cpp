@@ -1,4 +1,5 @@
 #include "RiverfrontCar.h"
+#include "RiverfrontGameMode.h"
 #include "RiverfrontHatchWheel.h"
 
 #include "ChaosWheeledVehicleMovementComponent.h"
@@ -106,7 +107,7 @@ void ARiverfrontCar::ConfigureHatchbackPhysics()
         return;
     }
     Motion.Activate();
-    Motion.SetParked(true);
+    StopHatchbackPhysics(true);
     FVector Front = Mesh->GetRefSkeleton().GetBoneAbsoluteTransform(Mesh->GetRefSkeleton().FindBoneIndex(Names[0])).GetLocation();
     FHitResult Floor;
     const FVector FrontWorld = Placement.TransformPosition(Front);
@@ -119,6 +120,9 @@ void ARiverfrontCar::ConfigureHatchbackPhysics()
 void ARiverfrontCar::StopHatchbackPhysics(bool bPark)
 {
     if (!bChaosDrive) return;
+    const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
+    const bool bCity = Mode && Mode->IsCityMode();
+    if (bCity && !bPark) PhysicsChassis->SetSimulatePhysics(true);
     PhysicsChassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
     PhysicsChassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     VehicleMovement->SetThrottleInput(0.f);
@@ -126,6 +130,8 @@ void ARiverfrontCar::StopHatchbackPhysics(bool bPark)
     VehicleMovement->SetBrakeInput(0.f);
     VehicleMovement->SetParked(bPark);
     VehicleMovement->SetTargetGear(1, true);
+    // Parked cars can outlive the tile carrying their road collision.
+    if (bCity && bPark) PhysicsChassis->SetSimulatePhysics(false);
 }
 
 void ARiverfrontCar::UpdateHatchbackWheels()

@@ -12,7 +12,6 @@
 #include "HAL/FileManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/FileHelper.h"
-#include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "Serialization/MemoryReader.h"
 
@@ -416,19 +415,15 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         }
     }
     Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"), true);
-    // A malformed optional sidecar cannot prevent the original road network from opening.
-#if !UE_BUILD_SHIPPING
-    if (FParse::Param(FCommandLine::Get(),TEXT("SabarmatiStreetPreview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
+    // The district file adds building plots to existing tiles without loading their meshes.
+    // If it is absent or invalid, the base city remains playable.
+    bStreetDistricts = Parsed->ReadBuildings(TEXT("AhmedabadDistrictBuildings.bin"), false);
+    if (bStreetDistricts)
     {
-        bStreetDistricts=Parsed->ReadBuildings(TEXT("AhmedabadDistrictBuildings.bin"),false);
-        if (bStreetDistricts)
-        {
-            Parsed->LoadStreetCentres();
-            MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
-            StreetGround=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_StreetGround.M_StreetGround"));
-        }
+        Parsed->LoadStreetCentres();
+        MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
+        StreetGround=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_StreetGround.M_StreetGround"));
     }
-#endif
     LoadSurfaceMaterials();
     CityState = Parsed;
     UpdateCityTiles(Parsed->Car, true);
@@ -759,6 +754,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                 if (Layer==StreetTree) Mesh->SetCullDistances(17000,33000);
                 if (Layer==TrunkGuard) Mesh->SetHiddenInGame(true);
                 if (Layer==Sidewalk) Mesh->ComponentTags.Add(TEXT("CityFootpath"));
+                if (Layer==Road) Mesh->ComponentTags.Add(TEXT("CityRoad"));
                 if (UMaterialInterface* Material = SurfaceMaterials.FindRef(static_cast<int32>(Tints[Layer])))
                 {
                     if (Layer!=StreetTree) Mesh->SetMaterial(0,Layer==Dry && Tile->HasStreetPlots && StreetGround?StreetGround.Get():Material);

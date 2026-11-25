@@ -541,11 +541,7 @@ bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
         FleetBody->SetActorEnableCollision(false);
         FleetBody->SetManualDriver(&Character);
     }
-    if (bChaosDrive)
-    {
-        VehicleMovement->SetParked(false);
-        VehicleMovement->SetTargetGear(1, true);
-    }
+    StopHatchbackPhysics(false);
     UpdateDrivingLights();
     Player->SetControlRotation(FRotator(-13, GetActorRotation().Yaw, 0));
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
@@ -815,7 +811,7 @@ void ARiverfrontCar::SetHint(const TCHAR* Message)
     HintRemaining = 3.9f;
 }
 
-bool ARiverfrontCar::SampleWheels(const FVector& Centre,double Yaw,double (&H)[4]) const
+bool ARiverfrontCar::SampleWheels(const FVector& Centre,double Yaw,double (&H)[4],bool bRequireCityRoad) const
 {
     const FRotator Heading(0,Yaw,0);
     for (int32 I=0;I<4;++I)
@@ -831,6 +827,8 @@ bool ARiverfrontCar::SampleWheels(const FVector& Centre,double Yaw,double (&H)[4
         const FVector Wheel=Centre+Heading.RotateVector(FVector(Axle,I<2?-HalfTrack:HalfTrack,0));
         FHitResult Hit;
         if (!FindGround(GetWorld(),Wheel,this,Hit,GroundHeight)) return false;
+        if (bRequireCityRoad && (!Hit.GetComponent() || !Hit.GetComponent()->ComponentHasTag(TEXT("CityRoad"))))
+            return false;
         H[I]=Hit.ImpactPoint.Z;
     }
     return true;
@@ -988,12 +986,25 @@ void ARiverfrontCar::FitInstruments()
 bool ARiverfrontCar::TravelToStreet(const FVector& Position, double Heading)
 {
     if (!Driver || GetSpeedKph()>1.f) return false;
-    double Wheels[4];
-    if (!SampleWheels(Position,Heading,Wheels)) return false;
-    const FVector Arrival(Position.X,Position.Y,(Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25+GroundHeight);
-    if (!TeleportTo(Arrival,FRotator(0,Heading,0))) return false;
-    StopHatchbackPhysics(false);
-    Speed=Throttle=Steering=TurnAngle=BodyRoll=0.f;
-    Gear=1; TravelYaw=Heading; HasCameraSample=false;
-    return true;
+    const FRotator Facing(0,Heading,0);
+    const FVector Along = Facing.Vector();
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(CityVehicleArrival), false, this);
+    const FCollisionShape Hull = FCollisionShape::MakeBox(GetCollisionExtents());
+    // A moving vehicle can occupy the exact waypoint. Look along the same
+    // street for clear space with every tyre on mapped carriageway.
+    for (const double Offset : {0., 480., -480., 860., -860.})
+    {
+        FVector Arrival = Position + Along * Offset + FVector(0,0,GroundHeight - 68.);
+        double Wheels[4];
+        if (!SampleWheels(Arrival,Heading,Wheels,true)) continue;
+        Arrival.Z = (Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25 + GroundHeight;
+        if (GetWorld()->OverlapBlockingTestByProfile(Arrival,Facing.Quaternion(),TEXT("BlockAllDynamic"),Hull,Query)
+            || !TeleportTo(Arrival,Facing))
+            continue;
+        StopHatchbackPhysics(false);
+        Speed=Throttle=Steering=TurnAngle=BodyRoll=0.f;
+        Gear=1; TravelYaw=Heading; HasCameraSample=false;
+        return true;
+    }
+    return false;
 }

@@ -468,7 +468,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         }
     }
     const int32 StreetCount=Agents.Num();
-    const int32 Population=bCity?(District.IsValid() && District->HasStreetDistricts()?56:30):36;
+    const int32 Population=bCity?30:36;
     for (int32 I=0;I<Population*2 && Agents.Num()<Population;++I)
     {
         const int32 R=I%Routes.Num();
