@@ -14,6 +14,40 @@ PALETTE=[("body",(.16,.27,.31),.31,.46),("cream",(.73,.64,.43),.46,.22),
 MATS=[{"name":n,"doubleSided":True,"pbrMetallicRoughness":{"baseColorFactor":[*color,.42 if n=="glass" else 1],
         "metallicFactor":metal,"roughnessFactor":rough},**({"alphaMode":"BLEND"} if n=="glass" else {})} for n,color,rough,metal in PALETTE]
 IX={v[0]:i for i,v in enumerate(PALETTE)}
+
+# Axle offsets and rolling radii in metres, matching the runtime wheel mounts.
+WHEEL_LAYOUTS = {
+    "Sedan": (1.43, .32, .78, .21),
+    "PremiumHatch": (1.22, .31, .73, .18),
+    "LuxurySUV": (1.57, .37, .84, .25),
+    "Sport": (1.32, .32, .83, .24),
+    "Bus": (2.73, .43, .97, .29),
+    "Van": (1.49, .35, .80, .22),
+    "Truck": (2.15, .44, .92, .29),
+    "Ambulance": (1.56, .35, .84, .22),
+    "Lorry": (2.58, .48, 1.00, .31),
+}
+
+def wheel_openings(stations, axle, radius):
+    """Raise the sill into a circular opening where a tyre meets the body."""
+    clearance = radius + .038
+    points = {row[0] for row in stations}
+    for centre in (-axle, axle):
+        points.update(centre + clearance * t for t in (-1, -.94, -.79, -.55, -.29, 0, .29, .55, .79, .94, 1))
+    result = []
+    for z in sorted(points):
+        if z <= stations[0][0] or z >= stations[-1][0]:
+            continue
+        a, b = next((a, b) for a, b in zip(stations, stations[1:]) if a[0] <= z <= b[0])
+        alpha = (z - a[0]) / (b[0] - a[0])
+        width, bottom, top = (left + (right - left) * alpha for left, right in zip(a[1:], b[1:]))
+        offset = abs(abs(z) - axle)
+        if offset < clearance:
+            arch = radius + math.sqrt(clearance ** 2 - offset ** 2)
+            bottom = min(top - .065, max(bottom, arch))
+        result.append((z, width, bottom, top))
+    return [stations[0], *result, stations[-1]]
+
 class Body:
     def __init__(self): self.parts=collections.defaultdict(list)
     def poly(self,name,p):
@@ -58,15 +92,18 @@ def glazing(body,x,z0,z1,base,height,side):
 
 def passenger(name,L,W,H,hood,roof,finish):
     b=Body()
-    b.loft(finish,[(-L*.5,W*.84,.38,.87),(-L*.44,W*.98,.26,.98),(-L*.29,W,.24,1.),
-        (L*.22,W,.24,1.01),(L*.40,W*.97,.28,.91),(L*.5,W*.86,.34,.77)])
+    axle, radius, track, tyre = WHEEL_LAYOUTS[name]
+    skin = [(-L*.5,W*.84,.38,.87),(-L*.44,W*.98,.26,.98),(-L*.29,W,.24,1.),
+        (L*.22,W,.24,1.01),(L*.40,W*.97,.28,.91),(L*.5,W*.86,.34,.77)]
+    b.loft(finish, wheel_openings(skin, axle, radius))
+    b.box("iron", 0, .29, 0, 2 * track - tyre - .05, .14, L * .81)
     b.loft("glass",[(-L*roof,W*.83,.98,1.01),(-L*.22,W*.86,.97,H-.04),(L*.06,W*.86,.99,H),(L*hood,W*.88,.96,1.01)])
     b.loft(finish,[(-L*.235,W*.81,H-.06,H-.015),(-L*.17,W*.84,H-.03,H+.015),(L*.055,W*.85,H-.025,H+.015),(L*.10,W*.81,H-.06,H-.02)])
     for s in (-1,1):
         x=s*W*.46
         for z in (-.19*L,.0,.17*L):
             b.rod("iron",(x,.96,z),(s*W*.413,H-.032,z-.09),.027)
-        b.rod("iron",(s*W*.49,.49,-L*.31),(s*W*.49,.48,L*.29),.024)
+        b.rod("iron",(s*W*.49,.49,-axle+radius+.06),(s*W*.49,.48,axle-radius-.06),.024)
         b.box(finish,s*W*.54,1.03,L*.12,.16,.10,.24)
         for z in (-L*.18,L*.07): b.box("panel",s*(W*.5+.007),.90,z,.025,.028,.115)
         b.box("lamp",s*W*.32,.70,L*.493,W*.19,.09,.046)
@@ -109,10 +146,15 @@ def rickshaw():
 
 def commercial(kind,L,W,H):
     b=Body(); bus=kind=="Bus"; tall=kind in ("Truck","Lorry")
-    b.loft("iron",[(-L*.49,W*.85,.39,.54),(-L*.43,W*.96,.35,.60),(L*.42,W*.95,.35,.60),(L*.49,W*.82,.43,.57)])
+    axle, radius, track, tyre = WHEEL_LAYOUTS[kind]
+    frame_width = 2 * track - tyre - .08
+    b.loft("iron",[(-L*.49,frame_width*.85,.39,.54),(-L*.43,frame_width,.35,.60),
+        (L*.42,frame_width,.35,.60),(L*.49,frame_width*.82,.43,.57)])
     cab=L if bus else (2.05 if tall else L)
     begin=L*.5-cab
-    b.loft("teal" if bus else "cream",[(begin,W*.91,.54,1.29),(begin+.20,W*.98,.49,1.32),(L*.43,W,.52,1.27),(L*.5,W*.92,.62,1.18)])
+    lower_cab = [(begin,W*.91,.54,1.29),(begin+.20,W*.98,.49,1.32),
+        (L*.43,W,.52,1.27),(L*.5,W*.92,.62,1.18)]
+    b.loft("teal" if bus else "cream", wheel_openings(lower_cab, axle, radius))
     roof_z=H if not tall else H-.26
     b.loft("cream",[(begin+.04,W*.92,roof_z-.17,roof_z-.07),(begin+.27,W*.98,roof_z-.17,roof_z),(L*.43,W*.96,roof_z-.17,roof_z),(L*.478,W*.88,roof_z-.19,roof_z-.06)])
     b.poly("glass",[(-W*.45,1.24,L*.494),(W*.45,1.24,L*.494),(W*.427,roof_z-.17,L*.464),(-W*.427,roof_z-.17,L*.464)])
@@ -144,9 +186,10 @@ def commercial(kind,L,W,H):
         if kind=="Ambulance": b.box("amber",s*W*.491,1.225,-.49,.025,.085,L*.55)
     if tall:
         cargoL=L-cab-.15
-        b.box("panel",0,(H+.63)/2,-L*.5+cargoL/2,W*.98,H-.63,cargoL)
+        floor = 2 * radius + .075
+        b.box("panel",0,(H+floor)/2,-L*.5+cargoL/2,W*.98,H-floor,cargoL)
         for i in range(int(cargoL/.15)):
-            for side in (-1,1): b.box("cream",side*W*.495,(H+.68)/2,-L*.49+i*.15,.027,H-.76,.029)
+            for side in (-1,1): b.box("cream",side*W*.495,(H+floor)/2,-L*.49+i*.15,.027,H-floor-.08,.029)
     if kind=="Ambulance": b.box("amber",0,H+.06,.79,.86,.11,.24)
     if bus: b.box("iron",0,roof_z-.28,L*.473,W*.64,.23,.05)
     return b

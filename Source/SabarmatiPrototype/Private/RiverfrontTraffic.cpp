@@ -29,20 +29,26 @@ constexpr double CrossingHalfStripeWidth = 142.5;
 constexpr double CrossingClearance = CrossingHalfStripeWidth + 16.;
 constexpr double BoardingSpeed = 42.; // Walking up to traffic that has come to a stop.
 
-struct FVehicleShape { const TCHAR* Name; const TCHAR* Label; float Length, Width, Wheel, Axle, Track; int32 WheelCount; };
+struct FVehicleShape
+{
+    const TCHAR* Name;
+    const TCHAR* Label;
+    float Length, Width, Wheel, Axle, Track, TyreWidth;
+    int32 WheelCount;
+};
 const FVehicleShape Bodies[]={
-    {TEXT("Rickshaw"),TEXT("Auto-rickshaw"),257,141,22,77,53,3},
-    {TEXT("Scooter"),TEXT("Scooter"),188,52,22,63,0,2},
-    {TEXT("Sedan"),TEXT("Sedan"),467,183,32,143,78,4},
-    {TEXT("Bus"),TEXT("Bus"),860,240,43,273,97,4},
-    {TEXT("PremiumHatch"),TEXT("City hatchback"),406,175,31,122,73,4},
-    {TEXT("Motorcycle"),TEXT("Motorcycle"),195,60,28,65,0,2},
-    {TEXT("Van"),TEXT("Van"),490,194,35,149,80,4},
-    {TEXT("LuxurySUV"),TEXT("SUV"),508,198,37,157,84,4},
-    {TEXT("Truck"),TEXT("Truck"),683,228,44,215,92,4},
-    {TEXT("Sport"),TEXT("Sport coupe"),436,194,32,132,83,4},
-    {TEXT("Ambulance"),TEXT("Ambulance"),513,201,35,156,84,4},
-    {TEXT("Lorry"),TEXT("Lorry"),810,239,48,258,100,4}};
+    {TEXT("Rickshaw"),TEXT("Auto-rickshaw"),257,141,22,77,53,12,3},
+    {TEXT("Scooter"),TEXT("Scooter"),188,52,22,63,0,11,2},
+    {TEXT("Sedan"),TEXT("Sedan"),467,183,32,143,78,21,4},
+    {TEXT("Bus"),TEXT("Bus"),860,240,43,273,97,29,4},
+    {TEXT("PremiumHatch"),TEXT("City hatchback"),406,175,31,122,73,18,4},
+    {TEXT("Motorcycle"),TEXT("Motorcycle"),195,60,28,65,0,14,2},
+    {TEXT("Van"),TEXT("Van"),490,194,35,149,80,22,4},
+    {TEXT("LuxurySUV"),TEXT("SUV"),508,198,37,157,84,25,4},
+    {TEXT("Truck"),TEXT("Truck"),683,228,44,215,92,29,4},
+    {TEXT("Sport"),TEXT("Sport coupe"),436,194,32,132,83,24,4},
+    {TEXT("Ambulance"),TEXT("Ambulance"),513,201,35,156,84,22,4},
+    {TEXT("Lorry"),TEXT("Lorry"),810,239,48,258,100,31,4}};
 UStaticMesh* MeshAt(const FString& Path) { return LoadObject<UStaticMesh>(nullptr,*(Path+TEXT(".")+FPaths::GetCleanFilename(Path))); }
 }
 ARiverfrontRoadAgent::ARiverfrontRoadAgent()
@@ -124,8 +130,11 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         const FVector Mount(Front?S.Axle:-S.Axle,Bike?0:(Side?S.Track:-S.Track),-6);
         auto* Pivot=NewObject<USceneComponent>(this); AddInstanceComponent(Pivot); Pivot->SetupAttachment(Bounds);
         Pivot->SetRelativeLocation(Mount); Pivot->RegisterComponent();
-        const double Scale=S.Wheel/31.6;
-        Visual(Side?Right:Left,Pivot,FVector::ZeroVector,FRotator(0,Side?90:-90,0),FVector(Scale*(Bike?.52:1.),Scale,Scale));
+        auto* Tyre = Side ? Right : Left;
+        const FVector Extents = Tyre->GetBounds().BoxExtent;
+        const double RadiusScale = S.Wheel / FMath::Max(Extents.Z, 1.);
+        const double WidthScale = S.TyreWidth / (2. * FMath::Max(Extents.X, 1.));
+        Visual(Tyre,Pivot,FVector::ZeroVector,FRotator(0,Side?90:-90,0),FVector(WidthScale,RadiusScale,RadiusScale));
         Wheels.Add(Pivot);
     }
     if (IsEmergency)
