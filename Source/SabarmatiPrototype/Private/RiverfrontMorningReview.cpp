@@ -2,6 +2,7 @@
 
 #if !UE_BUILD_SHIPPING
 #include "RiverfrontCharacter.h"
+#include "Components/PoseableMeshComponent.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontLifeProfile.h"
 #include "RiverfrontLocalProfile.h"
@@ -40,7 +41,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, BedsideInput, RestAgain
 };
 
 struct FMorningEvidence
@@ -228,14 +229,15 @@ void ARiverfrontPlayerController::RunMorningReview()
         return;
     }
 
-    const bool bGenderReview = FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGenderReview"));
+    const bool bClosetReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiWardrobeReview"));
+    const bool bGenderReview = bClosetReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGenderReview"));
     const bool bBodyReview = bGenderReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBodyReview"));
     const ERiverfrontGender ExpectedGender = bGenderReview ? ERiverfrontGender::Female : ERiverfrontGender::Male;
     auto State = MakeShared<FMorningEvidence>();
     State->Route = FRiverfrontFirstMorningWorld::ExitRoute();
     UE_LOG(LogTemp,Display,TEXT("Sabarmati morning review started: %s, continue=%d"), *Folder, bContinue);
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,ExpectedGender](float)
+        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,bClosetReview,ExpectedGender](float)
         {
             auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
             const double Now = FPlatformTime::Seconds(), Age = Now - State->Since;
@@ -341,6 +343,9 @@ void ARiverfrontPlayerController::RunMorningReview()
                     auto* SequencePlayer=WakeupSequence->GetSequencePlayer();
                     if (SequencePlayer && SequencePlayer->IsPlaying())
                     {
+                        if (bClosetReview && (!Walker->IsLyingOnBed() ||
+                            FVector::Dist(Walker->GetAvatarMesh()->GetSocketLocation(TEXT("Head")),FRiverfrontFirstMorningWorld::Pillow())>5.))
+                            return Fail(TEXT("head outside pillow during wake"));
                         const FVector View=PlayerCameraManager->GetCameraLocation();
                         if (!State->bSawWake) { State->WakeOrigin=View; State->bSawWake=true; }
                         State->WakeTravel=FMath::Max(State->WakeTravel,FVector::Distance(View,State->WakeOrigin));
@@ -466,17 +471,92 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 if (bMale)
                 {
+                    if (bClosetReview)
+                    {
+                        if (!PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo"))) return Fail(TEXT("male preview"));
+                        Next(EMorningStep::CancelWhileDressing); break;
+                    }
                     if (!PressMorningButton(Overlay,TEXT("LifeGenderFemale"))) return Fail(TEXT("wardrobe female selector"));
                     Next(EMorningStep::WardrobeFemale);
                 }
                 else
                 {
                     State->Results += TEXT("wardrobe_male_and_female=1\n");
+                    if (bClosetReview)
+                    {
+                        if (!FindMorningControl(Overlay,TEXT("LifeItem.watch")) || !PressMorningButton(Overlay,TEXT("LifeItem.kurta")))
+                            return Fail(TEXT("full home catalogue"));
+                        Next(EMorningStep::ChangingBase); break;
+                    }
                     if (!PressMorningButton(Overlay,TEXT("LifeTone.warm"))) return Fail(TEXT("wardrobe skin-tone control"));
                     Next(EMorningStep::HairChoice);
                 }
                 break;
             }
+            case EMorningStep::CancelWhileDressing:
+                if (Walker->GetWardrobeOutfit()!=TEXT("fitting-base")) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeClose")) || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand")
+                    || !Walker->GetAvatarMesh()->IsVisible() || Walker->FindComponentByClass<UPoseableMeshComponent>())
+                    return Fail(TEXT("cancel male dressing in progress"));
+                InteractWithPlace();
+                if (!PressMorningButton(Overlay,TEXT("LifeGenderFemale"))) return Fail(TEXT("female wardrobe selector"));
+                Next(EMorningStep::WardrobeFemale); break;
+            case EMorningStep::ChangingBase:
+                if (Walker->GetWardrobeOutfit()!=TEXT("fitting-base")) return true;
+                if (!Walker->FindComponentByClass<UPoseableMeshComponent>()) return Fail(TEXT("sleeve pose missing"));
+                Shot(TEXT("02-changing-base"),true);
+                Next(EMorningStep::ChangingPreview); break;
+            case EMorningStep::ChangingPreview:
+            {
+                if (Walker->GetWardrobeOutfit()!=TEXT("kurta") || Walker->FindComponentByClass<UPoseableMeshComponent>()) return true;
+                const auto* PreviewSave=RiverfrontLife::Load(ProfileSlot);
+                if (!PreviewSave || PreviewSave->EquippedOutfit!=TEXT("cotton-sand") || PreviewSave->OwnedItems.Contains(TEXT("kurta"))
+                    || !PressMorningButton(Overlay,TEXT("LifeClose")) || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand"))
+                    return Fail(TEXT("cancel restored the saved outfit"));
+                if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::ShopPoint(),FRotator::ZeroRotator)) return Fail(TEXT("shop placement"));
+                InteractWithPlace();
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo")) || !PressMorningButton(Overlay,TEXT("LifeBuyCash"))
+                    || !PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("purchase indigo at Sutra"));
+                if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("wardrobe placement"));
+                InteractWithPlace();
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.cotton-sand"))) return Fail(TEXT("try owned sand shirt"));
+                Next(EMorningStep::ConfirmOwned); break;
+            }
+            case EMorningStep::ConfirmOwned:
+            {
+                if (Age<1.4 || Walker->FindComponentByClass<UPoseableMeshComponent>()) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeEquip")) || !PressMorningButton(Overlay,TEXT("LifeClose")))
+                    return Fail(TEXT("confirm owned item"));
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->EquippedOutfit!=TEXT("cotton-sand") || !Saved->OwnedItems.Contains(TEXT("shirt-indigo"))
+                    || Saved->CashRupees!=98750 || Saved->BankRupees!=500000 || Saved->AvatarGender!=ExpectedGender)
+                    return Fail(TEXT("persistent confirmed wardrobe"));
+                InteractWithPlace();
+                if (!PressMorningButton(Overlay,TEXT("LifeGenderMale")) || !PressMorningButton(Overlay,TEXT("LifeClose"))
+                    || !WearingResidentBody(*Walker,ERiverfrontGender::Male)) return Fail(TEXT("male outfit before sleeping"));
+                if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::Bedside(),FRotator::ZeroRotator)
+                    || !CanRestAtBed()) return Fail(TEXT("bedside action"));
+                Next(EMorningStep::BedsideInput); break;
+            }
+            case EMorningStep::BedsideInput:
+            {
+                if (!bWaking)
+                {
+                    if (Age>3.) return Fail(TEXT("repeat sleep input"));
+                    GameKey(EKeys::E); return true;
+                }
+                if (!Walker->IsLyingOnBed() || FVector::Dist(Walker->GetAvatarMesh()->GetSocketLocation(TEXT("Head")),
+                    FRiverfrontFirstMorningWorld::Pillow())>5.) return Fail(TEXT("repeat sleep pose"));
+                if (Age<1.1) return true;
+                Shot(TEXT("08-male-sleep"));
+                Next(EMorningStep::RestAgain); break;
+            }
+            case EMorningStep::RestAgain:
+                if (bWaking) return true;
+                if (Walker->IsLyingOnBed() || GetViewTarget()!=Walker || !Walker->GetCharacterMovement()->IsMovingOnGround())
+                    return Fail(TEXT("bedside control after second wake"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati wardrobe review passed: female first wake, male interrupted try-on, female preview and confirmed equip, purchase balances and male bedside rest."));
+                FPlatformMisc::RequestExitWithStatus(false,0); return false;
             case EMorningStep::HairChoice:
             {
                 if (!Walker->SupportsPublicHaircut())
