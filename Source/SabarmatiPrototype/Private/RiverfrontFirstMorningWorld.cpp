@@ -93,31 +93,42 @@ void FitTextiles(ARiverfrontWorld& World)
 {
     enum { Indigo, Ivory, Madder, Marigold, Sage, Count };
     FClothSection Panels[Count];
-    // The coverlet rolls over both mattress edges. The bound edge and print follow the same folds.
-    auto Quilt=[](double U,double V)
+    FClothSection Covers[2][3];
+    for (int32 Occupied=0;Occupied<=1;++Occupied)
     {
-        const double Across=2.*U-1.;
-        const double Roll=FMath::Clamp((FMath::Abs(Across)-.84)/.16,0.,1.);
-        const double Foot=FMath::Clamp((.10-V)/.10,0.,1.);
-        const double Z=Upper+58.5-26.*Roll*Roll-17.*Foot*Foot
-            +1.3*FMath::Sin(16.*U+3.*V)+.8*FMath::Sin(26.*U-6.*V);
-        return At(-218.+94.*Across,472.+168.*V,Z);
-    };
-    Panels[Indigo].Add(36,28,Quilt);
-    for (double V0 : {.145,.18,.925,.96})
-        Panels[Ivory].Add(36,1,[&](double U,double V){return Quilt(U,V0+V*.008)+FVector(0,0,.2);});
-    for (int32 J=0; J<5; ++J)
-    {
-        for (int32 I=0; I<7; ++I)
+        auto& Cover=Covers[Occupied];
+        auto Quilt=[Occupied](double U,double V)
         {
-            const double CX=.15+I*.112+(J%2)*.035, CY=.265+J*.138;
-            const auto Stamp=[&](double U,double V,double Scale,double Bias)
+            const double Across=2.*U-1.;
+            const double Roll=FMath::Clamp((FMath::Abs(Across)-.84)/.16,0.,1.);
+            const double Foot=FMath::Clamp((.10-V)/.10,0.,1.);
+            const double Z=Upper+58.5-26.*Roll*Roll-17.*Foot*Foot
+                +1.3*FMath::Sin(16.*U+3.*V)+.8*FMath::Sin(26.*U-6.*V);
+            const double X=-218.+94.*Across, Y=472.+168.*V;
+            // Interpolate the cover over the sleeping body and back onto the mattress.
+            const double AcrossBody=(X+180.)/35.;
+            const double Shoulder=(Y-607.)/45.;
+            const double Rise=Occupied ? (26.+22.*FMath::Exp(-Shoulder*Shoulder))*
+                FMath::Exp(-FMath::Square(AcrossBody*AcrossBody))*
+                FMath::SmoothStep(472.,488.,Y) : 0.;
+            return At(X,Y,Z+Rise);
+        };
+        Cover[0].Add(36,28,Quilt);
+        for (double V0 : {.145,.18,.925,.96})
+            Cover[1].Add(36,1,[&](double U,double V){return Quilt(U,V0+V*.008)+FVector(0,0,.2);});
+        for (int32 J=0; J<5; ++J)
+        {
+            for (int32 I=0; I<7; ++I)
             {
-                const double Diamond=1.-FMath::Abs(2.*V-1.);
-                return Quilt(CX+(U-.5)*.057*Diamond*Scale,CY+(V-.5)*.064*Scale)+FVector(0,0,Bias);
-            };
-            Panels[Ivory].Add(2,2,[&](double U,double V){return Stamp(U,V,1.,.24);});
-            Panels[Madder].Add(2,2,[&](double U,double V){return Stamp(U,V,.48,.37);});
+                const double CX=.15+I*.112+(J%2)*.035, CY=.265+J*.138;
+                const auto Stamp=[&](double U,double V,double Scale,double Bias)
+                {
+                    const double Diamond=1.-FMath::Abs(2.*V-1.);
+                    return Quilt(CX+(U-.5)*.057*Diamond*Scale,CY+(V-.5)*.064*Scale)+FVector(0,0,Bias);
+                };
+                Cover[1].Add(2,2,[&](double U,double V){return Stamp(U,V,1.,.24);});
+                Cover[2].Add(2,2,[&](double U,double V){return Stamp(U,V,.48,.37);});
+            }
         }
     }
     // In the south-facing windows the curtain folds face into the home, including the gathered waist.
@@ -273,8 +284,33 @@ void FitTextiles(ARiverfrontWorld& World)
             Fabric->SetMaterial(I,M);
         }
     }
+    Fabric->ComponentTags.Add(TEXT("BedTextiles"));
+    for (int32 Occupied=0;Occupied<=1;++Occupied)
+        for (int32 Colour=0;Colour<3;++Colour)
+        {
+            const int32 Section=Count+Occupied*3+Colour;
+            const auto& S=Covers[Occupied][Colour];
+            Fabric->CreateMeshSection_LinearColor(Section,S.Vertices,S.Triangles,S.Normals,S.UV,{}, {},false);
+            Fabric->SetMaterial(Section,Fabric->GetMaterial(Colour));
+            Fabric->SetMeshSectionVisible(Section,Occupied==0);
+        }
     Fabric->RegisterComponent();
 }
+}
+
+void FRiverfrontFirstMorningWorld::CoverSleeper(ARiverfrontWorld& World,bool Occupied)
+{
+    for (auto* Fabric:TInlineComponentArray<UProceduralMeshComponent*>(&World))
+        if (Fabric->ComponentHasTag(TEXT("BedTextiles")))
+        {
+            const int32 FirstCover=Fabric->GetNumSections()-6;
+            for (int32 I=0;I<3;++I)
+            {
+                Fabric->SetMeshSectionVisible(FirstCover+I,!Occupied);
+                Fabric->SetMeshSectionVisible(FirstCover+3+I,Occupied);
+            }
+            return;
+        }
 }
 
 FVector FRiverfrontFirstMorningWorld::HomeStart() { return At(-40,465,Upper+95); }
@@ -294,13 +330,23 @@ FBox FRiverfrontFirstMorningWorld::FenceTraversalBounds()
 }
 #endif
 
-FTransform FRiverfrontFirstMorningWorld::WakeStartView()
+FTransform FRiverfrontFirstMorningWorld::WakeStartView(bool bShowSleeper)
 {
+    if (!bShowSleeper)
+    {
+        const FVector Eye=At(-202,643,Upper+82);
+        return FTransform((At(14,4,Upper+141)-Eye).Rotation(),Eye);
+    }
     const FVector Eye=At(-31,529,Upper+170);
     return FTransform((At(-180,596,Upper+66)-Eye).Rotation(),Eye);
 }
-FTransform FRiverfrontFirstMorningWorld::WakeEndView()
+FTransform FRiverfrontFirstMorningWorld::WakeEndView(bool bShowSleeper)
 {
+    if (!bShowSleeper)
+    {
+        const FVector Eye=At(-150,608,Upper+127);
+        return FTransform((At(25,12,Upper+143)-Eye).Rotation(),Eye);
+    }
     const FVector Eye=At(-60,554,Upper+145);
     return FTransform((At(-180,613,Upper+68)-Eye).Rotation(),Eye);
 }

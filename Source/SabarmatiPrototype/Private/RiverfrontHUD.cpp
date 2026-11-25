@@ -435,7 +435,7 @@ void ARiverfrontHUD::DrawHUD()
 {
     Super::DrawHUD();
     const auto* Player = Cast<ARiverfrontPlayerController>(PlayerOwner);
-    if (!Canvas || Canvas->ClipX<=0 || Canvas->ClipY<=0 || !Player || Player->IsShowingMenu()
+    if (!Canvas || Canvas->ClipX<=0 || Canvas->ClipY<=0 || !Player || Player->IsShowingMenu() || Player->IsWaking()
         || !GEngine || !UEngine::GetMediumFont() || !FSlateApplication::IsInitialized()) return;
     const APawn* Pawn = Player->GetPawn();
     if (!Pawn) return;

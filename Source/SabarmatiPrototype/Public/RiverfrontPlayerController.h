@@ -39,6 +39,7 @@ public:
     const TArray<FRiverSite>& GetPlaces() const { return Sites; }
     const FRiverSite* Destination() const;
     FVector NextWaypoint() const;
+    bool IsWaking() const { return bWaking; }
     FString NavigationText() const;
     FString ActivityText() const;
     bool MapVisible() const { return bMiniMap; }

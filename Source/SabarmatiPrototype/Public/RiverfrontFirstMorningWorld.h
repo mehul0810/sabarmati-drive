@@ -9,6 +9,7 @@ struct FRiverfrontFirstMorningWorld
 {
     static void Build(ARiverfrontWorld& World);
     static FVector HomeStart();
+    static void CoverSleeper(ARiverfrontWorld& World,bool Occupied);
     static FVector Bedside();
     static FVector Pillow();
     static FVector WardrobePoint();
@@ -20,7 +21,7 @@ struct FRiverfrontFirstMorningWorld
 #endif
     static FVector WallApproach();
     static double HomeYaw() { return -78.; }
-    static FTransform WakeStartView();
-    static FTransform WakeEndView();
+    static FTransform WakeStartView(bool bShowSleeper=true);
+    static FTransform WakeEndView(bool bShowSleeper=true);
     static TArray<FVector> ExitRoute();
 };

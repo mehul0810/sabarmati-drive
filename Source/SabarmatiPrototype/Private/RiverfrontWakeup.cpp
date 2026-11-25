@@ -35,9 +35,11 @@ void AddViewKey(UMovieScene3DTransformSection& Section, int32 Frame, const FTran
 void ARiverfrontPlayerController::PlayWakeup()
 {
     if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District) District->StartMorningClock();
-    const FTransform From = FRiverfrontFirstMorningWorld::WakeStartView();
+    auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
+    const bool bShowSleeper=Walker && Walker->LieOnBed(FRiverfrontFirstMorningWorld::Pillow());
+    const FTransform From = FRiverfrontFirstMorningWorld::WakeStartView(bShowSleeper);
     ACameraActor* Camera = GetWorld()->SpawnActor<ACameraActor>(From.GetLocation(), From.Rotator());
-    if (!Camera) return;
+    if (!Camera) { if (bShowSleeper) Walker->LeaveBed(); return; }
     Camera->GetCameraComponent()->SetFieldOfView(68.f);
     auto* Sequence = NewObject<ULevelSequence>(this);
     Sequence->Initialize();
@@ -52,20 +54,21 @@ void ARiverfrontPlayerController::PlayWakeup()
     Section->SetRange(TRange<FFrameNumber>::All());
     AddViewKey(*Section, 0, From);
     AddViewKey(*Section, 15, From);
-    AddViewKey(*Section, LastFrame, FRiverfrontFirstMorningWorld::WakeEndView());
+    AddViewKey(*Section, LastFrame, FRiverfrontFirstMorningWorld::WakeEndView(bShowSleeper));
     Track->AddSection(*Section);
 
     FMovieSceneSequencePlaybackSettings Settings;
     Settings.bPauseAtEnd = true;
     ALevelSequenceActor* Actor = nullptr;
     auto* Player = ULevelSequencePlayer::CreateLevelSequencePlayer(this, Sequence, Settings, Actor);
-    if (!Player) { Camera->Destroy(); return; }
+    if (!Player) { Camera->Destroy(); if (bShowSleeper) Walker->LeaveBed(); return; }
     Actor->SetBinding(FMovieSceneObjectBindingID(CameraId), {Camera});
     LifeCamera = Camera;
     WakeupSequence = Actor;
     bWaking = true;
-    if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn()))
-        Walker->LieOnBed(FRiverfrontFirstMorningWorld::Pillow());
+    if (bShowSleeper)
+        if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District)
+            FRiverfrontFirstMorningWorld::CoverSleeper(**District,true);
     SetIgnoreMoveInput(true);
     SetIgnoreLookInput(true);
     SetViewTarget(Camera);
@@ -89,7 +92,12 @@ void ARiverfrontPlayerController::FinishWakeup()
         WakeupSequence->Destroy();
         WakeupSequence.Reset();
     }
-    if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn())) Walker->LeaveBed();
+    if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn()); Walker && Walker->IsLyingOnBed())
+    {
+        Walker->LeaveBed();
+        if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District)
+            FRiverfrontFirstMorningWorld::CoverSleeper(**District,false);
+    }
     if (GetPawn()) SetViewTarget(GetPawn());
     if (PlayerCameraManager) PlayerCameraManager->StartCameraFade(1.f,0.f,.32f,FLinearColor::Black,false);
     if (LifeCamera.IsValid()) LifeCamera->SetLifeSpan(.6f);
