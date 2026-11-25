@@ -156,6 +156,16 @@ void House(FInstruments& Draw,FVector2D P,FLinearColor Ink)
     Draw.Quad(P+FVector2D(-2.7,0),P+FVector2D(2.7,0),P+FVector2D(2.7,3),P+FVector2D(-2.7,3),Ink);
 }
 
+void HomeLabel(FInstruments& Draw, FVector2D Centre, const FString& Text, bool bShowHouse)
+{
+    const double TextWidth = Draw.Measure(Text,TEXT("Medium"),12);
+    const double Width = TextWidth + (bShowHouse ? 31. : 18.);
+    const FLinearColor Backing = Graphite.CopyWithNewOpacity(.89f);
+    Draw.Fade(Centre.X-Width*.5, Centre.Y-10., Width, 20., Backing, Backing);
+    if (bShowHouse) House(Draw, Centre+FVector2D(-Width*.5+10.,0), Home);
+    Draw.Label(Text,Centre+FVector2D(bShowHouse ? 7. : 0.,0),12,TEXT("Medium"),Home,true);
+}
+
 void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
 {
     const FLinearColor Ink = Ivory.CopyWithNewOpacity(.86f);
@@ -251,8 +261,7 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
     if (City)
     {
         if (!bVisibleRoad) Draw.Label(TEXT("No mapped streets"),Centre+FVector2D(0,23),11,TEXT("Medium"),Ivory,true);
-        House(Draw, Centre+FVector2D(-64,-Radius-30), Home);
-        Draw.Label(TEXT("Flat 2B · Pause to return"),Centre+FVector2D(4,-Radius-30),11,TEXT("Medium"),Home,true);
+        HomeLabel(Draw,Centre+FVector2D(0,-Radius-30),TEXT("Flat 2B · Pause to return"),true);
     }
     else
     {
@@ -264,8 +273,8 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
         Draw.Disc(Marker,8,Graphite,Graphite);
         House(Draw,Marker,Home);
         const int32 Metres = FMath::RoundToInt(FVector::Dist2D(Here,Entry)/100.);
-        Draw.Label(Metres<15 ? TEXT("Flat 2B") : FString::Printf(TEXT("Flat 2B  ·  %d m"),Metres),
-            Centre+FVector2D(0,-Radius-30),11,TEXT("Medium"),Home,true);
+        HomeLabel(Draw,Centre+FVector2D(0,-Radius-30),
+            Metres<15 ? TEXT("Flat 2B") : FString::Printf(TEXT("Flat 2B  ·  %d m"),Metres),false);
     }
     Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-11),12,TEXT("Bold"),Ivory,true);
     Draw.Label(City ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
@@ -332,7 +341,7 @@ void Controls(FInstruments& Draw,bool City)
     const TCHAR* Keys[] = { TEXT("W A S D  /  SHIFT"), TEXT("E  /  I"), TEXT("SPACE  /  O"),
         TEXT("C  /  Z X  /  H"), City?TEXT("N  /  V  /  M"):TEXT("N  /  G  /  M"),
         TEXT("T  /  P  /  Y"), TEXT("B  /  F  /  F3"), TEXT("R  /  ESC") };
-    const TCHAR* Actions[] = { TEXT("Move or drive  /  Run"), TEXT("Interact or exit  /  Wallet"),
+    const TCHAR* Actions[] = { TEXT("Move or drive  /  Run"), TEXT("Interact, enter or exit  /  Wallet"),
         TEXT("Jump, vault, climb or brake  /  Door"), TEXT("Camera  /  Indicators  /  Horn"),
         City?TEXT("Destination  /  Street travel  /  Map"):TEXT("Destination  /  River run  /  Map"),
         TEXT("Time  /  Weather  /  Clock"), TEXT("Hazards  /  Service  /  Frame timing"),
