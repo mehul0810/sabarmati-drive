@@ -86,7 +86,6 @@ void ARiverfrontCar::ConfigureHatchbackPhysics()
     const FTransform Placement = GetActorTransform();
     PhysicsChassis->SetSkeletalMesh(Mesh);
     PhysicsChassis->SetCollisionProfileName(TEXT("Vehicle"));
-    PhysicsChassis->SetNotifyRigidBodyCollision(true);
     PhysicsChassis->BodyInstance.bUseCCD=true;
     PhysicsChassis->SetWorldTransform(Placement);
     SetRootComponent(PhysicsChassis);
@@ -94,6 +93,7 @@ void ARiverfrontCar::ConfigureHatchbackPhysics()
     Body->AttachToComponent(PhysicsChassis, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     PhysicsChassis->RegisterComponent();
     PhysicsChassis->SetSimulatePhysics(true);
+    PhysicsChassis->SetAllBodiesNotifyRigidBodyCollision(true);
     Motion.SetUpdatedComponent(PhysicsChassis);
     Motion.RegisterComponent();
     bChaosDrive = Motion.HasValidPhysicsState();
