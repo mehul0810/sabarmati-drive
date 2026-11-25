@@ -49,7 +49,7 @@ public:
     bool LieOnBed(const FVector& Pillow);
     void LeaveBed();
     bool SupportsClothingChange() const;
-    void PoseChangingSleeves(float Lift);
+    void PoseChangingSleeves(float Lift,bool Pullover);
     void EndChangingPose();
     bool IsLyingOnBed() const { return bLyingOnBed; }
     bool SupportsPublicHaircut() const;

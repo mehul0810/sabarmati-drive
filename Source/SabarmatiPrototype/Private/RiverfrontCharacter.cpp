@@ -465,7 +465,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     // The fabric is UV-mapped on the garment and moves with the animated body.
     const FColor Shirt = bBaseLayer ? FColor(214,214,202) : bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
     const FColor Trim = bBaseLayer ? FColor(186,184,172) : bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
-    const FColor Trousers = bBaseLayer ? FColor(108,109,103) : bIndigo ? FColor(169, 153, 121) : bKurta ? FColor(209, 201, 178) : FColor(53, 62, 73);
+    const FColor Trousers(53,62,73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
@@ -497,7 +497,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
-    SetSurface(TEXT("bottom_denim"), Cloth, Trousers);
+    SetSurface(TEXT("bottom_denim"), bBaseLayer && bPublic ? nullptr : Cloth, Trousers);
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)
     {
@@ -551,7 +551,7 @@ bool ARiverfrontCharacter::SupportsClothingChange() const
         && DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
 }
 
-void ARiverfrontCharacter::PoseChangingSleeves(float Lift)
+void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
 {
     auto* Source=GetMesh();
     if (!bInFittingPose || bBlueprintAvatarActive || !Source->GetSkeletalMeshAsset()) return;
@@ -586,8 +586,16 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift)
             Transform.SetRotation(Delta*Transform.GetRotation());
             ChangingMesh->SetBoneTransformByName(Bone,Transform,EBoneSpaces::ComponentSpace);
         };
-        Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.38,.30*Sign,-.89));
-        Aim(TEXT("Elbow"),TEXT("Hand"),FVector(.24,-.83*Sign,Index?.45:.72));
+        if (Pullover)
+        {
+            Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.52,.59*Sign,.61));
+            Aim(TEXT("Elbow"),TEXT("Hand"),FVector(-.10,-.69*Sign,.78));
+        }
+        else
+        {
+            Aim(TEXT("Shoulder"),TEXT("Elbow"),Index?FVector(.39,.31,-.78):FVector(.56,-.24,-.67));
+            Aim(TEXT("Elbow"),TEXT("Hand"),Index?FVector(.37,-.52,.68):FVector(.78,.22,-.15));
+        }
     }
     // The fitting room pauses the world; publish the pose on Slate's active timer.
     ChangingMesh->RefreshBoneTransforms();

@@ -113,7 +113,7 @@ public:
             }
             for (bool Accessories : {false,true})
             {
-                AddCaption(Body, Accessories ? TEXT("Accessories") : TEXT("Clothing"));
+                AddCaption(Body, Accessories ? TEXT("Accessories") : TEXT("Tops"));
                 for (const auto& Entry : RiverfrontLife::Catalog())
                     if (Entry.bAccessory==Accessories)
                         Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
@@ -132,7 +132,7 @@ public:
                 .ContentPadding(FMargin(10,8)).HAlign(HAlign_Center)
                 .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected) && !Wearing(Selected)); })
                 .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid(); })
-                .OnClicked_Lambda([this]{ return Complete(RiverfrontLife::Equip(Slot,Selected),TEXT("Outfit updated.")); })
+                .OnClicked(this,&SRiverfrontLifeMenu::WearSelected)
                 [Label(Copy(TEXT("Wear now")),13,Panel,true)]
             ];
             Body->AddSlot().AutoHeight().Padding(0,3)
@@ -460,7 +460,7 @@ private:
         constexpr double Seconds[]={.35,.45,.4};
         const float Alpha=FMath::Clamp(float((Now-DressStageStart)/Seconds[DressStage]),0.f,1.f);
         const float Ease=FMath::SmoothStep(0.f,1.f,Alpha);
-        Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease);
+        Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease,DressStage==0 ? Outfit==TEXT("kurta") : Selected==TEXT("kurta"));
         if (Alpha<1.f) return EActiveTimerReturnType::Continue;
         ++DressStage;
         DressStageStart=Now;
@@ -470,30 +470,38 @@ private:
         {
             Walker->EndChangingPose();
             DressingTimer.Reset();
+            const auto Error=RiverfrontLife::Equip(Slot,Selected);
+            if (!Error.IsEmpty()) Preview(Outfit,Accessory,Tone);
+            Complete(Error,TEXT("Outfit updated."));
             return EActiveTimerReturnType::Stop;
         }
-        Walker->PoseChangingSleeves(1.f);
+        Walker->PoseChangingSleeves(1.f,Selected==TEXT("kurta"));
         return EActiveTimerReturnType::Continue;
+    }
+
+    FReply WearSelected()
+    {
+        const auto* Choice=Item(Selected);
+        auto* Walker=Resident();
+        if (Page!=ERiverfrontLifeMenu::Wardrobe || !Choice || Choice->bAccessory || !Walker ||
+            !Walker->SupportsClothingChange() || !Preview)
+            return Complete(RiverfrontLife::Equip(Slot,Selected),TEXT("Outfit updated."));
+        if (!Owned.Contains(Selected) || Wearing(Selected) || DressingTimer.IsValid()) return FReply::Handled();
+        Preview(Outfit,Accessory,Tone);
+        DressStage=0;
+        DressStageStart=FSlateApplication::Get().GetCurrentTime();
+        DressingTimer=RegisterActiveTimer(1.f/30.f,FWidgetActiveTimerDelegate::CreateSP(this,&SRiverfrontLifeMenu::AdvanceDressing));
+        return FReply::Handled();
     }
 
     FReply Select(FName Id)
     {
         if (Selected != Id) PlayFeedback(SelectionTick.Get(),.13f,1.40f);
-        Selected = Id;
-        const FRiverfrontWearable* Chosen = Item(Id);
-        auto* Walker=Resident();
-        const bool ChangeClothes=Page==ERiverfrontLifeMenu::Wardrobe && Chosen && !Chosen->bAccessory
-            && Walker && Walker->SupportsClothingChange() && Walker->GetWardrobeOutfit()!=Id && Preview;
         StopDressing();
-        if (ChangeClothes)
-        {
-            DressStage=0;
-            DressStageStart=FSlateApplication::Get().GetCurrentTime();
-            DressingTimer=RegisterActiveTimer(1.f/30.f,FWidgetActiveTimerDelegate::CreateSP(this,&SRiverfrontLifeMenu::AdvanceDressing));
-        }
-        else if (Chosen && Preview)
-            Preview(Chosen->bAccessory ? Outfit : Id, Chosen->bAccessory ? Id : Accessory, Tone);
-        Feedback = FText::GetEmpty();
+        Selected=Id;
+        if (const auto* Choice=Item(Id); Choice && Preview)
+            Preview(Choice->bAccessory ? Outfit : Id,Choice->bAccessory ? Id : Accessory,Tone);
+        Feedback=FText::GetEmpty();
         return FReply::Handled();
     }
 
