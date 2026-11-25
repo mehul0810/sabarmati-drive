@@ -82,12 +82,14 @@ void ARiverfrontPlayerController::BeginLifeSession()
     Walker->GetCharacterMovement()->StopMovementImmediately();
     SetControlRotation(FRotator(-9, Walker->GetActorRotation().Yaw, 0));
     if (bParcelInHand) PointToChai();
-    if (!bCity && !Profile->bFirstMorningSeen && bPlaced)
-        PlayWakeup();
-    else
-        SaveLifeCheckpoint();
     if (bReturnHome)
         Notice(TEXT("Flat 2B  ·  Kesar Apartments"));
+    if (!bCity && !Profile->bFirstMorningSeen && bPlaced)
+        PlayWakeup();
+    else if (bReturnHome)
+        CommitLifeCheckpoint(Walker->GetActorLocation(), Walker->GetActorRotation().Yaw);
+    else
+        SaveLifeCheckpoint();
     GetWorldTimerManager().SetTimer(LifeSaveTimer, this, &ARiverfrontPlayerController::SaveLifeCheckpoint, 15.f, true);
     UE_LOG(LogTemp, Display, TEXT("Sabarmati morning: %s in %s at %s"), bReturnHome ? TEXT("Return Home") : bReturning ? TEXT("Continue") : TEXT("Start"),
         *District.ToString(), *Walker->GetActorLocation().ToCompactString());
@@ -109,6 +111,11 @@ void ARiverfrontPlayerController::SaveLifeCheckpoint()
         if (LifeCamera.IsValid() && Screen == EScreen::Life) Yaw = BeforeFittingRotation.Yaw;
     }
     else return;
+    CommitLifeCheckpoint(Location, Yaw);
+}
+
+void ARiverfrontPlayerController::CommitLifeCheckpoint(const FVector& Location, float Yaw)
+{
     if (bHaveLastCheckpoint && Location.Equals(LastLifeLocation, 5.f) &&
         FMath::Abs(FMath::FindDeltaAngleDegrees(LastLifeYaw, Yaw)) < 4.f) return;
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();

@@ -85,6 +85,7 @@ private:
     void FinishWakeup();
     void PlayWakeup();
     void SaveLifeCheckpoint();
+    void CommitLifeCheckpoint(const FVector& Location, float Yaw);
     void OpenWallet();
     void OpenLifeMenu(ERiverfrontLifeMenu Page);
     void CloseLifeMenu();
