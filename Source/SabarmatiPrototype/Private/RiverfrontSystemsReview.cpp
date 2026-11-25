@@ -232,6 +232,8 @@ public:
                 const double Limit=FMath::Abs(Here.X-3150.)<1000.?590.:1280.;
                 double SafeSpeed=FMath::Clamp(FMath::Sqrt(700.*(Remaining-165.)),190.,Limit);
                 bool bHold=false;
+                const double ToStopLine=3150.-845.-Here.X;
+                bool bYieldAtBridge=!Traffic->BankTrafficHasGreen();
                 for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
                 {
                     const FVector Route=It->GetActorForwardVector();
@@ -240,11 +242,27 @@ public:
                     const double ProjectedHalfLength=FMath::Abs(Route.X)*It->HalfLength+FMath::Abs(Route.Y)*It->HalfWidth;
                     const double Gap=Other.X-Here.X-ProjectedHalfLength-212.;
                     const double FutureY=FMath::Lerp(Here.Y,RoadCentre,FMath::Clamp(Gap/900.,0.,1.));
+                    // Look across the bridge approach too. A turning driver can
+                    // cross the trial before their present footprint touches it.
+                    if (ToStopLine>=0. && ToStopLine<2400. && FMath::Abs(Other.X-3150.)<770.)
+                    {
+                        const FVector Motion=Traffic->RoadVelocity(*It);
+                        const double LaterY=Other.Y+Motion.Y*2.8;
+                        const double Margin=ProjectedHalfWidth+138.;
+                        if (FMath::Abs(Route.Y)>.2 && FMath::Min(Other.Y,LaterY)<RoadCentre+Margin
+                            && FMath::Max(Other.Y,LaterY)>RoadCentre-Margin)
+                            bYieldAtBridge=true;
+                    }
                     if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<ProjectedHalfWidth+97.)
                     {
                         SafeSpeed=FMath::Min(SafeSpeed,FMath::Sqrt(710.*FMath::Max(0.,Gap-145.)));
                         bHold|=Gap<170.;
                     }
+                }
+                if (bYieldAtBridge && ToStopLine>=0. && ToStopLine<2400.)
+                {
+                    SafeSpeed=FMath::Min(SafeSpeed,FMath::Sqrt(620.*FMath::Max(0.,ToStopLine-55.)));
+                    bHold|=ToStopLine<75.;
                 }
                 const bool bBrake=bHold || Velocity>SafeSpeed+(bTrialBraking?-50.:65.);
                 if (bBrake!=bTrialBraking)

@@ -70,6 +70,7 @@ public:
     void Start(bool MappedCity, const FVector& StreetStart);
     virtual void Tick(float Dt) override;
     bool WalkSignal() const;
+    bool BankTrafficHasGreen() const { return Phase()==0; }
     int32 ActiveCount() const { return Agents.Num(); }
     int32 GetStops() const { return Stops; }
     int32 GetTurns() const { return Turns; }
