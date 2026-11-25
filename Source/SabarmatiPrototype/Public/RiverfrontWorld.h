@@ -112,7 +112,8 @@ private:
     static void VisitRiverfrontMapRoads(FMapRoadVisitor Visit);
     void BuildFrontage();
     void DressStreetSurface();
-    void AddTeaCart(const FVector& Ground,double Yaw);
+    enum class ECartStock { Chai, Produce, Cloth };
+    void AddMarketCart(const FVector& Ground,double Yaw,ECartStock Stock);
     void DressMarketUtilities();
     void DressServiceElevations(double X, double Front, double Bank, double Width, double Depth,
         double Height, int32 Style, bool bStreet);

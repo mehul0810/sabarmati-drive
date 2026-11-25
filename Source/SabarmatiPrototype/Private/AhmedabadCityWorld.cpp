@@ -497,15 +497,24 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
     {
         const FRotator R(0,Street.Z,0);
         const FVector Origin(Street.X,Street.Y,0.);
-        for (double Side:{-1.,1.})
+        int32 Placed=0;
+        for (const double Distance:{1200.,2400.,3750.,5200.})
         {
-            const FVector P=Origin+R.RotateVector(FVector(0,Side*720.,0));
-            FHitResult Floor;
-            if (GetWorld()->LineTraceSingleByChannel(Floor,P+FVector(0,0,220),P-FVector(0,0,90),ECC_Visibility)
-                && Floor.ImpactPoint.Z<15. && !GetWorld()->OverlapBlockingTestByChannel(Floor.ImpactPoint+FVector(0,0,114),
-                    R.Quaternion(),ECC_Pawn,FCollisionShape::MakeBox(FVector(103.,65.,101.))))
-            { AddTeaCart(Floor.ImpactPoint,R.Yaw+(Side>0?180.:0.)); break; }
+            for (double Side:{1.,-1.})
+            {
+                const FVector P=Origin+R.RotateVector(FVector(Distance,Side*865.,0));
+                FHitResult Floor;
+                if (!GetWorld()->LineTraceSingleByChannel(Floor,P+FVector(0,0,240),P-FVector(0,0,90),ECC_Visibility)
+                    || !Floor.GetComponent() || !Floor.GetComponent()->ComponentHasTag(TEXT("DistrictEarth"))
+                    || GetWorld()->OverlapBlockingTestByChannel(Floor.ImpactPoint+FVector(0,0,114),R.Quaternion(),
+                        ECC_Pawn,FCollisionShape::MakeBox(FVector(113.,73.,101.)))) continue;
+                const ECartStock Stocks[]={ECartStock::Chai,ECartStock::Produce,ECartStock::Cloth};
+                AddMarketCart(Floor.ImpactPoint,R.Yaw+(Side<0?180.:0.),Stocks[Placed%3]);
+                ++Placed;
+                break;
+            }
         }
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati market: %d carts beside mapped street at %s"),Placed,*Origin.ToCompactString());
     }
     BuildDistrictBoundary(true);
     DistrictLoadProgress::Reached(2);
@@ -814,6 +823,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                     ? TEXT("BlockAll") : TEXT("NoCollision"));
                 Mesh->SetCastShadow(Layer==BridgeDetail || bBuildingWall || Layer==Roof || Layer==FacadeTrim || Layer==StreetTree
                     || Layer==Shade || Layer==Tank || Layer==Iron);
+                if (Layer==Dry) Mesh->ComponentTags.Add(TEXT("DistrictEarth"));
                 if (Layer==LampPole) Mesh->ComponentTags.Add(TEXT("LampPole"));
                 if (Layer==LampHead) Mesh->ComponentTags.Add(TEXT("LampHead"));
                 if (Layer==StreetTree) Mesh->ComponentTags.Add(TEXT("TreeCanopy"));

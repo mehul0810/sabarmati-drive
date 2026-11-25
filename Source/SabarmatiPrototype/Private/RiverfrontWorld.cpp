@@ -84,7 +84,7 @@ void ARiverfrontWorld::Build()
     BuildStreetFurniture();
     BuildWestBankGarden();
     DressStreetSurface();
-    AddTeaCart(FVector(760.,5050.,6.),4.);
+    AddMarketCart(FVector(760.,5050.,6.),4.,ECartStock::Chai);
     DressMarketUtilities();
     DistrictLoadProgress::Reached(3);
     BuildLighting();
@@ -370,17 +370,12 @@ void ARiverfrontWorld::BuildBanks()
         for (const double Z : {-49.0, 9.0})
         {
             Span(ETint::Rail, -SegmentHalfLength, StairX-136., 2205, Z, 9, 9, true);
-            Span(ETint::Rail, StairX+136., BridgeX-BridgeSide, 2205, Z, 9, 9, true);
-            Span(ETint::Rail, BridgeX+BridgeSide, SegmentHalfLength, 2205, Z, 9, 9, true);
+            Span(ETint::Rail, StairX+136., SegmentHalfLength, 2205, Z, 9, 9, true);
         }
         for (double X = -7500; X <= 7550; X += 210)
         {
-            if (FMath::Abs(X-BridgeX)<BridgeSide || FMath::Abs(X-StairX)<136.) continue;
+            if (FMath::Abs(X-StairX)<136.) continue;
             Box(ETint::Rail, FVector(X, BankY(Bank, 2205), -33), FVector(9, 9, 102));
-        }
-        for (const double X : {BridgeX - BridgeSide - 26, BridgeX + BridgeSide + 26})
-        {
-            Box(ETint::Rail, FVector(X, BankY(Bank, 2345), -29), FVector(12, 285, 110), true);
         }
         for (int32 Step = 0; Step < 5; ++Step)
         {
@@ -505,7 +500,11 @@ void ARiverfrontWorld::BuildBridge()
             if (ChannelCenter+Offset>Start && ChannelCenter+Offset<End) Span(ChannelCenter+Offset);
         Span(End);
     };
-    DeckBox(ETint::Retaining, FVector(BridgeX, ChannelCenter, -89), FVector(1060, DeckLength, 120));
+    constexpr double DeepSpan=25000.;
+    DeckBox(ETint::Retaining, FVector(BridgeX,ChannelCenter,-89),FVector(1060,DeepSpan,120));
+    for (double Side:{-1.,1.})
+        DeckBox(ETint::Retaining,FVector(BridgeX,ChannelCenter+Side*(DeckLength+DeepSpan)*.25,-31.),
+            FVector(1060,(DeckLength-DeepSpan)*.5,18.));
     DeckBox(ETint::Asphalt, FVector(BridgeX, ChannelCenter, -20), FVector(720, DeckLength, 40), true);
     for (const double Side : {-1.0, 1.0})
     {

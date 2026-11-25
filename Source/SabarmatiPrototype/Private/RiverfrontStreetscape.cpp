@@ -156,7 +156,7 @@ void ARiverfrontWorld::DressMarketUtilities()
     }
 }
 
-void ARiverfrontWorld::AddTeaCart(const FVector& Ground,double Yaw)
+void ARiverfrontWorld::AddMarketCart(const FVector& Ground,double Yaw,ECartStock Stock)
 {
     TGuardValue<int32> Group(CurrentProp,StreetProps.AddDefaulted());
     const FRotator Rotation(0,Yaw,0);
@@ -174,9 +174,37 @@ void ARiverfrontWorld::AddTeaCart(const FVector& Ground,double Yaw)
     }
     for (int32 I=0;I<7;++I)
     {
-        const ETint Cloth=I%2?ETint::Terracotta:ETint::Canvas;
+        const ETint Stripe=Stock==ECartStock::Chai?ETint::Terracotta:Stock==ECartStock::Produce?ETint::Ad:ETint::WoodDark;
+        const ETint Cloth=I%2?Stripe:ETint::Canvas;
         Panel(Cloth,-89.+I*29.5,0,205,29.5,119,4);
         Panel(Cloth,-89.+I*29.5,-58,196,29.5,3,17);
+    }
+    if (Stock==ECartStock::Produce)
+    {
+        for (int32 Crate=0;Crate<3;++Crate)
+        {
+            const double X=-58.+Crate*58.;
+            Panel(ETint::WoodDark,X,0,104,54,63,7);
+            for (double Side:{-1.,1.})
+            {
+                Panel(ETint::Timber,X,Side*31,111,54,3,13);
+                Panel(ETint::Timber,X+Side*26,0,111,3,60,13);
+            }
+            for (int32 I=0;I<4;++I) for (int32 J=0;J<4;++J)
+                Shape(EShape::Sphere,Crate==0?ETint::Clay:Crate==1?ETint::Foliage:ETint::Sail,
+                    At(X-17.+I*11.,-20.+J*13.+I%2,115.+(I+J)%3),FVector(12.,14.,11.));
+        }
+        return;
+    }
+    if (Stock==ECartStock::Cloth)
+    {
+        const ETint Dyes[]={ETint::Ad,ETint::Terracotta,ETint::Sail,ETint::Flower,ETint::Canvas};
+        for (int32 Stack=0;Stack<4;++Stack)
+            for (int32 Fold=0;Fold<3+Stack%3;++Fold)
+                Panel(Dyes[(Stack+Fold)%5],-63+Stack*42.,Fold%2?2.:-2.,104+Fold*5.,37.,58.,4.8);
+        for (int32 I=0;I<3;++I)
+            Panel(Dyes[I],-49.+I*47.,40.,168.,39.,3.,59.);
+        return;
     }
     Shape(EShape::Cylinder,ETint::Rail,At(-43,5,119),FVector(31,31,35));
     Shape(EShape::Sphere,ETint::Rail,At(-43,5,137),FVector(33,33,9));
