@@ -494,6 +494,7 @@ void ARiverfrontHUD::DrawHUD()
         if (Prompt.IsEmpty() && Car) Prompt=Car->GetHint();
     }
     const double MaxWidth=FMath::Min(620.,Draw.Width-390.);
+    if (Character && !Character->GetWaterHint().IsEmpty()) { Prompt=Character->GetWaterHint(); Key.Reset(); }
     const float AbovePrompt=Message(Draw,Prompt,Key,Draw.Height-38,MaxWidth,true);
     Message(Draw,Player->ActivityText(),FString(),AbovePrompt,MaxWidth,false);
     Draw.Flush();

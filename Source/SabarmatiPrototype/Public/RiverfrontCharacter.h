@@ -42,6 +42,7 @@ public:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
+    FString GetWaterHint() const;
     void SetInCar(bool bInCar);
     void SetFittingPose(bool bFitting);
     bool SupportsPublicHaircut() const;
@@ -86,6 +87,9 @@ protected:
     bool TryAvatarTraversal();
 
 private:
+    float Breath=16.f;
+    bool bDrowned=false;
+    bool bDiving=false;
     bool bBlueprintAvatarActive = false;
     UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> AuthoredMotionBody;
     void BindAuthoredAvatarMotion(USkeletalMeshComponent* Body);

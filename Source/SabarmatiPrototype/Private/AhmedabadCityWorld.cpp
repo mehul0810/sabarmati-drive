@@ -1,5 +1,5 @@
-#include "SabarmatiDistrict.h"
 #include "RiverfrontWorld.h"
+#include "SabarmatiDistrict.h"
 #include "DistrictLoadProgress.h"
 #include "AhmedabadFacadeDetail.h"
 #include "RiverfrontPedestrian.h"
@@ -499,6 +499,37 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         CityState.Reset();
         return false;
     }
+    TArray<FCityGround> Land;
+    TArray<FCityGround> WaterCells;
+    for (const auto& Pair:Parsed->Tiles)
+        for (const FCityGround& G:Pair.Value.Ground)
+            (G.Wet?WaterCells:Land).Add(G);
+    double Best=DBL_MAX;
+    FVector Access, Inland;
+    for (const FCityGround& Wet:WaterCells)
+    {
+        AddRiverVolume(FVector((Wet.X0+Wet.X1)*.5,(Wet.Y0+Wet.Y1)*.5,0),Wet.X1-Wet.X0,Wet.Y1-Wet.Y0);
+        for (const FCityGround& DryCell:Land)
+        {
+            const bool West=DryCell.X1==Wet.X0, East=DryCell.X0==Wet.X1;
+            const bool South=DryCell.Y1==Wet.Y0, North=DryCell.Y0==Wet.Y1;
+            FVector Point, Normal;
+            if ((West || East) && FMath::Min(Wet.Y1,DryCell.Y1)-FMath::Max(Wet.Y0,DryCell.Y0)>300)
+            {
+                Point=FVector(West?Wet.X0:Wet.X1,(FMath::Min(Wet.Y1,DryCell.Y1)+FMath::Max(Wet.Y0,DryCell.Y0))*.5,0);
+                Normal=FVector(West?-1:1,0,0);
+            }
+            else if ((South || North) && FMath::Min(Wet.X1,DryCell.X1)-FMath::Max(Wet.X0,DryCell.X0)>300)
+            {
+                Point=FVector((FMath::Min(Wet.X1,DryCell.X1)+FMath::Max(Wet.X0,DryCell.X0))*.5,South?Wet.Y0:Wet.Y1,0);
+                Normal=FVector(0,South?-1:1,0);
+            }
+            else continue;
+            const double D=FVector::DistSquared2D(Point,Parsed->Walk);
+            if (D<Best) { Best=D; Access=Point; Inland=Normal; }
+        }
+    }
+    if (Best<DBL_MAX) AddWaterAccess(Access,Inland,-6.);
     BuildDistrictBoundary(true);
     DistrictLoadProgress::Reached(2);
     if (Parsed->ArcadePlot.IsSet())
@@ -680,10 +711,10 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
             Batch[Road].Reserve(Tile->Roads.Num());
             for (const FCityGround& Item : Tile->Ground)
             {
-                // The actual shoreline clips the traversable land. Water is visual-only.
-                const FVector Pos((Item.X0 + Item.X1) * .5, (Item.Y0 + Item.Y1) * .5, Item.Wet ? -35.0 : -54.0);
+                // The mapped shoreline also defines the swimming volume and the bed below it.
+                const FVector Pos((Item.X0 + Item.X1) * .5, (Item.Y0 + Item.Y1) * .5, Item.Wet ? SabarmatiDistrict::SurfaceZ-4. : (SabarmatiDistrict::BedZ-6.)*.5);
                 AppendBox(Batch[Item.Wet ? Water : Dry], Pos,
-                    FVector(Item.X1 - Item.X0, Item.Y1 - Item.Y0, Item.Wet ? 8.0 : 96.0));
+                    FVector(Item.X1 - Item.X0, Item.Y1 - Item.Y0, Item.Wet ? 8.0 : -6.-SabarmatiDistrict::BedZ));
             }
             for (const FCityRoad& Item : Tile->Roads)
             {

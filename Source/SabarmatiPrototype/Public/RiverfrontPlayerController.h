@@ -34,6 +34,7 @@ public:
     bool SetFittingPortraitView(bool bPortrait);
 
     void InteractWithPlace();
+    void Drowned();
     FString PlacePrompt() const;
     const TArray<FRiverSite>& GetPlaces() const { return Sites; }
     const FRiverSite* Destination() const;
@@ -146,6 +147,7 @@ private:
     void SaveLookPreference();
     void SwitchFreeRoamMap();
     void ReturnHome();
+    void RestartAfterDrowning();
     void LoadFreeRoamMap(FString Options);
     void RemoveOverlay();
 };

@@ -1,5 +1,5 @@
-#include "SabarmatiDistrict.h"
 #include "RiverfrontWorld.h"
+#include "SabarmatiDistrict.h"
 #include "RiverfrontCrossings.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "DistrictLoadProgress.h"
@@ -7,6 +7,7 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
+#include "GameFramework/PhysicsVolume.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -215,10 +216,51 @@ void ARiverfrontWorld::BuildDistrictBoundary(bool City)
         }
 }
 
+void ARiverfrontWorld::AddRiverVolume(const FVector& Centre, double Width, double Depth)
+{
+    const double Surface=SabarmatiDistrict::SurfaceZ, Bed=SabarmatiDistrict::BedZ;
+    const FVector Mid(Centre.X,Centre.Y,(Surface+Bed)*.5);
+    Box(ETint::Earth,FVector(Centre.X,Centre.Y,Bed-12.),FVector(Width,Depth,24.),true);
+    auto* Volume=GetWorld()->SpawnActor<APhysicsVolume>(Mid,FRotator::ZeroRotator);
+    if (!Volume) return;
+    Volume->Priority=2;
+    Volume->bWaterVolume=true;
+    Volume->FluidFriction=.45f;
+    auto* Bounds=NewObject<UBoxComponent>(Volume);
+    Volume->AddInstanceComponent(Bounds);
+    Volume->SetRootComponent(Bounds);
+    Bounds->SetWorldLocation(Mid);
+    Bounds->SetBoxExtent(FVector(Width,Depth,Surface-Bed)*.5);
+    Bounds->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    Bounds->SetCollisionResponseToAllChannels(ECR_Ignore);
+    Bounds->SetCollisionResponseToChannel(ECC_Pawn,ECR_Overlap);
+    Bounds->SetCanEverAffectNavigation(false);
+    Bounds->RegisterComponent();
+}
+
+void ARiverfrontWorld::AddWaterAccess(const FVector& Shore,const FVector& Inland,double Top)
+{
+    // A ghat stair reaches the bed even at low water. The capsule can step up every riser.
+    const int32 Count=FMath::CeilToInt((Top-SabarmatiDistrict::BedZ)/15.);
+    for (int32 I=0;I<Count;++I)
+    {
+        const double Height=(Top-SabarmatiDistrict::BedZ)*(Count-I)/Count;
+        const FVector At=Shore-Inland*(I*33.+16.5)+FVector(0,0,SabarmatiDistrict::BedZ+Height*.5);
+        Box(ETint::Retaining,At,FVector(33.,240.,Height),true,Inland.Rotation());
+    }
+}
+
 void ARiverfrontWorld::BuildBanks()
 {
     // River runs along X; park, lanes and the crossing share a zero-grade driving surface.
-    Box(ETint::Water, FVector(0, ChannelCenter, -145), FVector(180000, ChannelWidth, 8));
+    AddRiverVolume(FVector(0,ChannelCenter,0),100000.,ChannelWidth);
+    for (double Bank:{-1.,1.})
+    {
+        AddWaterAccess(FVector(StairX,BankY(Bank,2190),0),FVector(0,Bank,0),-84.);
+        Box(ETint::Retaining,FVector(0,BankY(Bank,2206),(-84.+SabarmatiDistrict::BedZ)*.5),
+            FVector(100000.,32.,-84.-SabarmatiDistrict::BedZ),true);
+    }
+    Box(ETint::Water, FVector(0, ChannelCenter, SabarmatiDistrict::SurfaceZ-4.), FVector(180000, ChannelWidth, 8));
     const bool bHasRiver = IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Water)).Get());
     if (!bHasRiver)
     {
@@ -226,7 +268,7 @@ void ARiverfrontWorld::BuildBanks()
         for (int32 Index = 0; Index < 110; ++Index)
         {
             Box(Index % 4 == 0 ? ETint::Ripple : ETint::Water,
-                FVector(WaterRandom.FRandRange(-9900, 9900), ChannelCenter + WaterRandom.FRandRange(-ChannelWidth * .49, ChannelWidth * .49), -140),
+                FVector(WaterRandom.FRandRange(-9900, 9900), ChannelCenter + WaterRandom.FRandRange(-ChannelWidth * .49, ChannelWidth * .49), SabarmatiDistrict::SurfaceZ+1.),
                 FVector(WaterRandom.FRandRange(65, 660), WaterRandom.FRandRange(3, 9), 1), false,
                 FRotator(0, WaterRandom.FRandRange(-7, 7), 0));
         }
@@ -250,12 +292,13 @@ void ARiverfrontWorld::BuildBanks()
         Span(ETint::Paving, -SegmentHalfLength, SegmentHalfLength, 2350, -110, 310, 52, true);
         for (const double Z : {-49.0, 9.0})
         {
-            Span(ETint::Rail, -SegmentHalfLength, BridgeX-BridgeSide, 2205, Z, 9, 9, true);
+            Span(ETint::Rail, -SegmentHalfLength, StairX-136., 2205, Z, 9, 9, true);
+            Span(ETint::Rail, StairX+136., BridgeX-BridgeSide, 2205, Z, 9, 9, true);
             Span(ETint::Rail, BridgeX+BridgeSide, SegmentHalfLength, 2205, Z, 9, 9, true);
         }
         for (double X = -7500; X <= 7550; X += 210)
         {
-            if (FMath::Abs(X-BridgeX)<BridgeSide) continue;
+            if (FMath::Abs(X-BridgeX)<BridgeSide || FMath::Abs(X-StairX)<136.) continue;
             Box(ETint::Rail, FVector(X, BankY(Bank, 2205), -33), FVector(9, 9, 102));
         }
         for (const double X : {BridgeX - BridgeSide - 26, BridgeX + BridgeSide + 26})

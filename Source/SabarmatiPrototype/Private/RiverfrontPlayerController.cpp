@@ -1355,6 +1355,20 @@ void ARiverfrontPlayerController::SwitchFreeRoamMap()
     LoadFreeRoamMap(bCity ? TEXT("SabarmatiRiverfront") : TEXT("SabarmatiCity"));
 }
 
+void ARiverfrontPlayerController::Drowned()
+{
+    if (bTravelling) return;
+    bTravelling=true;
+    Notice(TEXT("Drowned  ·  Returning to Flat 2B"));
+    FTimerHandle Respawn;
+    GetWorldTimerManager().SetTimer(Respawn,this,&ARiverfrontPlayerController::RestartAfterDrowning,2.f,false);
+}
+
+void ARiverfrontPlayerController::RestartAfterDrowning()
+{
+    LoadFreeRoamMap(TEXT("SabarmatiRiverfront?SabarmatiReturnHome"));
+}
+
 void ARiverfrontPlayerController::ReturnHome()
 {
     if (bTravelling || !HasLocalProfile() || (Screen != EScreen::Title && Screen != EScreen::Paused))

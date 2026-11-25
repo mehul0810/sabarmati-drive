@@ -97,6 +97,8 @@ private:
 #endif
     void LoadSurfaceMaterials();
     void UpdateCityTiles(const FVector& Focus, bool Immediate=false);
+    void AddRiverVolume(const FVector& Centre, double Width, double Depth);
+    void AddWaterAccess(const FVector& Shore, const FVector& Inland, double Top);
     void BuildBanks();
     void BuildDistrictBoundary(bool City);
     void BuildBridge();

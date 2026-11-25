@@ -1,4 +1,5 @@
 #include "RiverfrontCharacter.h"
+#include "SabarmatiDistrict.h"
 #include "RiverfrontAvatarMotion.h"
 #include "RiverfrontLocalProfile.h"
 #include "RiverfrontLocomotionInstance.h"
@@ -69,6 +70,9 @@ ARiverfrontCharacter::ARiverfrontCharacter()
     Movement->MaxAcceleration = 850.f;
     Movement->BrakingDecelerationWalking = 900.f;
     Movement->JumpZVelocity = 440.f;
+    Movement->GetNavAgentPropertiesRef().bCanSwim=true;
+    Movement->MaxSwimSpeed=190.f;
+    Movement->Buoyancy=1.f;
     Movement->AirControl = .36f;
 
     Arm = CreateDefaultSubobject<USpringArmComponent>(TEXT("OrbitArm"));
@@ -611,7 +615,22 @@ bool ARiverfrontCharacter::HasWristwatchVisible() const
 void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (bInFittingPose) return;
+    if (bInFittingPose || bDrowned) return;
+    if (IsPlayerControlled() && GetCharacterMovement()->IsSwimming())
+    {
+        const double Depth=SabarmatiDistrict::SurfaceZ-GetActorLocation().Z;
+        // Tread water with the face above the surface until the player holds Dive.
+        const float Vertical=bDiving ? -1.f : FMath::Clamp(float((Depth-38.)/45.),-.7f,1.f);
+        AddMovementInput(FVector::UpVector,Vertical);
+        Breath=Depth>65. ? FMath::Max(0.f,Breath-DeltaSeconds) : FMath::Min(16.f,Breath+3.f*DeltaSeconds);
+        if (Breath<=0.f)
+        {
+            bDrowned=true;
+            if (auto* PC=Cast<ARiverfrontPlayerController>(Controller)) PC->Drowned();
+        }
+        return;
+    }
+    Breath=FMath::Min(16.f,Breath+3.f*DeltaSeconds);
     UpdateTraversal();
     const float FlatSpeed = GetVelocity().Size2D();
     const auto* Body = GetAvatarMesh();
@@ -737,13 +756,22 @@ void ARiverfrontCharacter::MoveSide(float Amount)
     }
 }
 
+FString ARiverfrontCharacter::GetWaterHint() const
+{
+    if (bDrowned) return TEXT("Drowned  ·  Returning to Flat 2B");
+    if (!GetCharacterMovement()->IsSwimming()) return {};
+    return FString::Printf(TEXT("Swimming   ·   Hold sprint to dive   ·   Air %d%%"),FMath::RoundToInt(Breath*6.25f));
+}
+
 void ARiverfrontCharacter::Sprint()
 {
+    bDiving=true;
     GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
 }
 
 void ARiverfrontCharacter::StopSprint()
 {
+    bDiving=false;
     GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
