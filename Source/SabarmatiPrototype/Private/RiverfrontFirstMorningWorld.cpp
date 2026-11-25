@@ -314,7 +314,7 @@ void FRiverfrontFirstMorningWorld::CoverSleeper(ARiverfrontWorld& World,bool Occ
         }
 }
 
-FVector FRiverfrontFirstMorningWorld::HomeStart() { return At(-40,465,Upper+95); }
+FVector FRiverfrontFirstMorningWorld::HomeStart() { return Bedside(); }
 FVector FRiverfrontFirstMorningWorld::Bedside() { return At(-94,580,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::Pillow() { return At(-180,648,Upper+72); }
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
@@ -348,8 +348,8 @@ FTransform FRiverfrontFirstMorningWorld::WakeEndView(bool bShowSleeper)
         const FVector Eye=At(-150,608,Upper+127);
         return FTransform((At(25,12,Upper+143)-Eye).Rotation(),Eye);
     }
-    const FVector Eye=At(-60,554,Upper+145);
-    return FTransform((At(-180,613,Upper+68)-Eye).Rotation(),Eye);
+    const FVector Eye=At(104,392,Upper+157);
+    return FTransform((At(-110,577,Upper+75)-Eye).Rotation(),Eye);
 }
 
 TArray<FVector> FRiverfrontFirstMorningWorld::ExitRoute()

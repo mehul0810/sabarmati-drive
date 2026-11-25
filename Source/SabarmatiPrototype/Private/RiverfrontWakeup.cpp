@@ -19,7 +19,7 @@
 namespace
 {
 constexpr int32 FramesPerSecond = 30;
-constexpr int32 LastFrame = 70;
+constexpr int32 RiseFrames = 134;
 
 void AddViewKey(UMovieScene3DTransformSection& Section, int32 Frame, const FTransform& View)
 {
@@ -36,7 +36,8 @@ void ARiverfrontPlayerController::PlayWakeup()
 {
     if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District) District->StartMorningClock();
     auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
-    const bool bShowSleeper=Walker && Walker->LieOnBed(FRiverfrontFirstMorningWorld::Pillow());
+    const bool bShowSleeper=Walker && Walker->TeleportTo(FRiverfrontFirstMorningWorld::Bedside(),FRotator::ZeroRotator) && Walker->LieOnBed(FRiverfrontFirstMorningWorld::Pillow());
+    const int32 LastFrame=bShowSleeper ? RiseFrames : 70;
     const FTransform From = FRiverfrontFirstMorningWorld::WakeStartView(bShowSleeper);
     ACameraActor* Camera = GetWorld()->SpawnActor<ACameraActor>(From.GetLocation(), From.Rotator());
     if (!Camera) { if (bShowSleeper) Walker->LeaveBed(); return; }
@@ -74,6 +75,12 @@ void ARiverfrontPlayerController::PlayWakeup()
     SetViewTarget(Camera);
     if (PlayerCameraManager)
         PlayerCameraManager->StartCameraFade(1.f, 0.f, .65f, FLinearColor::Black, false);
+    if (bShowSleeper)
+        GetWorldTimerManager().SetTimer(QuiltTimer,FTimerDelegate::CreateWeakLambda(this,[this]
+        {
+            if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District)
+                FRiverfrontFirstMorningWorld::CoverSleeper(**District,false);
+        }),1.48f,false);
     Player->Play();
     GetWorldTimerManager().SetTimer(WakeupTimer, this, &ARiverfrontPlayerController::FinishWakeup, float(LastFrame)/FramesPerSecond, false);
 }
@@ -82,6 +89,7 @@ void ARiverfrontPlayerController::FinishWakeup()
 {
     if (!bWaking) return;
     GetWorldTimerManager().ClearTimer(WakeupTimer);
+    GetWorldTimerManager().ClearTimer(QuiltTimer);
     bWaking=false;
     bHasExperiencedWake=true;
     SetIgnoreMoveInput(false);
@@ -98,8 +106,8 @@ void ARiverfrontPlayerController::FinishWakeup()
         if (TActorIterator<ARiverfrontWorld> District(GetWorld()); District)
             FRiverfrontFirstMorningWorld::CoverSleeper(**District,false);
     }
-    if (GetPawn()) SetViewTarget(GetPawn());
-    if (PlayerCameraManager) PlayerCameraManager->StartCameraFade(1.f,0.f,.32f,FLinearColor::Black,false);
+    if (GetPawn()) SetViewTargetWithBlend(GetPawn(),.35f,VTBlend_Cubic,0.f,true);
+    if (PlayerCameraManager) PlayerCameraManager->StopCameraFade();
     if (LifeCamera.IsValid()) LifeCamera->SetLifeSpan(.6f);
     LifeCamera.Reset();
     SaveLifeCheckpoint();

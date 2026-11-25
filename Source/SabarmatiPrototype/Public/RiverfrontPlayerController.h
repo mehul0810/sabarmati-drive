@@ -110,7 +110,7 @@ private:
     float LastLifeYaw = 0.f;
     FRotator BeforeFittingRotation = FRotator::ZeroRotator;
     FTransform FullOutfitView;
-    FTimerHandle WakeupTimer, LifeSaveTimer;
+    FTimerHandle WakeupTimer, QuiltTimer, LifeSaveTimer;
     TWeakObjectPtr<ACameraActor> LifeCamera;
     TWeakObjectPtr<ALevelSequenceActor> WakeupSequence;
     void LoadSites();

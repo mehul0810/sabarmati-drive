@@ -1,5 +1,6 @@
 #include "RiverfrontCharacter.h"
 #include "Components/PoseableMeshComponent.h"
+#include "TwoBoneIK.h"
 #include "SabarmatiDistrict.h"
 #include "RiverfrontAvatarMotion.h"
 #include "RiverfrontLocalProfile.h"
@@ -551,13 +552,13 @@ bool ARiverfrontCharacter::SupportsClothingChange() const
         && DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
 }
 
-void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
+bool ARiverfrontCharacter::PreparePosedMesh()
 {
     auto* Source=GetMesh();
-    if (!bInFittingPose || bBlueprintAvatarActive || !Source->GetSkeletalMeshAsset()) return;
+    if (!bInFittingPose || bBlueprintAvatarActive || !Source->GetSkeletalMeshAsset()) return false;
     if (!ChangingMesh)
     {
-        if (!Source->IsVisible() || Source->GetBoneIndex(TEXT("Shoulderl"))==INDEX_NONE) return;
+        if (!Source->IsVisible() || Source->GetBoneIndex(TEXT("Shoulderl"))==INDEX_NONE) return false;
         ChangingMesh=NewObject<UPoseableMeshComponent>(this);
         AddInstanceComponent(ChangingMesh);
         ChangingMesh->SetupAttachment(Source);
@@ -570,6 +571,13 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
                 Part->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
         Source->SetVisibility(false);
     }
+    return true;
+}
+
+void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
+{
+    if (!PreparePosedMesh()) return;
+    auto* Source=GetMesh();
     ChangingMesh->CopyPoseFromSkeletalComponent(Source);
     for (int32 Index=0;Index<2;++Index)
     {
@@ -629,12 +637,65 @@ bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
 void ARiverfrontCharacter::UpdateBedPose()
 {
     auto* Body=GetAvatarMesh();
-    // Feet point towards the footboard (+body Z runs towards the pillow).
-    const float BreathingOffset=.38f*FMath::Sin(BedTime*1.6f);
-    const FQuat BedAxes=FRotationMatrix::MakeFromXZ(FVector(-.88,0,.45),FVector::RightVector).ToQuat();
-    const FQuat Rotation=BedAxes*BeforeBed.GetRotation();
-    const FVector Pillow=BedHead+FVector(0,0,BreathingOffset);
-    Body->SetWorldLocationAndRotation(Pillow-Rotation.RotateVector(HeadInMesh*Body->GetComponentScale()),Rotation);
+    const FTransform Standing=BeforeBed*Body->GetAttachParent()->GetComponentTransform();
+    const FQuat Sleep=FRotationMatrix::MakeFromXZ(FVector(-.88,0,.45),FVector::RightVector).ToQuat()*BeforeBed.GetRotation();
+    const FVector Scale=Standing.GetScale3D();
+    const FVector Pillow=BedHead+FVector(0,0,.38*FMath::Sin(BedTime*1.6));
+    const FVector SleepOrigin=Pillow-Sleep.RotateVector(HeadInMesh*Scale);
+    if (BedTime<=.9f || Body!=GetMesh() || !PreparePosedMesh())
+    {
+        Body->SetWorldLocationAndRotation(SleepOrigin,Sleep);
+        return;
+    }
+    const auto Ease=[this](float Start,float End){ return FMath::SmoothStep(Start,End,BedTime); };
+    const float Roll=Ease(.9f,1.7f), Sit=Ease(1.42f,2.68f), Stand=Ease(3.0f,4.32f);
+    const FQuat Side=FRotationMatrix::MakeFromXZ(FVector(.86,0,.5),FVector::RightVector).ToQuat()*BeforeBed.GetRotation();
+    // Drive the pelvis through the mattress edge. The capsule stays grounded at the final stance.
+    const FVector Hip=(Body->GetSocketTransform(TEXT("Hipl"),RTS_Component).GetLocation()
+                      +Body->GetSocketTransform(TEXT("Hipr"),RTS_Component).GetLocation())*.5;
+    const FVector Seated=BedHead+FVector(42,-67,-14);
+    const FVector StartHip=SleepOrigin+Sleep.RotateVector(Hip*Scale);
+    FVector Pelvis=FMath::Lerp(StartHip,Seated,Sit)+FVector(9*Roll*(1.-Sit),0,0);
+    Pelvis=FMath::Lerp(Pelvis,Standing.TransformPosition(Hip),Stand);
+    const double Lean=13.*FMath::Sin(PI*Stand);
+    const FQuat Upright=FQuat(FVector::RightVector,FMath::DegreesToRadians(Lean))*Standing.GetRotation();
+    const FQuat Rotation=FQuat::Slerp(FQuat::Slerp(Sleep,Side,Roll),Upright,Sit);
+    Body->SetWorldLocationAndRotation(Pelvis-Rotation.RotateVector(Hip*Scale),Rotation);
+
+    ChangingMesh->CopyPoseFromSkeletalComponent(Body);
+    const FTransform Frame=Body->GetComponentTransform();
+    const auto Reach=[&](FName Upper,FName Middle,FName End,const FVector& Goal,const FVector& Pole,float Weight)
+    {
+        if (Weight<=0.f || Body->GetBoneIndex(End)==INDEX_NONE) return;
+        auto A=ChangingMesh->GetBoneTransformByName(Upper,EBoneSpaces::ComponentSpace);
+        auto B=ChangingMesh->GetBoneTransformByName(Middle,EBoneSpaces::ComponentSpace);
+        auto C=ChangingMesh->GetBoneTransformByName(End,EBoneSpaces::ComponentSpace);
+        const FVector Target=FMath::Lerp(C.GetLocation(),Frame.InverseTransformPosition(Goal),Weight);
+        AnimationCore::SolveTwoBoneIK(A,B,C,Frame.InverseTransformPosition(Pole),Target,false,1.,1.);
+        ChangingMesh->SetBoneTransformByName(Upper,A,EBoneSpaces::ComponentSpace);
+        ChangingMesh->SetBoneTransformByName(Middle,B,EBoneSpaces::ComponentSpace);
+        if (End==TEXT("Footl") || End==TEXT("Footr"))
+        {
+            const FQuat Flat=Standing.GetRotation()*Body->GetSocketTransform(End,RTS_Component).GetRotation();
+            C.SetRotation(FQuat::Slerp(C.GetRotation(),Frame.GetRotation().Inverse()*Flat,Weight));
+            ChangingMesh->SetBoneTransformByName(End,C,EBoneSpaces::ComponentSpace);
+        }
+    };
+    for (int32 Index=0;Index<2;++Index)
+    {
+        const bool Right=Index!=0;
+        const FName Foot=Right ? TEXT("Footr") : TEXT("Footl");
+        const float Swing=Ease(Right?1.65f:1.45f,Right?2.76f:2.58f);
+        FVector Target=Standing.TransformPosition(Body->GetSocketTransform(Foot,RTS_Component).GetLocation());
+        Target.Z+=18.*FMath::Sin(PI*Swing);
+        Reach(Right?TEXT("Hipr"):TEXT("Hipl"),Right?TEXT("Kneer"):TEXT("Kneel"),Foot,
+            Target,Target+FVector(95,Right?8:-8,45),Swing);
+    }
+    const FVector Palm=BedHead+FVector(28,-89,-16);
+    Reach(TEXT("Shoulderl"),TEXT("Elbowl"),TEXT("Handl"),Palm,Palm+FVector(-20,-55,40),
+        Ease(1.35f,2.18f)*(1.f-Ease(3.f,3.65f)));
+    ChangingMesh->RefreshBoneTransforms();
+    ChangingMesh->MarkRenderDynamicDataDirty();
 }
 
 void ARiverfrontCharacter::LeaveBed()

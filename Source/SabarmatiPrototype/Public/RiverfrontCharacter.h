@@ -48,6 +48,7 @@ public:
     void SetFittingPose(bool bFitting);
     bool LieOnBed(const FVector& Pillow);
     void LeaveBed();
+    float GetBedTime() const { return BedTime; }
     bool SupportsClothingChange() const;
     void PoseChangingSleeves(float Lift,bool Pullover);
     void EndChangingPose();
@@ -170,6 +171,7 @@ private:
     TArray<int32,TInlineAllocator<4>> BedShoeLODs;
     float BedTime=0.f;
     void UpdateBedPose();
+    bool PreparePosedMesh();
     bool bInFittingPose = false;
     bool bOrientBeforeFitting = true;
     UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;
