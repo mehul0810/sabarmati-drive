@@ -85,6 +85,7 @@ private:
     void BeginLifeSession();
     void FinishWakeup();
     void PlayWakeup();
+    bool CanRestAtBed() const;
     void SaveLifeCheckpoint();
     void CommitLifeCheckpoint(const FVector& Location, float Yaw);
     void OpenWallet();

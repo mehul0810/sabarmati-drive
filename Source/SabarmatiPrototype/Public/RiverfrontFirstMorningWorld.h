@@ -9,6 +9,8 @@ struct FRiverfrontFirstMorningWorld
 {
     static void Build(ARiverfrontWorld& World);
     static FVector HomeStart();
+    static FVector Bedside();
+    static FVector Pillow();
     static FVector WardrobePoint();
     static FVector ShopPoint();
     static FVector StreetPoint();

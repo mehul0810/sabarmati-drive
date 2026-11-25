@@ -87,8 +87,15 @@ int32 ARiverfrontPlayerController::NearbySite() const
     }
     return Found;
 }
+bool ARiverfrontPlayerController::CanRestAtBed() const
+{
+    return bLifeActive && !bWaking && !bCitySites && Cast<ARiverfrontCharacter>(GetPawn())
+        && FVector::DistSquared(GetPawn()->GetActorLocation(),FRiverfrontFirstMorningWorld::Bedside())<FMath::Square(105.);
+}
+
 FString ARiverfrontPlayerController::PlacePrompt() const
 {
+    if (CanRestAtBed()) return TEXT("E   Sleep until morning");
     const int32 I=NearbySite();
     if (I==INDEX_NONE) return NearbyCompanion() ? FString(TEXT("E   Say hello")) : FString();
     if (bParcelInHand && Sites[I].Kind==ERiverSiteKind::Tea) return TEXT("E   Deliver the print order");
@@ -106,7 +113,8 @@ bool ARiverfrontPlayerController::SaveExploration()
 }
 void ARiverfrontPlayerController::InteractWithPlace()
 {
-    if (IsShowingMenu()) return;
+    if (IsShowingMenu() || bWaking) return;
+    if (CanRestAtBed()) { PlayWakeup(); return; }
     const int32 I=NearbySite();
     if (I==INDEX_NONE)
     {

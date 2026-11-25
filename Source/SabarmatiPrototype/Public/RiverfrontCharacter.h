@@ -46,6 +46,9 @@ public:
     void BeginSeatExit(const FVector& Seat,const FVector& Landing,const FVector& Out);
     void SetInCar(bool bInCar);
     void SetFittingPose(bool bFitting);
+    bool LieOnBed(const FVector& Pillow);
+    void LeaveBed();
+    bool IsLyingOnBed() const { return bLyingOnBed; }
     bool SupportsPublicHaircut() const;
     void SetCroppedHair(bool bCropped);
     void ApplyProfileAppearance(const URiverfrontLocalProfile& Profile);
@@ -157,6 +160,11 @@ private:
     int32 StepIndex=0;
     double GaitPhase = 0.0;
     bool bUsesImportedMesh = false;
+    bool bLyingOnBed=false;
+    FTransform BeforeBed;
+    FVector BedHead, HeadInMesh;
+    float BedTime=0.f;
+    void UpdateBedPose();
     bool bInFittingPose = false;
     bool bOrientBeforeFitting = true;
     UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;

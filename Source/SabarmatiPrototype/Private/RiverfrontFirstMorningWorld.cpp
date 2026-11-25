@@ -278,6 +278,8 @@ void FitTextiles(ARiverfrontWorld& World)
 }
 
 FVector FRiverfrontFirstMorningWorld::HomeStart() { return At(-40,465,Upper+95); }
+FVector FRiverfrontFirstMorningWorld::Bedside() { return At(-94,580,Upper+95); }
+FVector FRiverfrontFirstMorningWorld::Pillow() { return At(-180,648,Upper+72); }
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,ApartmentGroundZ+95); }
 FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,ApartmentGroundZ+95); }
@@ -294,13 +296,13 @@ FBox FRiverfrontFirstMorningWorld::FenceTraversalBounds()
 
 FTransform FRiverfrontFirstMorningWorld::WakeStartView()
 {
-    const FVector Eye=At(-202,643,Upper+82);
-    return FTransform((At(14,4,Upper+141)-Eye).Rotation(),Eye);
+    const FVector Eye=At(-31,529,Upper+170);
+    return FTransform((At(-180,596,Upper+66)-Eye).Rotation(),Eye);
 }
 FTransform FRiverfrontFirstMorningWorld::WakeEndView()
 {
-    const FVector Eye=At(-150,608,Upper+127);
-    return FTransform((At(25,12,Upper+143)-Eye).Rotation(),Eye);
+    const FVector Eye=At(-60,554,Upper+145);
+    return FTransform((At(-180,613,Upper+68)-Eye).Rotation(),Eye);
 }
 
 TArray<FVector> FRiverfrontFirstMorningWorld::ExitRoute()

@@ -1,4 +1,5 @@
 #include "RiverfrontPlayerController.h"
+#include "RiverfrontCharacter.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontWorld.h"
 #include "EngineUtils.h"
@@ -63,6 +64,8 @@ void ARiverfrontPlayerController::PlayWakeup()
     LifeCamera = Camera;
     WakeupSequence = Actor;
     bWaking = true;
+    if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn()))
+        Walker->LieOnBed(FRiverfrontFirstMorningWorld::Pillow());
     SetIgnoreMoveInput(true);
     SetIgnoreLookInput(true);
     SetViewTarget(Camera);
@@ -86,7 +89,9 @@ void ARiverfrontPlayerController::FinishWakeup()
         WakeupSequence->Destroy();
         WakeupSequence.Reset();
     }
-    if (GetPawn()) SetViewTargetWithBlend(GetPawn(), .32f, VTBlend_EaseInOut, 2.f, true);
+    if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn())) Walker->LeaveBed();
+    if (GetPawn()) SetViewTarget(GetPawn());
+    if (PlayerCameraManager) PlayerCameraManager->StartCameraFade(1.f,0.f,.32f,FLinearColor::Black,false);
     if (LifeCamera.IsValid()) LifeCamera->SetLifeSpan(.6f);
     LifeCamera.Reset();
     SaveLifeCheckpoint();

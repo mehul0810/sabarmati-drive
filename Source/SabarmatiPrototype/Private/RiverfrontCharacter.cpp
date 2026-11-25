@@ -531,6 +531,41 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     if (bInFittingPose) SetFittingPose(true);
 }
 
+bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
+{
+    auto* Body=GetAvatarMesh();
+    // An assembled Blueprint may have additional components outside the body hierarchy.
+    if (bLyingOnBed || bBlueprintAvatarActive || !Body || !Body->IsVisible()
+        || !Body->DoesSocketExist(TEXT("Head"))) return false;
+    SetFittingPose(true);
+    BeforeBed=Body->GetRelativeTransform();
+    HeadInMesh=Body->GetSocketTransform(TEXT("Head"),RTS_Component).GetLocation();
+    BedHead=Pillow;
+    BedTime=0.f;
+    bLyingOnBed=true;
+    UpdateBedPose();
+    return true;
+}
+
+void ARiverfrontCharacter::UpdateBedPose()
+{
+    auto* Body=GetAvatarMesh();
+    // Feet point towards the footboard (+body Z runs towards the pillow).
+    const float Breath=FMath::Sin(BedTime*1.6f);
+    const FQuat BedAxes=FRotationMatrix::MakeFromXZ(FVector(.34,0,1),FVector::RightVector).ToQuat();
+    const FQuat Rotation=BedAxes*BeforeBed.GetRotation();
+    const FVector Pillow=BedHead+FVector(0,0,.38f*Breath);
+    Body->SetWorldLocationAndRotation(Pillow-Rotation.RotateVector(HeadInMesh*Body->GetComponentScale()),Rotation);
+}
+
+void ARiverfrontCharacter::LeaveBed()
+{
+    if (!bLyingOnBed) return;
+    bLyingOnBed=false;
+    GetAvatarMesh()->SetRelativeTransform(BeforeBed);
+    SetFittingPose(false);
+}
+
 void ARiverfrontCharacter::SetFittingPose(bool bFitting)
 {
     auto* Movement = GetCharacterMovement();
@@ -665,6 +700,7 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
         }
         return;
     }
+    if (bLyingOnBed) { BedTime+=DeltaSeconds; UpdateBedPose(); return; }
     if (bInFittingPose || bDrowned) return;
     const bool Swimming=IsPlayerControlled() && GetCharacterMovement()->IsSwimming();
     UpdateSwimPose(DeltaSeconds,Swimming);
