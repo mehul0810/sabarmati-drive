@@ -114,4 +114,6 @@ keyboard QA use a standalone game window; Unreal Editor can intercept Esc in PIE
 
 Across the street from the starting cars, a brick-and-plaster block has a shaded colonnade, a public cross-passage and a paved circuit around the back. In **Explore Ahmedabad**, a longer version occupies the mapped plot beside the starting road. Both routes are accessible on foot. The road surface uses scanned asphalt, and the central streets include worn markings, flush drains and kerbs. See [the material sources](SourceAssets/RIVERFRONT-SOURCES.md) and [city map notes](SourceAssets/AHMEDABAD-CITY-SOURCES.md).
 
-**Explore Ahmedabad** also includes walkable sections of Ashram Road, CG Road and the SG Highway service road. Select one with **N**, then press **V** on foot or in a stopped vehicle. Buildings, tree-lined sidewalks and pedestrians load as you approach each area.
+**Explore Ahmedabad** opens a 1 km × 1 km district around the Atal west approach. Press **N** to select a local destination and **V** to travel. The home riverfront also has a 1 km × 1 km play boundary. Look for streetside tea carts, shade trees and parked vehicles. Approach a stopped vehicle and press **E** to drive. The sport coupe and motorcycle have higher speed limits. Hard impacts can wreck the car.
+
+Ghat steps lead down to the river. Use the walking controls to swim, hold **Sprint** to dive and release it to surface. Running out of air returns you to Flat 2B with your possessions.

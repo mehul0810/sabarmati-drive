@@ -449,6 +449,8 @@ bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,in
     const FTransform Pose=RoadPose(*Routes[Route],Distance,ParkAtKerb?-193.:0.,Shape.Wheel,2.*Shape.Axle,true);
     if (ParkAtKerb)
     {
+        for (const FVector& Junction:Junctions)
+            if (FVector::DistSquared2D(Junction,Pose.GetLocation())<FMath::Square(1650.)) return false;
         FHitResult Floor;
         const FVector P=Pose.GetLocation();
         if (!GetWorld()->LineTraceSingleByObjectType(Floor,P+FVector(0,0,20),P-FVector(0,0,100),
@@ -486,12 +488,10 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
     if (!bCity)
     {
         const double W=4090., E=-26010.;
-        for (const FVector2D Pair:{FVector2D(-64400,3150),FVector2D(3150,59310),FVector2D(-64400,59310)})
-        {
-            const double L=Pair.X,R=Pair.Y;
-            const TArray<FVector> Nodes={{L,W,1020},{R,W,R==3150?720.:640.},{R,E,1020},{L,E,L==3150?720.:1520.}};
-            AddDistrictRoute(Nodes);
-        }
+        // Ellis and the central vehicle bridge form a complete circuit inside the square.
+        AddDistrictRoute({{3150,W,1020},{59310,W,640},{59310,E,1020},{3150,E,720}});
+        for (double Bank:{W,E})
+            AddDistrictRoute({{-38000,Bank,1020},{-16000,Bank,1020},{3150,Bank,1020}},false);
         Junctions={PedestrianCrossing,FVector(3150,W,0),FVector(3150,E,0),FVector(-64400,W,0),FVector(59310,E,0)};
     }
     else

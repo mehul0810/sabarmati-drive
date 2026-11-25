@@ -530,6 +530,20 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         }
     }
     if (Best<DBL_MAX) AddWaterAccess(Access,Inland,-6.);
+    for (const FVector Street:{FVector(10237,25487,1.8),FVector(20998,25504,-4.38),FVector(1220,39675,16.41)})
+    {
+        const FRotator R(0,Street.Z,0);
+        const FVector Origin(Street.X,Street.Y,0.);
+        for (double Side:{-1.,1.})
+        {
+            const FVector P=Origin+R.RotateVector(FVector(0,Side*720.,0));
+            FHitResult Floor;
+            if (GetWorld()->LineTraceSingleByChannel(Floor,P+FVector(0,0,220),P-FVector(0,0,90),ECC_Visibility)
+                && Floor.ImpactPoint.Z<15. && !GetWorld()->OverlapBlockingTestByChannel(Floor.ImpactPoint+FVector(0,0,114),
+                    R.Quaternion(),ECC_Pawn,FCollisionShape::MakeBox(FVector(103.,65.,101.))))
+            { AddTeaCart(Floor.ImpactPoint,R.Yaw+(Side>0?180.:0.)); break; }
+        }
+    }
     BuildDistrictBoundary(true);
     DistrictLoadProgress::Reached(2);
     if (Parsed->ArcadePlot.IsSet())

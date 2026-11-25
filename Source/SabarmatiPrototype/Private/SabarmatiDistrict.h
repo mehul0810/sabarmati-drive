@@ -7,7 +7,7 @@ constexpr double HalfWidth = 50000.;
 constexpr double BankZ = 0.;
 constexpr double BedZ = -900.;
 constexpr double SurfaceZ = BedZ + .30 * (BankZ - BedZ);
-inline FVector Center(bool City) { return City ? FVector(-12000., 19000., 0.) : FVector(0., -10960., 0.); }
+inline FVector Center(bool City) { return City ? FVector(-12000., 50000., 0.) : FVector(12000., -10960., 0.); }
 inline bool Contains(const FVector& P, bool City)
 {
     const FVector Delta = P - Center(City);

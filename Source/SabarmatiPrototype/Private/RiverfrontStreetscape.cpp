@@ -155,3 +155,31 @@ void ARiverfrontWorld::DressMarketUtilities()
         }
     }
 }
+
+void ARiverfrontWorld::AddTeaCart(const FVector& Ground,double Yaw)
+{
+    const FRotator Rotation(0,Yaw,0);
+    const auto At=[&](double X,double Y,double Z){return Ground+Rotation.RotateVector(FVector(X,Y,Z));};
+    const auto Panel=[&](ETint Tint,double X,double Y,double Z,double W,double D,double H,bool Solid=false)
+    { Box(Tint,At(X,Y,Z),FVector(W,D,H),Solid,Rotation); };
+    Panel(ETint::Timber,0,0,71,174,84,51,true);
+    Panel(ETint::Rail,0,0,99,186,96,5);
+    for (double X:{-65.,65.}) for (double Y:{-42.,42.})
+    {
+        const FRotator Axle=(Rotation.Quaternion()*FQuat(FVector::ForwardVector,PI*.5)).Rotator();
+        Shape(EShape::Cylinder,ETint::Shadow,At(X,Y,23),FVector(46,46,5),false,Axle);
+        Shape(EShape::Cylinder,ETint::Brass,At(X,Y*1.06,23),FVector(22,22,5),false,Axle);
+        Panel(ETint::Rail,X,Y,150,3,3,102);
+    }
+    for (int32 I=0;I<7;++I)
+    {
+        const ETint Cloth=I%2?ETint::Terracotta:ETint::Canvas;
+        Panel(Cloth,-89.+I*29.5,0,205,29.5,119,4);
+        Panel(Cloth,-89.+I*29.5,-58,196,29.5,3,17);
+    }
+    Shape(EShape::Cylinder,ETint::Rail,At(-43,5,119),FVector(31,31,35));
+    Shape(EShape::Sphere,ETint::Rail,At(-43,5,137),FVector(33,33,9));
+    Panel(ETint::Timber,-43,5,144,10,6,7);
+    for (int32 I=0;I<5;++I)
+        Shape(EShape::Cylinder,ETint::Ceramic,At(11+I*10,-16,106),FVector(7,7,9));
+}

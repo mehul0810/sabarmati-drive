@@ -49,7 +49,7 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
             Vehicle=TWeakObjectPtr<ARiverfrontCar>(Mode->GetCar())](float)
         {
             const double Now=FPlatformTime::Seconds(),Age=Now-State->Since;
-            const TCHAR* Stops[]={TEXT("ashram"),TEXT("cg"),TEXT("sg-service"),TEXT("city-landing"),TEXT("ashram")};
+            const TCHAR* Stops[]={TEXT("bank-lane"),TEXT("east-verge"),TEXT("market-turn"),TEXT("city-landing"),TEXT("bank-lane")};
             auto Fail=[&](const TCHAR* Why)
             {
                 UE_LOG(LogTemp,Error,TEXT("Street review failed: stop %d stage %d: %s"),State->Stop,State->Stage,Why);
@@ -154,7 +154,7 @@ void ARiverfrontPlayerController::RunNeighbourhoodReview()
                 State->Driven=FVector::Dist2D(Vehicle->GetActorLocation(),State->From)/100.;
                 if (State->Driven<22.) return true;
                 if (!Vehicle->HasFourContacts()) return Fail(TEXT("car lost road contact"));
-                Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);Shot(TEXT("ashram-driving"));Next(6);
+                Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);Shot(TEXT("riverside-driving"));Next(6);
             }
             else if (State->Stage==6 && Vehicle->GetSpeedKph()<.8)
             {

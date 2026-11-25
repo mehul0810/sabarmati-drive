@@ -108,6 +108,7 @@ private:
     static void VisitRiverfrontMapRoads(FMapRoadVisitor Visit);
     void BuildFrontage();
     void DressStreetSurface();
+    void AddTeaCart(const FVector& Ground,double Yaw);
     void DressMarketUtilities();
     void DressServiceElevations(double X, double Front, double Bank, double Width, double Depth,
         double Height, int32 Style, bool bStreet);

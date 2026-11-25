@@ -84,6 +84,7 @@ void ARiverfrontWorld::Build()
     BuildStreetFurniture();
     BuildWestBankGarden();
     DressStreetSurface();
+    AddTeaCart(FVector(760.,5050.,6.),4.);
     DressMarketUtilities();
     DistrictLoadProgress::Reached(3);
     BuildLighting();
@@ -293,11 +294,11 @@ void ARiverfrontWorld::AddWaterAccess(const FVector& Shore,const FVector& Inland
 void ARiverfrontWorld::BuildBanks()
 {
     // River runs along X; park, lanes and the crossing share a zero-grade driving surface.
-    AddRiverVolume(FVector(0,ChannelCenter,0),100000.,ChannelWidth);
+    AddRiverVolume(FVector(SabarmatiDistrict::Center(false).X,ChannelCenter,0),100000.,ChannelWidth);
     for (double Bank:{-1.,1.})
     {
         AddWaterAccess(FVector(StairX,BankY(Bank,2190),0),FVector(0,Bank,0),-84.);
-        Box(ETint::Retaining,FVector(0,BankY(Bank,2206),(-84.+SabarmatiDistrict::BedZ)*.5),
+        Box(ETint::Retaining,FVector(SabarmatiDistrict::Center(false).X,BankY(Bank,2206),(-84.+SabarmatiDistrict::BedZ)*.5),
             FVector(100000.,32.,-84.-SabarmatiDistrict::BedZ),true);
     }
     Box(ETint::Water, FVector(0, ChannelCenter, SabarmatiDistrict::SurfaceZ-4.), FVector(180000, ChannelWidth, 8));
