@@ -582,7 +582,7 @@ void ARiverfrontPlayerController::BeginPlay()
     if (IsLocalController() && FApp::CanEverRender() && GetWorld()->GetGameViewport())
     {
 #if !UE_BUILD_SHIPPING
-        if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
+        if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiRiverReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGaitReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
@@ -715,6 +715,14 @@ void ARiverfrontPlayerController::ShowTitle()
     {
         SetViewTarget(TitleCamera.Get());
     }
+#if !UE_BUILD_SHIPPING
+    if (FParse::Param(FCommandLine::Get(),TEXT("SabarmatiRiverReview")))
+    {
+        if (Screen!=EScreen::Title || (!HasLocalProfile() && !CreateLocalProfile(TEXT("River review")).IsEmpty()))
+        { FPlatformMisc::RequestExitWithStatus(false,1); return; }
+        ResumeDrive(); RunRiverReview(); return;
+    }
+#endif
     if ((GetWorld()->URL.HasOption(TEXT("SabarmatiRestore")) || GetWorld()->URL.HasOption(TEXT("SabarmatiReturnHome"))) && HasLocalProfile())
     {
         ResumeDrive();
