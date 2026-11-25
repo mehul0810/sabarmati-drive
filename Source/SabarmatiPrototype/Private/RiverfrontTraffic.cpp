@@ -497,8 +497,12 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         const double W=4090., E=-26010.;
         // Ellis and the central vehicle bridge form a complete circuit inside the square.
         AddDistrictRoute({{3150,W,1020},{59310,W,640},{59310,E,1020},{3150,E,720}});
+        // Through traffic shares the bank road with turning traffic. An open
+        // spline ending inside the junction would leave its last car parked there.
+        const double CentreX=SabarmatiDistrict::Center(false).X;
         for (double Bank:{W,E})
-            AddDistrictRoute({{-38000,Bank,1020},{-16000,Bank,1020},{3150,Bank,1020}},false);
+            AddDistrictRoute({{CentreX-SabarmatiDistrict::HalfWidth,Bank,1020.},
+                {CentreX+SabarmatiDistrict::HalfWidth,Bank,1020.}},false);
         Junctions={PedestrianCrossing,FVector(3150,W,0),FVector(3150,E,0),FVector(-64400,W,0),FVector(59310,E,0)};
     }
     else
