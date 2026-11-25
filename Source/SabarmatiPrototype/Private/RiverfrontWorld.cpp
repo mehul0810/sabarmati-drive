@@ -156,6 +156,8 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
         Batch->SetStaticMesh(StaticMesh);
         Batch->SetMobility(EComponentMobility::Static);
         Batch->SetCollisionProfileName(bSolid ? FName(TEXT("BlockAll")) : FName(TEXT("NoCollision")));
+        if (Mesh==EShape::Cylinder && Tint==ETint::Bark && bSolid) Batch->ComponentTags.Add(TEXT("StreetTrunk"));
+        if (Tint==ETint::Leaf || Tint==ETint::Foliage || Tint==ETint::FoliageDark) Batch->ComponentTags.Add(TEXT("LeafCards"));
         Batch->SetCanEverAffectNavigation(false);
         Batch->SetGenerateOverlapEvents(false);
         if (Tint == ETint::Water || Tint == ETint::Ripple || Tint == ETint::Paint || Tint == ETint::RoadPaint)
@@ -190,6 +192,44 @@ void ARiverfrontWorld::Beam(ETint Tint, const FVector& From, const FVector& To, 
 {
     const FVector Direction = To - From;
     Box(Tint, (From + To) * 0.5, FVector(Direction.Size(), Width, Width), false, Direction.Rotation());
+}
+
+bool ARiverfrontWorld::BreakAtImpact(const FHitResult& Hit)
+{
+    auto* Batch=Cast<UInstancedStaticMeshComponent>(Hit.GetComponent());
+    FTransform Part;
+    if (!Batch || !Batch->GetInstanceTransform(Hit.Item,Part,true)) return false;
+    const bool Tree=Batch->ComponentHasTag(TEXT("StreetTrunk"));
+    const bool Building=Batch->ComponentHasTag(TEXT("BuildingShell"));
+    // Keep ground, roads, bridge decks and the district boundary supporting the world.
+    const FVector Size=Batch->GetStaticMesh()->GetBounds().BoxExtent*Part.GetScale3D()*2.;
+    if (!Tree && !Building && (Size.Z<26. || Size.GetMax()>1700.)) return false;
+    const FVector Base=Part.GetLocation();
+    if (Tree || Building)
+    {
+        TInlineComponentArray<UStaticMeshComponent*> Pieces(this);
+        for (auto* Piece:Pieces)
+        {
+            const bool Canopy=Tree && Piece->ComponentHasTag(TEXT("TreeCanopy"));
+            const bool Leaves=Tree && Piece->ComponentHasTag(TEXT("LeafCards"));
+            const bool Facade=Building && Piece->ComponentHasTag(TEXT("FacadePart"));
+            if (!Canopy && !Leaves && !Facade) continue;
+            if (auto* Instances=Cast<UInstancedStaticMeshComponent>(Piece))
+            {
+                for (int32 I=Instances->GetInstanceCount()-1;I>=0;--I)
+                {
+                    FTransform T;
+                    if (!Instances->GetInstanceTransform(I,T,true)) continue;
+                    const FVector Local=Part.GetRotation().UnrotateVector(T.GetLocation()-Base);
+                    if (Facade ? FMath::Abs(Local.X)<=Size.X*.5+64 && FMath::Abs(Local.Y)<=Size.Y*.5+88 :
+                        FVector::DistSquared2D(T.GetLocation(),Base)<FMath::Square(Leaves?210.:4.))
+                        Instances->RemoveInstance(I);
+                }
+            }
+            else if (Canopy && FVector::DistSquared2D(Piece->GetComponentLocation(),Base)<16.) Piece->DestroyComponent();
+        }
+    }
+    return Batch->RemoveInstance(Hit.Item);
 }
 
 void ARiverfrontWorld::BuildDistrictBoundary(bool City)
@@ -668,7 +708,9 @@ int32 ARiverfrontWorld::PlaceStreetTree(UStaticMesh& Mesh, const FVector& Base, 
     const double Ground = Base.Z - (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
     const FRotator Turn(0.0, AppearanceRandom.FRandRange(-180.f, 180.f), 0.0);
     Tree->SetRelativeTransform(FTransform(Turn, FVector(Base.X, Base.Y, Ground), FVector(Scale)));
+    Tree->ComponentTags.Add(TEXT("TreeCanopy"));
     Tree->RegisterComponent();
+    Shape(EShape::Cylinder,ETint::Bark,Base+FVector(0,0,Height*.24),FVector(30,30,Height*.48),true);
     if (Use==MatureTree && MatureTree) return 0;
     if (IsValid(SurfaceMaterials.FindRef(static_cast<int32>(ETint::Leaf)).Get()))
     {

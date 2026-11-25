@@ -77,6 +77,7 @@ public:
     FVector GetCrossing() const { return PedestrianCrossing; }
     ARiverfrontCar* FindParkedCar(const ARiverfrontCharacter& Character) const;
     const ARiverfrontRoadAgent* FindEnterableVehicle(const ARiverfrontCharacter& Character) const;
+    bool RemoveCrashedAgent(ARiverfrontRoadAgent* Agent);
     bool EnterVehicle(ARiverfrontCharacter& Character);
 private:
     UPROPERTY() TArray<TObjectPtr<USplineComponent>> Routes;

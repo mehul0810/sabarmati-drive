@@ -288,6 +288,16 @@ const ARiverfrontRoadAgent* ARiverfrontTraffic::FindEnterableVehicle(const ARive
     return Closest;
 }
 
+bool ARiverfrontTraffic::RemoveCrashedAgent(ARiverfrontRoadAgent* Agent)
+{
+    const int32 Index=Agents.IndexOfByKey(Agent);
+    if (Index==INDEX_NONE) return false;
+    Agents.RemoveAtSwap(Index,EAllowShrinking::No);
+    Drivers.RemoveAtSwap(Index,EAllowShrinking::No);
+    Agent->Destroy();
+    return true;
+}
+
 bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
 {
     const auto* Target = FindEnterableVehicle(Character);

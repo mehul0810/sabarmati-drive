@@ -493,6 +493,7 @@ void ARiverfrontCar::SetupPlayerInputComponent(UInputComponent* Input)
 
 bool ARiverfrontCar::IsNearDoor(const ARiverfrontCharacter& Character) const
 {
+    if (bWrecked) return false;
     if (FleetBody) return !IsValid(Driver) && FleetBody->IsNearAccess(Character);
     if (IsValid(Driver) || FMath::Abs(Character.GetActorLocation().Z - GetActorLocation().Z) > 130)
     {
@@ -701,6 +702,59 @@ void ARiverfrontCar::Exit()
     StopHatchbackPhysics(true);
 }
 
+void ARiverfrontCar::NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimitiveComponent* OtherComp,
+    bool bSelfMoved,FVector HitLocation,FVector HitNormal,FVector NormalImpulse,const FHitResult& Hit)
+{
+    Super::NotifyHit(MyComp,Other,OtherComp,bSelfMoved,HitLocation,HitNormal,NormalImpulse,Hit);
+    if (bChaosDrive && Driver && OtherComp && FMath::Abs(HitNormal.Z)<.65)
+    {
+        const float Closing=FMath::Abs(Speed*GetActorForwardVector().Dot(HitNormal));
+        if (Closing>PhysicsImpactSpeed)
+        {
+            PhysicsImpact=Hit;
+            PhysicsImpact.Component=OtherComp;
+            PhysicsImpact.ImpactPoint=HitLocation;
+            PhysicsImpactSpeed=Closing;
+        }
+    }
+}
+
+bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
+{
+    if (bWrecked || ImpactSpeed<970.f || !Hit.GetComponent()) return false;
+    bWrecked=true;
+    Condition=0.f;
+    auto* Object=Hit.GetComponent()->GetOwner();
+    if (auto* WorldActor=Cast<ARiverfrontWorld>(Object)) WorldActor->BreakAtImpact(Hit);
+    else if (auto* Agent=Cast<ARiverfrontRoadAgent>(Object))
+    {
+        if (auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>())
+            if (auto* Traffic=Mode->GetTraffic()) Traffic->RemoveCrashedAgent(Agent);
+    }
+    else if (auto* ParkedCar=Cast<ARiverfrontCar>(Object); ParkedCar && !ParkedCar->IsOccupied())
+        ParkedCar->Destroy();
+
+    if (ImpactSound) UGameplayStatics::PlaySoundAtLocation(this,ImpactSound,Hit.ImpactPoint,.95f);
+    Speed=0.f;
+    StopHatchbackPhysics(true);
+    if (Driver)
+    {
+        Exit();
+        if (Driver)
+        {
+            auto* Walker=Driver.Get();
+            auto* Player=Cast<APlayerController>(Controller);
+            Walker->SetInCar(false);
+            Walker->SetActorLocation(GetWorld()->GetAuthGameMode<ARiverfrontGameMode>()->GetWalkSpawn());
+            if (Player) Player->Possess(Walker);
+            Driver=nullptr;
+        }
+    }
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s wrecked at %.1f km/h"),GetVehicleLabel(),ImpactSpeed*.036f);
+    Destroy();
+    return true;
+}
+
 void ARiverfrontCar::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
@@ -714,6 +768,9 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     }
     if (bChaosDrive)
     {
+        const float Closing=PhysicsImpactSpeed;
+        PhysicsImpactSpeed=0.f;
+        if (Closing>0.f && Wreck(PhysicsImpact,Closing)) return;
         TickHatchbackPhysics(DeltaSeconds);
         return;
     }
@@ -787,15 +844,22 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         const FRotator Facing(FMath::FInterpTo(Previous.Pitch,Pitch+FMath::Clamp(Accel*.0017,-1.6,1.2),StepT,7.),
             Yaw,FMath::FInterpTo(Previous.Roll,-Bank+BodyRoll,StepT,8.));
         Desired.Z=(Front+Rear)*.5+GroundHeight;
-        if (GetWorld()->OverlapBlockingTestByProfile(Desired,Facing.Quaternion(),Body->GetCollisionProfileName(),
+        FHitResult Obstacle;
+        if (GetWorld()->SweepSingleByProfile(Obstacle,Here,Desired,Facing.Quaternion(),Body->GetCollisionProfileName(),
             FCollisionShape::MakeBox(Body->GetScaledBoxExtent()),Query))
         {
+            if (FMath::Abs(Obstacle.ImpactNormal.Z)<.65 && Wreck(Obstacle,FMath::Abs(Speed*GetActorForwardVector().Dot(Obstacle.ImpactNormal)))) return;
             Speed=0;
             break;
         }
         FHitResult Hit;
         SetActorLocationAndRotation(Desired,Facing,true,&Hit);
-        if (Hit.bBlockingHit) { Speed=0; break; }
+        if (Hit.bBlockingHit)
+        {
+            if (FMath::Abs(Hit.ImpactNormal.Z)<.65 && Wreck(Hit,FMath::Abs(Speed*GetActorForwardVector().Dot(Hit.ImpactNormal)))) return;
+            Speed=0;
+            break;
+        }
         FRotator Look=Controller->GetControlRotation();
         Look.Yaw+=TurnRate*StepT;
         Controller->SetControlRotation(Look);

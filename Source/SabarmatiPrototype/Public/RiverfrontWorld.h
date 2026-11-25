@@ -33,6 +33,7 @@ public:
     const TCHAR* WeatherName() const;
     const TCHAR* TimeName() const;
     bool IsNight() const { return TimeOfDay == ERiverfrontTime::Night; }
+    bool BreakAtImpact(const FHitResult& Hit);
     bool BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw);
     static bool HasCityData();
     const TArray<FVector>& GetShopVisit(bool Tea) const { return Tea?TeaVisit:PrintVisit; }

@@ -837,6 +837,11 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                     ? TEXT("BlockAll") : TEXT("NoCollision"));
                 Mesh->SetCastShadow(Layer==BridgeDetail || bBuildingWall || Layer==Roof || Layer==FacadeTrim || Layer==StreetTree
                     || Layer==Shade || Layer==Tank || Layer==Iron);
+                if (Layer==StreetTree) Mesh->ComponentTags.Add(TEXT("TreeCanopy"));
+                if (Layer==TrunkGuard) Mesh->ComponentTags.Add(TEXT("StreetTrunk"));
+                if (bBuildingWall) Mesh->ComponentTags.Add(TEXT("BuildingShell"));
+                if (Layer==Roof || Layer==Shade || Layer==Tank || Layer==FacadeTrim || Layer==FacadeGlass || Layer==Iron)
+                    Mesh->ComponentTags.Add(TEXT("FacadePart"));
                 if (Layer==StreetTree) Mesh->SetCullDistances(17000,33000);
                 if (Layer==TrunkGuard) Mesh->SetHiddenInGame(true);
                 if (Layer==Sidewalk) Mesh->ComponentTags.Add(TEXT("CityFootpath"));

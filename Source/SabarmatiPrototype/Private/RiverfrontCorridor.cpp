@@ -89,6 +89,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
         AddInstanceComponent(Grove); Grove->SetupAttachment(GetRootComponent());
         Grove->SetMobility(EComponentMobility::Static); Grove->SetStaticMesh(MatureTree);
         Grove->SetCollisionEnabled(ECollisionEnabled::NoCollision);Grove->SetCanEverAffectNavigation(false);
+        Grove->ComponentTags.Add(TEXT("TreeCanopy"));
         Grove->SetCullDistances(42000,66000);
         const int32 Leaf=Grove->GetMaterialIndex(TEXT("jacaranda_tree_leaves"));
         if (Leaf!=INDEX_NONE)

@@ -86,6 +86,8 @@ void ARiverfrontCar::ConfigureHatchbackPhysics()
     const FTransform Placement = GetActorTransform();
     PhysicsChassis->SetSkeletalMesh(Mesh);
     PhysicsChassis->SetCollisionProfileName(TEXT("Vehicle"));
+    PhysicsChassis->SetNotifyRigidBodyCollision(true);
+    PhysicsChassis->BodyInstance.bUseCCD=true;
     PhysicsChassis->SetWorldTransform(Placement);
     SetRootComponent(PhysicsChassis);
     Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);

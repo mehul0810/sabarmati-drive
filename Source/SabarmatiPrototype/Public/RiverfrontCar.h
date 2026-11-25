@@ -36,6 +36,8 @@ public:
     void UseTrafficBody(ARiverfrontRoadAgent& Agent);
     FVector GetCollisionExtents() const;
 
+    virtual void NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimitiveComponent* OtherComp,
+        bool bSelfMoved,FVector HitLocation,FVector HitNormal,FVector NormalImpulse,const FHitResult& Hit) override;
     void SetNightDriving(bool AtNight);
     void OperateDoor(const FVector& User);
     bool IsDoorOpen() const { return DoorAngle>10.f; }
@@ -117,6 +119,10 @@ private:
     UPROPERTY() TObjectPtr<UAudioComponent> TyreLoop;
     UPROPERTY() TObjectPtr<USoundWave> ShiftSound;
     UPROPERTY() TObjectPtr<USoundWave> ImpactSound;
+    bool Wreck(const FHitResult& Hit,float ImpactSpeed);
+    bool bWrecked=false;
+    FHitResult PhysicsImpact;
+    float PhysicsImpactSpeed=0.f;
     float HitSoundDelay=0.f, Fuel=1.f, Condition=1.f;
     void UpdateSignalLenses(float DeltaTime);
     bool SampleWheels(const FVector& Centre, double Yaw, double (&Heights)[4], bool bRequireCityRoad = false) const;
