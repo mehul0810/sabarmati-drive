@@ -181,7 +181,9 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
         Batches.Add(Key, Batch);
     }
 
-    Batch->AddInstance(FTransform(Rot, Pos, Size / 100.0));
+    const FTransform Placement(Rot,Pos,Size/100.);
+    if (StreetProps.IsValidIndex(CurrentProp)) StreetProps[CurrentProp].Emplace(Batch,Batch->AddInstanceById(Placement));
+    else Batch->AddInstance(Placement);
 }
 
 void ARiverfrontWorld::Box(ETint Tint, const FVector& Pos, const FVector& Size, bool bSolid, FRotator Rot)
@@ -199,14 +201,40 @@ bool ARiverfrontWorld::BreakAtImpact(const FHitResult& Hit)
 {
     auto* Batch=Cast<UInstancedStaticMeshComponent>(Hit.GetComponent());
     FTransform Part;
-    if (!Batch || !Batch->GetInstanceTransform(Hit.Item,Part,true)) return false;
+    if (!Batch || !Batch->GetStaticMesh()) return false;
+    int32 Item=Hit.Item;
+    if (!Batch->GetInstanceTransform(Item,Part,true))
+    {
+        // Chaos can deliver a contact point without the instanced body's item index.
+        double Best=DBL_MAX;
+        const FBox Bounds=Batch->GetStaticMesh()->GetBoundingBox();
+        for (const int32 I:Batch->GetInstancesOverlappingSphere(Hit.ImpactPoint,30.,true))
+        {
+            FTransform T;
+            if (!Batch->GetInstanceTransform(I,T,true)) continue;
+            const FVector Closest=T.TransformPosition(Bounds.GetClosestPointTo(T.InverseTransformPosition(Hit.ImpactPoint)));
+            const double D=FVector::DistSquared(Hit.ImpactPoint,Closest);
+            if (D<Best) {Best=D; Item=I; Part=T;}
+        }
+        if (Best>900.) return false;
+    }
+    for (auto& Prop:StreetProps)
+        if (Prop.ContainsByPredicate([&](const FStreetPart& P)
+            {return P.Key.Get()==Batch && Batch->IsValidId(P.Value) && Batch->GetInstanceIndexForId(P.Value)==Item;}))
+        {
+            for (const auto& P:Prop)
+                if (P.Key.IsValid() && P.Key->IsValidId(P.Value)) P.Key->RemoveInstanceById(P.Value);
+            Prop.Reset();
+            return true;
+        }
     const bool Tree=Batch->ComponentHasTag(TEXT("StreetTrunk"));
+    const bool Lamp=Batch->ComponentHasTag(TEXT("LampPole"));
     const bool Building=Batch->ComponentHasTag(TEXT("BuildingShell"));
     // Keep ground, roads, bridge decks and the district boundary supporting the world.
     const FVector Size=Batch->GetStaticMesh()->GetBounds().BoxExtent*Part.GetScale3D()*2.;
     if (!Tree && !Building && (Size.Z<26. || Size.GetMax()>1700.)) return false;
     const FVector Base=Part.GetLocation();
-    if (Tree || Building)
+    if (Tree || Building || Lamp)
     {
         TInlineComponentArray<UStaticMeshComponent*> Pieces(this);
         for (auto* Piece:Pieces)
@@ -214,7 +242,8 @@ bool ARiverfrontWorld::BreakAtImpact(const FHitResult& Hit)
             const bool Canopy=Tree && Piece->ComponentHasTag(TEXT("TreeCanopy"));
             const bool Leaves=Tree && Piece->ComponentHasTag(TEXT("LeafCards"));
             const bool Facade=Building && Piece->ComponentHasTag(TEXT("FacadePart"));
-            if (!Canopy && !Leaves && !Facade) continue;
+            const bool LampTop=Lamp && Piece->ComponentHasTag(TEXT("LampHead"));
+            if (!Canopy && !Leaves && !Facade && !LampTop) continue;
             if (auto* Instances=Cast<UInstancedStaticMeshComponent>(Piece))
             {
                 for (int32 I=Instances->GetInstanceCount()-1;I>=0;--I)
@@ -223,14 +252,14 @@ bool ARiverfrontWorld::BreakAtImpact(const FHitResult& Hit)
                     if (!Instances->GetInstanceTransform(I,T,true)) continue;
                     const FVector Local=Part.GetRotation().UnrotateVector(T.GetLocation()-Base);
                     if (Facade ? FMath::Abs(Local.X)<=Size.X*.5+64 && FMath::Abs(Local.Y)<=Size.Y*.5+88 :
-                        FVector::DistSquared2D(T.GetLocation(),Base)<FMath::Square(Leaves?210.:4.))
+                        FVector::DistSquared2D(T.GetLocation(),Base)<FMath::Square(Leaves?210.:LampTop?110.:4.))
                         Instances->RemoveInstance(I);
                 }
             }
             else if (Canopy && FVector::DistSquared2D(Piece->GetComponentLocation(),Base)<16.) Piece->DestroyComponent();
         }
     }
-    return Batch->RemoveInstance(Hit.Item);
+    return Batch->RemoveInstance(Item);
 }
 
 void ARiverfrontWorld::BuildDistrictBoundary(bool City)
@@ -294,6 +323,13 @@ void ARiverfrontWorld::AddWaterAccess(const FVector& Shore,const FVector& Inland
 void ARiverfrontWorld::BuildBanks()
 {
     // River runs along X; park, lanes and the crossing share a zero-grade driving surface.
+    const FVector Centre=SabarmatiDistrict::Center(false);
+    for (double Side:{-1.,1.})
+    {
+        const double Inner=BankY(Side,5350.), Outer=Centre.Y+Side*SabarmatiDistrict::HalfWidth;
+        Box(ETint::Earth,FVector(Centre.X,(Inner+Outer)*.5,-79.),
+            FVector(100000.,FMath::Abs(Outer-Inner),150.),true);
+    }
     AddRiverVolume(FVector(SabarmatiDistrict::Center(false).X,ChannelCenter,0),100000.,ChannelWidth);
     for (double Bank:{-1.,1.})
     {

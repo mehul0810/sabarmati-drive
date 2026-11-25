@@ -17,6 +17,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -630,11 +631,15 @@ bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
 
 bool ARiverfrontCar::FindDriverExit(FVector& Point, int32& Side) const
 {
-    if (!IsValid(Driver)) return false;
-    UCapsuleComponent* Capsule = Driver->GetCapsuleComponent();
+    return IsValid(Driver) && FindDoorLanding(*Driver,Point,Side);
+}
+
+bool ARiverfrontCar::FindDoorLanding(const ARiverfrontCharacter& Walker,FVector& Point,int32& Side) const
+{
+    const UCapsuleComponent* Capsule = Walker.GetCapsuleComponent();
     const FCollisionShape Shape = FCollisionShape::MakeCapsule(
         Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
-    const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontExit), false, Driver.Get());
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontExit), false, &Walker);
     const FVector Extents = Body->GetScaledBoxExtent();
     const double LateralOffset = Extents.Y + 66.0;
     const double LengthOffset = Extents.X + 60.0;
@@ -721,11 +726,16 @@ void ARiverfrontCar::NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimit
 
 bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
 {
-    if (bWrecked || ImpactSpeed<970.f || !Hit.GetComponent()) return false;
+    if (bWrecked || ImpactSpeed<150.f || !Hit.GetComponent()) return false;
     bWrecked=true;
     Condition=0.f;
     auto* Object=Hit.GetComponent()->GetOwner();
-    if (auto* WorldActor=Cast<ARiverfrontWorld>(Object)) WorldActor->BreakAtImpact(Hit);
+    if (auto* WorldActor=Cast<ARiverfrontWorld>(Object))
+    {
+        const bool Broken=WorldActor->BreakAtImpact(Hit);
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati contact: component %s, instance %d at %s, street object removed=%d"),
+            *GetNameSafe(Hit.GetComponent()),Hit.Item,*Hit.ImpactPoint.ToCompactString(),Broken);
+    }
     else if (auto* Agent=Cast<ARiverfrontRoadAgent>(Object))
     {
         if (auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>())
@@ -734,6 +744,31 @@ bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
     else if (auto* ParkedCar=Cast<ARiverfrontCar>(Object); ParkedCar && !ParkedCar->IsOccupied())
         ParkedCar->Destroy();
 
+    else if (auto* Prop=Cast<AStaticMeshActor>(Object)) Prop->Destroy();
+
+    // Leave a visibly crumpled shell at the impact for a short time. It has no tick.
+    UStaticMeshComponent* Shell=DetailedBody.Get();
+    if (FleetBody)
+        for (auto* Mesh:TInlineComponentArray<UStaticMeshComponent*>(FleetBody.Get()))
+            if (Mesh->GetStaticMesh() && Mesh->GetStaticMesh()->GetName().StartsWith(TEXT("SM_Traffic")))
+            { Shell=Mesh;break; }
+    if (Shell && Shell->GetStaticMesh())
+    {
+        FTransform T=Shell->GetComponentTransform();
+        T.SetScale3D(T.GetScale3D()*FVector(.94,.83,.76));
+        T.ConcatenateRotation(FQuat(GetActorForwardVector(),FMath::DegreesToRadians(5.)));
+        auto* Remains=GetWorld()->SpawnActorDeferred<AStaticMeshActor>(AStaticMeshActor::StaticClass(),T,nullptr,nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (Remains)
+        {
+            auto* Mesh=Remains->GetStaticMeshComponent();
+            Mesh->SetStaticMesh(Shell->GetStaticMesh());
+            for (int32 I=0;I<Shell->GetNumMaterials();++I) Mesh->SetMaterial(I,Shell->GetMaterial(I));
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Remains->FinishSpawning(T);
+            Remains->SetLifeSpan(40.f);
+        }
+    }
     if (ImpactSound) UGameplayStatics::PlaySoundAtLocation(this,ImpactSound,Hit.ImpactPoint,.95f);
     Speed=0.f;
     StopHatchbackPhysics(true);

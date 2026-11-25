@@ -158,6 +158,7 @@ void ARiverfrontWorld::DressMarketUtilities()
 
 void ARiverfrontWorld::AddTeaCart(const FVector& Ground,double Yaw)
 {
+    TGuardValue<int32> Group(CurrentProp,StreetProps.AddDefaulted());
     const FRotator Rotation(0,Yaw,0);
     const auto At=[&](double X,double Y,double Z){return Ground+Rotation.RotateVector(FVector(X,Y,Z));};
     const auto Panel=[&](ETint Tint,double X,double Y,double Z,double W,double D,double H,bool Solid=false)

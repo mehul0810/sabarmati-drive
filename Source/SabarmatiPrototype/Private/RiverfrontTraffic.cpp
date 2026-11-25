@@ -30,7 +30,7 @@ namespace
 constexpr double CrossingHalfRoadWidth = 510.;
 constexpr double CrossingHalfStripeWidth = 142.5;
 constexpr double CrossingClearance = CrossingHalfStripeWidth + 16.;
-constexpr double BoardingSpeed = 42.; // Walking up to traffic that has come to a stop.
+constexpr double BoardingSpeed = 125.; // Walking up to traffic that has come to a stop.
 
 struct FVehicleShape
 {
@@ -317,32 +317,32 @@ bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
     Car->UseTrafficBody(*Agent);
     Car->SetRoadWetness(District.IsValid() ? District->GetWetness() : 0.f);
     Car->FinishSpawning(Placement);
+    FVector Landing;
+    int32 Side=1;
+    ARiverfrontCharacter* Passenger=nullptr;
+    if (!Drivers[Index].bParked)
+    {
+        if (!Car->FindDoorLanding(Character,Landing,Side)) { Car->Destroy(); return false; }
+        FActorSpawnParameters Params;
+        Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        Passenger=GetWorld()->SpawnActor<ARiverfrontCharacter>(Landing,Agent->GetActorRotation(),Params);
+        if (!Passenger) { Car->Destroy();return false; }
+        Passenger->SetActorEnableCollision(false);
+    }
     if (!Car->Enter(Character))
     {
+        if (Passenger) Passenger->Destroy();
         Car->Destroy();
         return false;
     }
-
-    if (!Drivers[Index].bParked)
+    if (Passenger)
     {
-        FVector Clear;
-        int32 Side=1;
-        if (Car->FindDriverExit(Clear,Side))
-        {
-            const FVector Out=Car->GetActorRightVector()*Side;
-            FActorSpawnParameters Params;
-            Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-            if (auto* Passenger=GetWorld()->SpawnActor<ARiverfrontCharacter>(Clear,Out.Rotation(),Params))
-            {
-                auto* Look=NewObject<URiverfrontLocalProfile>(Passenger);
-                Look->AvatarGender=Agent->bFemaleOccupant?ERiverfrontGender::Female:ERiverfrontGender::Male;
-                Passenger->ApplyProfileAppearance(*Look);
-                Passenger->GetCharacterMovement()->bRunPhysicsWithNoController=true;
-                Passenger->LaunchCharacter(Out*275.+FVector(0,0,210.),true,true);
-                Passenger->SetLifeSpan(24.f);
-                UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic: displaced driver exited %s."),Agent->GetVehicleLabel());
-            }
-        }
+        auto* Look=NewObject<URiverfrontLocalProfile>(Passenger);
+        Look->AvatarGender=Agent->bFemaleOccupant?ERiverfrontGender::Female:ERiverfrontGender::Male;
+        Passenger->ApplyProfileAppearance(*Look);
+        Passenger->BeginSeatExit(Agent->GetActorTransform().TransformPosition(Agent->SeatPoint()),Landing,
+            Car->GetActorRightVector()*Side);
+        UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic: displaced driver exited %s."),Agent->GetVehicleLabel());
     }
     Agents.RemoveAtSwap(Index, EAllowShrinking::No);
     Drivers.RemoveAtSwap(Index, EAllowShrinking::No);
@@ -475,7 +475,7 @@ bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,in
     const double BaseSpeed=Shape.WheelCount<4?650.:Shape.Length>600.?620.:790.;
     LaneState.Cruise=BaseSpeed+(Variant*67)%207;
     LaneState.bParked=ParkAtKerb;
-    if (ParkAtKerb) Agent->SetDriverVisible(false);
+    if (ParkAtKerb) { Agent->Tags.Add(TEXT("Kerbside")); Agent->SetDriverVisible(false); }
     Drivers.Add(LaneState);
     Agents.Add(Agent);
     return true;
@@ -562,13 +562,35 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         if (Distance<700. || Distance>NearLane->GetSplineLength()-700.) continue;
         if (SpawnVehicle(Nearest,Distance,KerbFleet[ParkedCount],I+21,true)) ++ParkedCount;
     }
+    if (bCity)
+    {
+        const FVector LocalStops[]={{10237,25487,0},{20998,25504,0},{28570,65572,0}};
+        for (int32 I=0;I<UE_ARRAY_COUNT(LocalStops);++I)
+        {
+            int32 BestRoute=INDEX_NONE;
+            double Best=FMath::Square(2200.);
+            for (int32 R=0;R<Routes.Num();++R)
+            {
+                const FVector P=Routes[R]->FindLocationClosestToWorldLocation(LocalStops[I],ESplineCoordinateSpace::World);
+                const double D=FVector::DistSquared2D(P,LocalStops[I]);
+                if (D<Best) { Best=D; BestRoute=R; }
+            }
+            if (BestRoute==INDEX_NONE) continue;
+            auto* Route=Routes[BestRoute].Get();
+            const double At=Route->GetDistanceAlongSplineAtLocation(LocalStops[I],ESplineCoordinateSpace::World);
+            for (double Offset:{450.,-490.,1200.,-1150.})
+                if (At+Offset>650. && At+Offset<Route->GetSplineLength()-650.
+                    && SpawnVehicle(BestRoute,At+Offset,KerbFleet[I],42+I,true))
+                { ++ParkedCount;break; }
+        }
+    }
     UE_LOG(LogTemp,Display,TEXT("Sabarmati parking: %d curbside vehicles"),ParkedCount);
     const int32 Population=bCity?30:36;
     for (int32 I=0;I<Population*2 && Agents.Num()<Population;++I)
     {
         const int32 R=I%Routes.Num();
         const double F=FMath::Frac(.19+I*.38196601125);
-        const int32 Style=(Agents.Num()-StreetCount)%UE_ARRAY_COUNT(Bodies);
+        const int32 Style=(Agents.Num()-StreetCount-ParkedCount)%UE_ARRAY_COUNT(Bodies);
         SpawnVehicle(R,F*Routes[R]->GetSplineLength(),Style,I+StreetCount);
     }
     UE_LOG(LogTemp,Display,TEXT("Sabarmati road traffic: %d agents on %d directed lanes, %d seeded at the starting street."),

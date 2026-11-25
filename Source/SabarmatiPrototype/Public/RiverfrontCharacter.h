@@ -43,6 +43,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     FString GetWaterHint() const;
+    void BeginSeatExit(const FVector& Seat,const FVector& Landing,const FVector& Out);
     void SetInCar(bool bInCar);
     void SetFittingPose(bool bFitting);
     bool SupportsPublicHaircut() const;
@@ -91,6 +92,8 @@ private:
     FTransform DryMeshTransform=FTransform::Identity;
     float SwimPitch=0.f;
     bool bSwimPose=false;
+    float ExitElapsed=-1.f;
+    FVector ExitStart=FVector::ZeroVector, ExitLanding=FVector::ZeroVector, ExitDirection=FVector::ZeroVector;
     float Breath=16.f;
     bool bDrowned=false;
     bool bDiving=false;

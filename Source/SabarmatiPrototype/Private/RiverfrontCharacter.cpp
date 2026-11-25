@@ -635,9 +635,36 @@ void ARiverfrontCharacter::UpdateSwimPose(float DeltaSeconds,bool InWater)
     if (!InWater && SwimPitch<=0.f) { Body->SetRelativeTransform(DryMeshTransform); bSwimPose=false; }
 }
 
+void ARiverfrontCharacter::BeginSeatExit(const FVector& Seat,const FVector& Landing,const FVector& Out)
+{
+    Tags.Add(TEXT("DisplacedDriver"));
+    ExitStart=Seat; ExitStart.Z=FMath::Max(Seat.Z,Landing.Z-28.);
+    ExitLanding=Landing; ExitDirection=Out; ExitElapsed=0.f;
+    SetActorEnableCollision(false);
+    GetCharacterMovement()->bRunPhysicsWithNoController=true;
+    GetCharacterMovement()->DisableMovement();
+    SetActorLocationAndRotation(ExitStart,Out.Rotation());
+    SetLifeSpan(24.f);
+}
+
 void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (ExitElapsed>=0.f)
+    {
+        ExitElapsed+=DeltaSeconds;
+        const float T=FMath::Min(ExitElapsed/.38f,1.f);
+        SetActorLocation(FMath::Lerp(ExitStart,ExitLanding,T)+FVector(0,0,39.*FMath::Sin(T*PI)));
+        GetMesh()->SetRelativeRotation(FRotator(0,GetMesh()->GetRelativeRotation().Yaw,26.f*FMath::Sin(T*PI)));
+        if (T>=1.f)
+        {
+            ExitElapsed=-1.f;
+            SetActorEnableCollision(true);
+            GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+            LaunchCharacter(ExitDirection*230.+FVector(0,0,140.),true,true);
+        }
+        return;
+    }
     if (bInFittingPose || bDrowned) return;
     const bool Swimming=IsPlayerControlled() && GetCharacterMovement()->IsSwimming();
     UpdateSwimPose(DeltaSeconds,Swimming);

@@ -188,7 +188,7 @@
     },
     {"id":"bank-lane","name":"Riverside chai lane","action":"Visit the tea cart lane","note":"Riverside chai lane added to your notebook.","kind":"Visit","location":[10237,25487,90],"reach_cm":1000,"street_heading":1.8013},
     {"id":"east-verge","name":"Riverfront tree walk","action":"Explore the shaded footpath","note":"Riverfront tree walk added to your notebook.","kind":"Visit","location":[20998,25504,90],"reach_cm":1000,"street_heading":-4.3813},
-    {"id":"market-turn","name":"Market approach","action":"Record this street","note":"Market approach added to your notebook.","kind":"Visit","location":[1220,39675,90],"reach_cm":1000,"street_heading":16.4124},
+    {"id":"market-turn","name":"Market approach","action":"Record this street","note":"Market approach added to your notebook.","kind":"Visit","location":[28570,65572,90],"reach_cm":1000,"street_heading":140.4672},
     {
       "id": "city-landing",
       "name": "Atal west approach",

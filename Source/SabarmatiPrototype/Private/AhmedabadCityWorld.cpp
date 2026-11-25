@@ -6,9 +6,6 @@
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/World.h"
-#include "Dom/JsonObject.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -23,7 +20,7 @@ constexpr int32 StreamRadius = 2;
 constexpr int32 MaxTileCount = 2300;
 constexpr int32 MaxStripCount = 400000;
 constexpr int32 MaxTileItems = 26000;
-enum EBatch : int32 { Dry, Road, Water, Markings, BridgeDetail, WallA, WallB, WallC, Roof, FacadeGlass, FacadeTrim, Sidewalk, Kerb, Iron, StreetTree, Shade, Tank, TreePit, TrunkGuard, BatchCount };
+enum EBatch : int32 { Dry, Road, Water, Markings, BridgeDetail, WallA, WallB, WallC, Roof, FacadeGlass, FacadeTrim, Sidewalk, Kerb, Iron, StreetTree, Shade, Tank, TreePit, TrunkGuard, LampPole, LampHead, BatchCount };
 const uint8 Signature[] = {'S', 'A', 'B', 'O', 'S', 'M', '2', '\0'};
 
 struct FCityRoad
@@ -158,11 +155,11 @@ void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& Road
                     }
                     else if (Bay%12==2)
                     {
-                        AppendBox(Batch[Iron],Verge+FVector(0,0,274.),FVector(15.,15.,530.),Facing);
+                        AppendBox(Batch[LampPole],Verge+FVector(0,0,274.),FVector(15.,15.,530.),Facing);
                         const FVector Top=Verge-Out*76.+FVector(0,0,551.);
-                        AppendBox(Batch[Iron],Top+Out*37.,FVector(9.,89.,11.),Facing);
-                        AppendBox(Batch[Iron],Top-Out*13.,FVector(30.,46.,10.),Facing);
-                        AppendBox(Batch[FacadeTrim],Top-Out*14.-FVector(0,0,5.),FVector(24.,36.,3.),Facing);
+                        AppendBox(Batch[LampHead],Top+Out*37.,FVector(9.,89.,11.),Facing);
+                        AppendBox(Batch[LampHead],Top-Out*13.,FVector(30.,46.,10.),Facing);
+                        AppendBox(Batch[LampHead],Top-Out*14.-FVector(0,0,5.),FVector(24.,36.,3.),Facing);
                     }
                 }
                 if (Width > 26. && (I + Count) % 8 == 0)
@@ -207,32 +204,7 @@ struct FAhmedabadCityState
         return FMath::Min(460.,Distance*.08);
     }
     TArray<FCityRoad> ApproachRoads;
-    TArray<FVector> StreetCentres;
-
-    void LoadStreetCentres()
-    {
-        FString Text; TSharedPtr<FJsonObject> Doc;
-        if (!FFileHelper::LoadFileToString(Text,*FPaths::Combine(FPaths::ProjectContentDir(),TEXT("CityData/ExplorationSites.json")))
-            || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Doc) || !Doc) return;
-        const TArray<TSharedPtr<FJsonValue>>* Sites=nullptr;
-        if (!Doc->TryGetArrayField(TEXT("city"),Sites)) return;
-        for (const auto& V:*Sites)
-        {
-            const auto& S=V->AsObject();
-            const TArray<TSharedPtr<FJsonValue>>* XYZ=nullptr;
-            if (S && S->HasField(TEXT("street_heading")) && S->GetStringField(TEXT("id"))!=TEXT("city-landing")
-                && S->TryGetArrayField(TEXT("location"),XYZ) && XYZ->Num()==3)
-                StreetCentres.Emplace((*XYZ)[0]->AsNumber(),(*XYZ)[1]->AsNumber(),0.);
-        }
-    }
-    bool NearNamedStreet(const FVector& A,const FVector& B) const
-    {
-        for (const auto& Centre:StreetCentres)
-            if (FMath::PointDistToSegment(Centre,A,B)<24500.) return true;
-        return false;
-    }
-
-    bool ReadBuildings(const TCHAR* Filename, bool IsCore)
+    bool ReadBuildings(const TCHAR* Filename)
     {
         const FString Path = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("CityData"),
             Filename);
@@ -279,7 +251,7 @@ struct FAhmedabadCityState
         {
             const FCityBuilding& B = Validated[I];
             const double Distance = FVector::DistSquared2D(Walk, FVector(B.X, B.Y, 0));
-            if (IsCore && FMath::Max(B.Width, B.Depth) >= 2200 && FMath::Min(B.Width, B.Depth) >= 1500
+            if (FMath::Max(B.Width, B.Depth) >= 2200 && FMath::Min(B.Width, B.Depth) >= 1500
                 && B.Height >= 900 && Distance < BestDistance)
             {
                 ArcadeIndex = I;
@@ -297,7 +269,6 @@ struct FAhmedabadCityState
             {
                 FCityTile& Tile=Tiles.FindChecked(TileAt(FVector(Building.X, Building.Y, 0)));
                 Tile.Buildings.Add(Building);
-                Tile.HasStreetPlots |= !IsCore;
             }
         }
         BuildingCount += Count;
@@ -422,16 +393,8 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
             }
         }
     }
-    Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"), true);
-    // The district file adds building plots to existing tiles without loading their meshes.
-    // If it is absent or invalid, the base city remains playable.
-    bStreetDistricts = Parsed->ReadBuildings(TEXT("AhmedabadDistrictBuildings.bin"), false);
-    if (bStreetDistricts)
-    {
-        Parsed->LoadStreetCentres();
-        MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
-        StreetGround=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_StreetGround.M_StreetGround"));
-    }
+    bStreetDistricts=Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"));
+    MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
     LoadSurfaceMaterials();
     // Keep the offline survey intact and stream just the current playable district.
     const FVector Centre=SabarmatiDistrict::Center(true);
@@ -530,7 +493,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         }
     }
     if (Best<DBL_MAX) AddWaterAccess(Access,Inland,-6.);
-    for (const FVector Street:{FVector(10237,25487,1.8),FVector(20998,25504,-4.38),FVector(1220,39675,16.41)})
+    for (const FVector Street:{FVector(10237,25487,1.8),FVector(20998,25504,-4.38),FVector(28570,65572,140.47)})
     {
         const FRotator R(0,Street.Z,0);
         const FVector Origin(Street.X,Street.Y,0.);
@@ -566,7 +529,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
     OutCarStart = Parsed->Car;
     OutYaw = Parsed->Yaw;
     UE_LOG(LogTemp, Display,
-        TEXT("Ahmedabad City: %u OSM roads, %u strips, %u exterior shells, %.2f x %.2f km, %d total tiles, %d active; spawn probes=4/4."),
+        TEXT("Ahmedabad City: survey contains %u OSM roads; district has %u strips, %u exterior shells, %.2f x %.2f km, %d total tiles, %d active; spawn probes=4/4."),
         Parsed->Ways, Parsed->Strips, Parsed->BuildingCount, (Parsed->MaxX - Parsed->MinX) / 100000.0,
         (Parsed->MaxY - Parsed->MinY) / 100000.0, Parsed->Tiles.Num(), Parsed->Loaded.Num());
     return true;
@@ -831,7 +794,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
             }
             const ETint Tints[BatchCount] = {ETint::Earth, ETint::Asphalt, ETint::Water, ETint::RoadPaint,
                 ETint::Retaining, ETint::Plaster, ETint::FacadeStone, ETint::Terracotta, ETint::Roof,
-                ETint::Glass, ETint::Plaster, ETint::Paving, ETint::Retaining, ETint::Rail, ETint::Leaf, ETint::Canvas, ETint::Rail, ETint::Timber, ETint::Rail};
+                ETint::Glass, ETint::Plaster, ETint::Paving, ETint::Retaining, ETint::Rail, ETint::Leaf, ETint::Canvas, ETint::Rail, ETint::Timber, ETint::Rail, ETint::Rail, ETint::Rail};
             auto& Components = State->Loaded.Add(Key);
             for (int32 Layer = 0; Layer < BatchCount; ++Layer)
             {
@@ -847,10 +810,12 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                 Mesh->SetCanEverAffectNavigation(false);
                 Mesh->SetGenerateOverlapEvents(false);
                 const bool bBuildingWall = Layer >= WallA && Layer <= WallC;
-                Mesh->SetCollisionProfileName(Layer == Dry || Layer == BridgeDetail || Layer == Road || Layer == Sidewalk || Layer == Kerb || Layer == TrunkGuard || bBuildingWall
+                Mesh->SetCollisionProfileName(Layer == Dry || Layer == BridgeDetail || Layer == Road || Layer == Sidewalk || Layer == Kerb || Layer == TrunkGuard || Layer == LampPole || bBuildingWall
                     ? TEXT("BlockAll") : TEXT("NoCollision"));
                 Mesh->SetCastShadow(Layer==BridgeDetail || bBuildingWall || Layer==Roof || Layer==FacadeTrim || Layer==StreetTree
                     || Layer==Shade || Layer==Tank || Layer==Iron);
+                if (Layer==LampPole) Mesh->ComponentTags.Add(TEXT("LampPole"));
+                if (Layer==LampHead) Mesh->ComponentTags.Add(TEXT("LampHead"));
                 if (Layer==StreetTree) Mesh->ComponentTags.Add(TEXT("TreeCanopy"));
                 if (Layer==TrunkGuard) Mesh->ComponentTags.Add(TEXT("StreetTrunk"));
                 if (bBuildingWall) Mesh->ComponentTags.Add(TEXT("BuildingShell"));
@@ -862,7 +827,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                 if (Layer==Road) Mesh->ComponentTags.Add(TEXT("CityRoad"));
                 if (UMaterialInterface* Material = SurfaceMaterials.FindRef(static_cast<int32>(Tints[Layer])))
                 {
-                    if (Layer!=StreetTree) Mesh->SetMaterial(0,Layer==Dry && Tile->HasStreetPlots && StreetGround?StreetGround.Get():Material);
+                    if (Layer!=StreetTree) Mesh->SetMaterial(0,Material);
                 }
                 else if (BaseMaterial && Layer!=StreetTree)
                 {
@@ -872,7 +837,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                             FColor(48, 93, 102), FColor(229, 222, 194), FColor(133, 126, 106),
                             FColor(202, 188, 169), FColor(166, 148, 124), FColor(174, 124, 105), FColor(93, 88, 81),
                             FColor(49, 66, 70), FColor(160, 144, 126),
-                            FColor(160,145,121),FColor(147,142,130),FColor(57,60,56),FColor(52,73,47),FColor(119,105,75),FColor(64,67,63),FColor(107,83,63),FColor(71,62,52)};
+                            FColor(160,145,121),FColor(147,142,130),FColor(57,60,56),FColor(52,73,47),FColor(119,105,75),FColor(64,67,63),FColor(107,83,63),FColor(71,62,52),FColor(68,65,61),FColor(68,65,61)};
                         Default->SetVectorParameterValue(TEXT("Color"), FLinearColor(Colors[Layer]));
                         Mesh->SetMaterial(0, Default);
                     }

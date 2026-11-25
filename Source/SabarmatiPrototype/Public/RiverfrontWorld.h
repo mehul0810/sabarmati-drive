@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "InstanceDataTypes.h"
 #include "RiverfrontWorld.generated.h"
 
 class ARiverfrontPlayerController;
@@ -84,6 +85,9 @@ private:
     UPROPERTY()
     TMap<int32, TObjectPtr<UMaterialInterface>> SurfaceMaterials;
 
+    using FStreetPart=TPair<TWeakObjectPtr<UInstancedStaticMeshComponent>,FPrimitiveInstanceId>;
+    TArray<TArray<FStreetPart>> StreetProps;
+    int32 CurrentProp=INDEX_NONE;
     void Shape(EShape Mesh, ETint Tint, const FVector& Pos, const FVector& Size,
         bool bSolid = false, FRotator Rot = FRotator::ZeroRotator);
     void Box(ETint Tint, const FVector& Pos, const FVector& Size,
@@ -141,7 +145,6 @@ private:
     UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> RainStreaks;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> RoadWeather;
     UPROPERTY() TObjectPtr<UStaticMesh> MatureTree;
-    UPROPERTY() TObjectPtr<UMaterialInterface> StreetGround;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CanopyLeaves;
     UPROPERTY() TObjectPtr<UAudioComponent> RainAudio;
     UPROPERTY() TObjectPtr<UAudioComponent> WindAudio;
