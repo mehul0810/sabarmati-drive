@@ -612,11 +612,36 @@ bool ARiverfrontCharacter::HasWristwatchVisible() const
     return Wristwatch->IsVisible() && Wristwatch->GetStaticMesh() && !Wristwatch->GetAttachSocketName().IsNone();
 }
 
+void ARiverfrontCharacter::UpdateSwimPose(float DeltaSeconds,bool InWater)
+{
+    if (!InWater && !bSwimPose) return;
+    auto* Body=GetAvatarMesh();
+    if (!Body || Body!=GetMesh()) return;
+    if (!bSwimPose)
+    {
+        DryMeshTransform=Body->GetRelativeTransform();
+        bSwimPose=true;
+        if (auto* Anim=Body->GetAnimInstance()) Anim->Montage_Stop(.18f);
+        bWasAirborne=bPlayedFall=false;
+    }
+    const float Cruise=FMath::Clamp(float(GetVelocity().Size2D()/145.),0.f,1.f);
+    const float Target=InWater?FMath::Lerp(12.f,68.f,Cruise):0.f;
+    SwimPitch=FMath::FInterpConstantTo(SwimPitch,Target,DeltaSeconds,120.f);
+    const FQuat Lean(FVector::RightVector,FMath::DegreesToRadians(SwimPitch));
+    // Rotate the swimmer about the hips rather than the mesh origin under the feet.
+    const FVector Pivot(0,0,88.);
+    Body->SetRelativeLocationAndRotation(DryMeshTransform.GetLocation()+Pivot-Lean.RotateVector(Pivot),
+        Lean*DryMeshTransform.GetRotation());
+    if (!InWater && SwimPitch<=0.f) { Body->SetRelativeTransform(DryMeshTransform); bSwimPose=false; }
+}
+
 void ARiverfrontCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (bInFittingPose || bDrowned) return;
-    if (IsPlayerControlled() && GetCharacterMovement()->IsSwimming())
+    const bool Swimming=IsPlayerControlled() && GetCharacterMovement()->IsSwimming();
+    UpdateSwimPose(DeltaSeconds,Swimming);
+    if (Swimming)
     {
         const double Depth=SabarmatiDistrict::SurfaceZ-GetActorLocation().Z;
         // Tread water with the face above the surface until the player holds Dive.
@@ -734,7 +759,7 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 
 void ARiverfrontCharacter::JumpOrTraverse()
 {
-    if (TraversalSource || bInFittingPose) return;
+    if (TraversalSource || bInFittingPose || GetCharacterMovement()->IsSwimming()) return;
     if (bBlueprintAvatarActive && TryAvatarTraversal()) return;
     if (TryStreetTraversal()) return;
     Jump();

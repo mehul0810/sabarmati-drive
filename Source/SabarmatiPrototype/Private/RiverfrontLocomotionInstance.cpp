@@ -7,6 +7,7 @@
 #include "AnimNodes/AnimNode_Slot.h"
 #include "BoneControllers/AnimNode_TwoBoneIK.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 namespace
 {
@@ -37,6 +38,7 @@ struct FRiverfrontLocomotionProxy : FAnimInstanceProxy
     FAnimNode_TwoBoneIK Hands[2];
     FAnimNode_ConvertComponentToLocalSpace ToLocal;
     TWeakObjectPtr<ARiverfrontCharacter> Player;
+    float StrokePhase=0.f;
 
     virtual void Initialize(UAnimInstance* Instance) override
     {
@@ -63,10 +65,23 @@ struct FRiverfrontLocomotionProxy : FAnimInstanceProxy
     {
         FAnimInstanceProxy::PreUpdate(Instance, DeltaSeconds);
         const auto* Resident = Player.Get();
-        Ground.SetPosition(FVector(Resident ? Resident->GetVelocity().Size2D() : 0., 0., 0.));
+        const bool Swimming=Resident && Resident->GetCharacterMovement()->IsSwimming();
+        const float Cruise=Resident?FMath::Clamp(float(Resident->GetVelocity().Size2D()/145.),0.f,1.f):0.f;
+        Ground.SetPosition(FVector(Swimming ? Cruise*95. : Resident ? Resident->GetVelocity().Size2D() : 0.,0.,0.));
+        if (Swimming) StrokePhase=FMath::Fmod(StrokePhase+DeltaSeconds*FMath::Lerp(2.4f,4.5f,Cruise),2.f*PI);
         for (int32 Index = 0; Index < 2; ++Index)
         {
             auto& Hand = Hands[Index];
+            if (Swimming)
+            {
+                const float Phase=StrokePhase+Index*PI, Side=Index?1.f:-1.f;
+                const auto& T=Resident->GetActorTransform();
+                Hand.EffectorLocation=T.TransformPosition(FVector(32.+Cruise*41.f*FMath::Cos(Phase),
+                    Side*(34.f+12.f*FMath::Sin(Phase)),16.+14.*FMath::Sin(Phase)));
+                Hand.JointTargetLocation=T.TransformPosition(FVector(18.,Side*68.,35.));
+                Hand.Alpha=1.f;
+                continue;
+            }
             Hand.Alpha = Resident ? Resident->GetTraversalHandContact(Index != 0,
                 Hand.EffectorLocation, Hand.JointTargetLocation) : 0.f;
         }

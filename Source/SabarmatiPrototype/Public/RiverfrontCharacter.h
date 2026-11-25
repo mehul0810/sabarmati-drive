@@ -87,6 +87,10 @@ protected:
     bool TryAvatarTraversal();
 
 private:
+    void UpdateSwimPose(float DeltaSeconds,bool InWater);
+    FTransform DryMeshTransform=FTransform::Identity;
+    float SwimPitch=0.f;
+    bool bSwimPose=false;
     float Breath=16.f;
     bool bDrowned=false;
     bool bDiving=false;
