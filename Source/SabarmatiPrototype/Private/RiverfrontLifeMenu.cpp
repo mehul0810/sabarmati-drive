@@ -97,11 +97,26 @@ public:
         TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
         if (bAvailable && (bShop || bWardrobe))
         {
-            AddCaption(Body, bShop ? TEXT("Try on a piece") : TEXT("Owned pieces"));
-            for (const auto& Entry : RiverfrontLife::Catalog())
+            if (bWardrobe)
             {
-                if (bShop || Owned.Contains(Entry.Id))
-                    Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
+                AddCaption(Body,TEXT("Avatar"));
+                Body->AddSlot().AutoHeight()
+                [
+                    SNew(SRiverfrontGenderSelector)
+                    .MaleTag(TEXT("LifeGenderMale")).FemaleTag(TEXT("LifeGenderFemale"))
+                    .Selected_Lambda([this]{ return Gender; })
+                    .OnSelected_Lambda([this](ERiverfrontGender Choice)
+                    {
+                        if (Choice!=Gender) Complete(RiverfrontLife::SetAvatarGender(Slot,Choice),TEXT("Avatar saved."));
+                    })
+                ];
+            }
+            for (bool Accessories : {false,true})
+            {
+                AddCaption(Body, Accessories ? TEXT("Accessories") : TEXT("Clothing"));
+                for (const auto& Entry : RiverfrontLife::Catalog())
+                    if (Entry.bAccessory==Accessories)
+                        Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
             }
             Body->AddSlot().AutoHeight().Padding(0,6,0,0)
             [
@@ -146,16 +161,6 @@ public:
                         SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
                         .Text_Lambda([this]{ return Copy(bPortrait ? TEXT("View full outfit") : TEXT("Inspect face")); })
                     ]
-                ];
-                Body->AddSlot().AutoHeight().Padding(0,8,0,0)
-                [
-                    SNew(SRiverfrontGenderSelector)
-                    .MaleTag(TEXT("LifeGenderMale")).FemaleTag(TEXT("LifeGenderFemale"))
-                    .Selected_Lambda([this]{ return Gender; })
-                    .OnSelected_Lambda([this](ERiverfrontGender Choice)
-                    {
-                        Complete(RiverfrontLife::SetAvatarGender(Slot, Choice), TEXT("Avatar saved."));
-                    })
                 ];
                 AddCaption(Body,TEXT("Skin tone"));
                 Body->AddSlot().AutoHeight()
@@ -380,7 +385,7 @@ private:
                 [
                     SNew(STextBlock).ColorAndOpacity(Muted).Font(FCoreStyle::GetDefaultFontStyle("Regular",14))
                     .Text_Lambda([this,Id,Price=Entry.PriceRupees]{
-                        return Copy(Wearing(Id) ? TEXT("Wearing") : Owned.Contains(Id) ? TEXT("Owned") : Rupees(Price));
+                        return Copy(Wearing(Id) ? TEXT("Wearing") : Owned.Contains(Id) ? TEXT("Owned") : Page==ERiverfrontLifeMenu::Wardrobe ? FString(TEXT("At Sutra · "))+Rupees(Price) : Rupees(Price));
                     })
                 ]
             ];
