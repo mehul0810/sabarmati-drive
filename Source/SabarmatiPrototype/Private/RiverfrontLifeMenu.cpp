@@ -460,8 +460,14 @@ private:
         constexpr double Seconds[]={.35,.45,.4};
         const float Alpha=FMath::Clamp(float((Now-DressStageStart)/Seconds[DressStage]),0.f,1.f);
         const float Ease=FMath::SmoothStep(0.f,1.f,Alpha);
-        Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease,DressStage==0 ? Outfit==TEXT("kurta") : Selected==TEXT("kurta"));
-        if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
+        const float OldPullover=Outfit==TEXT("kurta") ? 1.f : 0.f;
+        const float NewPullover=Selected==TEXT("kurta") ? 1.f : 0.f;
+        if (DressStage!=1 || OldPullover!=NewPullover)
+        {
+            const float Style=DressStage==0 ? OldPullover : DressStage==2 ? NewPullover : FMath::Lerp(OldPullover,NewPullover,Ease);
+            Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease,Style);
+            if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
+        }
         if (Alpha<1.f) return EActiveTimerReturnType::Continue;
         ++DressStage;
         DressStageStart=Now;
@@ -476,7 +482,7 @@ private:
             Complete(Error,TEXT("Outfit updated."));
             return EActiveTimerReturnType::Stop;
         }
-        Walker->PoseChangingSleeves(1.f,Selected==TEXT("kurta"));
+        Walker->PoseChangingSleeves(1.f,DressStage==1?OldPullover:NewPullover);
         return EActiveTimerReturnType::Continue;
     }
 

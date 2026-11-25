@@ -579,7 +579,7 @@ bool ARiverfrontCharacter::PreparePosedMesh()
     return true;
 }
 
-void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
+void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight)
 {
     if (!PreparePosedMesh()) return;
     auto* Source=GetMesh();
@@ -599,16 +599,10 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift,bool Pullover)
             Transform.SetRotation(Delta*Transform.GetRotation());
             ChangingMesh->SetBoneTransformByName(Bone,Transform,EBoneSpaces::ComponentSpace);
         };
-        if (Pullover)
-        {
-            Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.52,.59*Sign,.61));
-            Aim(TEXT("Elbow"),TEXT("Hand"),FVector(-.10,-.69*Sign,.78));
-        }
-        else
-        {
-            Aim(TEXT("Shoulder"),TEXT("Elbow"),Index?FVector(.39,.31,-.78):FVector(.56,-.24,-.67));
-            Aim(TEXT("Elbow"),TEXT("Hand"),Index?FVector(.37,-.52,.68):FVector(.78,.22,-.15));
-        }
+        const FVector ShirtUpper=Index?FVector(.39,.31,-.78):FVector(.56,-.24,-.67);
+        const FVector ShirtForearm=Index?FVector(.37,-.52,.68):FVector(.78,.22,-.15);
+        Aim(TEXT("Shoulder"),TEXT("Elbow"),FMath::Lerp(ShirtUpper,FVector(.52,.59*Sign,.61),PulloverWeight));
+        Aim(TEXT("Elbow"),TEXT("Hand"),FMath::Lerp(ShirtForearm,FVector(-.10,-.69*Sign,.78),PulloverWeight));
     }
     // The fitting room pauses the world; publish the pose on Slate's active timer.
     ChangingMesh->RefreshBoneTransforms();
