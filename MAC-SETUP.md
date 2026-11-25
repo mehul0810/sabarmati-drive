@@ -68,7 +68,20 @@ For the street-level check, launch with `-SabarmatiArtReview -SabarmatiWalkRevie
 
 ### Game Animation Sample apartment playtest
 
-Once the licensed sample content and its dependencies are available locally, run the editor in Standalone Play with a separate `-UserDir`. Open `/Engine/Maps/Entry?game=<sample GameMode generated class path>?SabarmatiSampleApartment` in the play-world console using the `open` command. Replace the placeholder with the full class path ending in `_C` from the installed sample. The editor builds the riverfront and places the Player Start in Flat 2B before the sample game mode spawns its character. Verify the possessed pawn, walk down the stairs, and test the low vault and physical recovery in play.
+After creating the licensed Game Animation Sample project in Epic Games Launcher, run these commands from the Sabarmati Drive checkout to build and open an isolated preview.
+
+```bash
+SABARMATI_SAMPLE_PROJECT="$(python3 -B Scripts/prepare-sample-preview.py "$HOME/Studio/GameAnimationSample")"
+SABARMATI_SAMPLE_USER_DIR="$(mktemp -d /tmp/sabarmati-sample-user.XXXXXX)"
+UE_ENGINE="/Users/Shared/Epic Games/UE_5.8/Engine"
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+bash "$UE_ENGINE/Build/BatchFiles/Mac/Build.sh" SabarmatiPrototypeEditor Mac Development "$SABARMATI_SAMPLE_PROJECT" &&
+    "$UE_ENGINE/Binaries/Mac/UnrealEditor" "$SABARMATI_SAMPLE_PROJECT" '/Engine/Maps/Entry?game=/Game/Blueprints/GM_Sandbox.GM_Sandbox_C?SabarmatiSampleApartment?SabarmatiSampleHuman' -game -windowed -metalsm5 "-UserDir=$SABARMATI_SAMPLE_USER_DIR"
+```
+
+The editor stages Flat 2B and uses the sample's visual override to attach Epic's Kellan MetaHuman to its motion-matching character. Omit `?SabarmatiSampleHuman` to use the sample mannequin. The preview includes licensed sample content and belongs outside the public repository.
+
+The sample's traversal Blueprint expects its own ledge actor. Walking downstairs, collision recovery, a hurdle on an isolated sample obstacle, and a mantle on a separate sample obstacle have been exercised on the M2 Air. Adapting the existing riverfront fence to that ledge system and integrating the sample character with the game's wardrobe, vehicles and saved profile remain open.
 
 ### Fixed-camera rendering benchmark
 
