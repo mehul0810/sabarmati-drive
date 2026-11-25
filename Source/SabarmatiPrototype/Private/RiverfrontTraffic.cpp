@@ -37,7 +37,7 @@ struct FVehicleShape
     int32 WheelCount;
 };
 const FVehicleShape Bodies[]={
-    {TEXT("Rickshaw"),TEXT("Auto-rickshaw"),257,141,22,77,53,12,3},
+    {TEXT("Rickshaw"),TEXT("Auto-rickshaw"),268,136,22.5,100,56,11,3},
     {TEXT("Scooter"),TEXT("Scooter"),188,52,22,63,0,11,2},
     {TEXT("Sedan"),TEXT("Sedan"),467,183,32,143,78,21,4},
     {TEXT("Bus"),TEXT("Bus"),860,240,43,273,97,29,4},
@@ -67,8 +67,9 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
     Bounds->SetBoxExtent(FVector(HalfLength,HalfWidth,S.Wheel*.85));
     const FString Base=TEXT("/Game/Sabarmati/Riverfront/Vehicles/");
     auto* Model=MeshAt(Base+TEXT("Fleet/SM_Traffic")+S.Name);
-    auto* Left=MeshAt(Base+TEXT("SM_HatchWheelL"));
-    auto* Right=MeshAt(Base+TEXT("SM_HatchWheelR"));
+    UStaticMesh* UtilityWheel = S.WheelCount == 3 ? MeshAt(Base+TEXT("Fleet/SM_TrafficRickshawWheel")) : nullptr;
+    auto* Left=UtilityWheel ? UtilityWheel : MeshAt(Base+TEXT("SM_HatchWheelL"));
+    auto* Right=UtilityWheel ? UtilityWheel : MeshAt(Base+TEXT("SM_HatchWheelR"));
     if (!Model || !Left || !Right)
     {
         UE_LOG(LogTemp,Warning,TEXT("Sabarmati road traffic: missing body or wheels for %s."),S.Name);
@@ -194,7 +195,12 @@ void ARiverfrontRoadAgent::SetManualDriver(const ARiverfrontCharacter* Driver)
             : MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident"));
         if (Mesh) DriverFigure->SetStaticMesh(Mesh);
     }
-    DriverFigure->SetVisibility(Driver != nullptr);
+    SetDriverVisible(Driver != nullptr);
+}
+
+void ARiverfrontRoadAgent::SetDriverVisible(bool bVisible)
+{
+    if (DriverFigure) DriverFigure->SetVisibility(bVisible);
 }
 
 void ARiverfrontRoadAgent::AnimateWheels(double Travel, double Steering)

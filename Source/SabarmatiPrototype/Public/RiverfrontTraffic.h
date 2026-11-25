@@ -23,6 +23,7 @@ public:
     void UpdateLights(bool Night, bool Stopping, bool Project);
     void AnimateWheels(double Travel, double Steering);
     void SetManualDriver(const ARiverfrontCharacter* Driver);
+    void SetDriverVisible(bool bVisible);
     bool IsNearAccess(const ARiverfrontCharacter& Character) const;
     const TCHAR* GetVehicleLabel() const;
     FVector GetDriveHull() const { return FVector(HalfLength, HalfWidth, (RoofHeight - 12.) * .5); }

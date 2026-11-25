@@ -10,7 +10,8 @@ PALETTE=[("body",(.16,.27,.31),.31,.46),("cream",(.73,.64,.43),.46,.22),
  ("iron",(.042,.052,.052),.43,.72),("glass",(.15,.26,.29),.14,.19),
  ("upholstery",(.12,.095,.077),.75,.02),("rubber",(.027,.034,.036),.78,0.),
  ("amber",(.87,.35,.046),.25,.20),("red",(.66,.036,.016),.25,.18),("lamp",(.82,.80,.63),.19,.17),
- ("panel",(.43,.46,.43),.55,.53),("teal",(.036,.21,.16),.34,.36),("textile",(.27,.24,.17),.83,0.)]
+ ("panel",(.43,.46,.43),.55,.53),("teal",(.036,.21,.16),.34,.36),("textile",(.27,.24,.17),.83,0.),
+ ("canopy",(.54,.32,.048),.72,0.)]
 MATS=[{"name":n,"doubleSided":True,"pbrMetallicRoughness":{"baseColorFactor":[*color,.42 if n=="glass" else 1],
         "metallicFactor":metal,"roughnessFactor":rough},**({"alphaMode":"BLEND"} if n=="glass" else {})} for n,color,rough,metal in PALETTE]
 IX={v[0]:i for i,v in enumerate(PALETTE)}
@@ -50,14 +51,38 @@ def wheel_openings(stations, axle, radius):
 
 class Body:
     def __init__(self): self.parts=collections.defaultdict(list)
-    def poly(self,name,p):
+    def poly(self,name,p,normals=None):
         a,b,c=p[:3]
         ab=[b[i]-a[i] for i in range(3)]; ac=[c[i]-a[i] for i in range(3)]
         n=(ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0])
         m=sum(x*x for x in n)**.5
         if m<.000001: return
-        normal=tuple(i/m for i in n)
-        self.parts[IX[name]].append([(*pt,*normal,pt[2]+pt[0],pt[1]) for pt in p])
+        if normals is None:
+            normals = [tuple(i/m for i in n)] * len(p)
+        self.parts[IX[name]].append([(*pt,*normal,pt[2]+pt[0],pt[1]) for pt,normal in zip(p,normals)])
+
+    def surface(self, name, columns, rows, point):
+        """Sample a curved panel with continuous normals across tessellation edges."""
+        vertices = []
+        for row in range(rows + 1):
+            v = row / rows
+            for column in range(columns + 1):
+                u = column / columns
+                position = point(u, v)
+                pu = point(min(1.,u+.001),v)
+                pv = point(u,min(1.,v+.001))
+                du = tuple(a-b for a,b in zip(pu,point(max(0.,u-.001),v)))
+                dv = tuple(a-b for a,b in zip(pv,point(u,max(0.,v-.001))))
+                nx = du[1]*dv[2]-du[2]*dv[1]
+                ny = du[2]*dv[0]-du[0]*dv[2]
+                nz = du[0]*dv[1]-du[1]*dv[0]
+                length = math.sqrt(nx*nx+ny*ny+nz*nz) or 1.
+                vertices.append((position,(nx/length,ny/length,nz/length)))
+        for row in range(rows):
+            for column in range(columns):
+                i = row * (columns + 1) + column
+                p, n = zip(*(vertices[j] for j in (i,i+1,i+columns+2,i+columns+1)))
+                self.poly(name,p,n)
     def box(self,name,x,y,z,w,h,l):
         pts=[(x+sx*w/2,y+sy*h/2,z+sz*l/2) for sx,sy,sz in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),(-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]]
         for face in ((0,3,2,1),(4,5,6,7),(0,4,7,3),(1,2,6,5),(3,7,6,2),(0,1,5,4)):
@@ -130,18 +155,134 @@ def two_wheeler(scooter):
     return b
 
 def rickshaw():
-    b=Body()
-    b.loft("teal",[(-1.27,1.28,.27,.76),(-1.18,1.4,.19,.84),(-.52,1.4,.22,.83),(.40,1.19,.19,.42),(1.18,.57,.27,.62)])
-    b.loft("cream",[(-1.25,1.23,1.61,1.72),(-1.01,1.41,1.63,1.82),(.63,1.29,1.61,1.78),(.92,1.12,1.57,1.69)])
+    b = Body()
+    # An open step-through cabin over a narrow underframe and pressed lower panels.
+    body = [(-1.31,1.19,.32,.66),(-1.24,1.30,.23,.74),(-1.10,1.33,.21,.77),
+            (-.88,1.32,.21,.75),(-.72,1.30,.22,.72),(-.52,1.26,.22,.56),
+            (-.40,1.23,.22,.43),(.47,1.11,.18,.38),(.69,1.11,.19,.59),
+            (.83,1.06,.25,.75),(.99,.92,.31,.82),(1.10,.81,.39,.79),(1.17,.70,.43,.71)]
+    b.loft("teal",wheel_openings(body,1.0,.226))
+    b.loft("iron",[(-1.24,.78,.172,.36),(-.56,.84,.172,.35),(.66,.72,.175,.31)])
+    b.loft("rubber",[(-.55,1.06,.35,.375),(.48,1.02,.34,.368),(.69,.98,.35,.373)])
+    b.loft("canopy",[(.78,1.06,.73,.86),(.99,.92,.77,.89),(1.10,.80,.72,.86),(1.175,.70,.68,.79)])
+    b.loft("rubber",[(1.14,.64,.46,.53),(1.23,.60,.44,.51)])
+    for x in (-.23,.23):
+        b.rod("iron",(x,.48,1.17),(x,.47,1.23),.024)
+    # Smooth front mudguard. Clearance follows the actual rolling tyre.
+    b.surface("teal",18,8,lambda u,v:
+        ((v-.5)*(.23-.04*abs(2*u-1)**2),.226+.269*math.sin(2.76-u*2.50),1.+.269*math.cos(2.76-u*2.50)))
     for s in (-1,1):
-        b.rod("iron",(s*.63,.60,-1.11),(s*.61,1.66,-1.11),.035)
-        b.rod("cream",(s*.52,.68,1.06),(s*.54,1.63,.82),.041)
-        b.rod("panel",(s*.66,.72,-.57),(s*.62,.74,.50),.021)
-    b.poly("glass",[(-.49,.91,1.00),(.49,.91,1.00),(.53,1.57,.82),(-.53,1.57,.82)])
-    b.box("upholstery",0,.57,-.72,1.16,.15,.45); b.box("upholstery",0,.87,-.94,1.17,.54,.12)
-    b.box("upholstery",0,.59,.43,.48,.13,.37); b.box("textile",0,1.15,-1.18,1.18,.65,.05)
-    b.box("lamp",0,.63,1.16,.25,.14,.10)
-    for s in (-1,1): b.box("red",s*.51,.63,-1.26,.14,.13,.06)
+        b.rod("panel",(s*.095,.53,1.023),(s*.092,.242,1.0),.022)
+        b.rod("rubber",(s*.097,.38,1.013),(s*.095,.265,1.002),.029)
+
+    def roof(u, v):
+        x = 2*u-1
+        width = .632 - .083*(1-v)**3 - .035*v**7
+        z = .65-1.94*v + .10*abs(x)**4*(2*v-1)
+        y = 1.572 + .164*(1-x*x) + .012*math.sin(math.pi*v) - .032*(1-v)**4 - .018*v**6
+        return x*width,y,z
+
+    b.surface("canopy",18,22,roof)
+    def lining(u,v):
+        x,y,z = roof(1.-u,v)
+        return x,y-.013,z
+    b.surface("textile",14,16,lining)
+    # The fabric turns down at its bound edges and closes behind the bench.
+    for side in (0.,1.):
+        def hem(u,v):
+            x,y,z = roof(side,u)
+            return x * (1.-.038*v),y-.067*v,z
+        b.surface("canopy",22,3,hem if side==0. else lambda u,v:hem(1.-u,v))
+        for i in range(12):
+            b.rod("textile",roof(side,i/12),roof(side,(i+1)/12),.007)
+    b.surface("canopy",16,5,lambda u,v:
+        ((2*u-1)*(.597+.046*v), roof(u,1.)[1]-.42*v,-1.29+.10*abs(2*u-1)**4+.014*v))
+    for v in (.29,.56,.82):
+        # Support bows inside the roof show individual ribs through the side opening.
+        for i in range(8):
+            a = roof(i/8,v)
+            z = roof((i+1)/8,v)
+            b.rod("iron",(a[0],a[1]-.025,a[2]),(z[0],z[1]-.025,z[2]),.010)
+
+    def windscreen(u,v):
+        x = 2*u-1
+        return x*(.495-.026*v),.86+.685*v+.021*(1-x*x),1.072-.499*v+.064*(1-x*x)
+
+    b.surface("glass",16,10,windscreen)
+    for s in (0.,1.):
+        for i in range(8):
+            b.rod("iron",windscreen(s,i/8),windscreen(s,(i+1)/8),.025)
+    for v in (0.,1.):
+        for i in range(12):
+            b.rod("rubber",windscreen(i/12,v),windscreen((i+1)/12,v),.018)
+    b.rod("iron",windscreen(.35,.025),windscreen(.69,.45),.009)
+    b.rod("rubber",windscreen(.612,.36),windscreen(.76,.52),.009)
+
+    b.loft("upholstery",[(-.98,1.12,.573,.705),(-.91,1.17,.57,.716),(-.55,1.15,.584,.711),(-.51,1.06,.602,.691)])
+    b.loft("upholstery",[(-1.12,1.04,.68,1.184),(-1.06,1.16,.67,1.224),(-1.0,1.10,.69,1.19)])
+    b.loft("upholstery",[(.16,.41,.45,.554),(.23,.48,.44,.572),(.50,.47,.445,.57),(.55,.36,.469,.546)])
+    b.loft("iron",[(.69,.75,.73,.847),(.81,.79,.73,.87),(.95,.70,.74,.842)])
+    b.rod("panel",(0,.40,.83),(0,.92,.765),.022)
+    b.rod("panel",(-.27,.936,.69),(0,.92,.765),.017)
+    b.rod("panel",(0,.92,.765),(.27,.936,.69),.017)
+    b.box("rubber",0,.876,.814,.18,.063,.115)
+    for side in (-1,1):
+        b.rod("rubber",(side*.21,.931,.71),(side*.32,.947,.676),.028)
+        b.rod("iron",(side*.599,.66,-1.105),(side*.572,1.59,-1.14),.027)
+        b.rod("iron",(side*.548,.534,.62),(side*.529,1.56,.61),.021)
+        b.rod("panel",(side*.585,.56,-.411),(side*.585,.94,-.37),.018)
+        b.rod("panel",(side*.585,.94,-.37),(side*.596,.98,-.74),.018)
+        b.rod("panel",(side*.596,.98,-.74),(side*.602,.70,-.91),.018)
+        b.rod("rubber",(side*.581,.31,-.39),(side*.544,.31,.58),.013)
+        b.rod("panel",(side*.47,1.025,.966),(side*.633,1.258,.882),.009)
+        # These mirrors and lamp housings are separate shells so bright lamps leave their surroundings dark.
+        b.surface("iron",12,8,lambda u,v:
+            (side*.623+.061*math.sin(math.pi*v)*math.cos(math.tau*u),
+             1.277+.046*math.cos(math.pi*v),.869+.022*math.sin(math.pi*v)*math.sin(math.tau*u)))
+        b.box("panel",side*.623,1.277,.847,.087,.054,.01)
+        b.box("rubber",side*.519,.656,-1.287,.158,.152,.062)
+        b.box("red",side*.519,.687,-1.322,.122,.081,.029)
+        b.box("amber",side*.519,.617,-1.32,.119,.038,.024)
+        b.box("amber",side*.338,.683,1.157,.084,.048,.036)
+        for i in range(4):
+            b.box("iron",side*(.31+i*.029),.542,-1.312,.016,.095,.019)
+    b.loft("iron",[(1.135,.31,.643,.819),(1.18,.295,.65,.812),(1.205,.25,.664,.782)])
+    b.surface("lamp",12,6,lambda u,v:
+        ((2*u-1)*.121*(1.-.17*abs(2*v-1)**3),.724+(2*v-1)*.057,
+         1.207+.012*(1.-(2*u-1)**2)*(1.-(2*v-1)**2)))
+    b.box("cream",0,.427,-1.326,.30,.081,.016)
+    b.rod("rubber",(-.55,.375,-1.32),(.55,.375,-1.32),.032)
+    return b
+
+
+def rickshaw_wheel():
+    b = Body()
+
+    def lathe(name, profile):
+        for (start_x,start_r),(end_x,end_r) in zip(profile,profile[1:]):
+            def ring(u,v):
+                a = math.tau*u
+                radius = start_r+(end_r-start_r)*v
+                return start_x+(end_x-start_x)*v, radius*math.cos(a), radius*math.sin(a)
+            b.surface(name,32,1,ring)
+
+    # Utility tyre over a pressed steel wheel with a deep hub and cooling recesses.
+    lathe("rubber",[(-.045,.123),(-.054,.151),(-.055,.192),(-.049,.215),(-.034,.225),
+        (.034,.225),(.049,.215),(.055,.192),(.054,.151),(.045,.123)])
+    lathe("iron",[(-.043,.122),(-.050,.123),(-.050,.115),(-.029,.110),(-.025,.085),
+        (-.041,.057),(-.045,.043),(-.043,.012)])
+    lathe("iron",[(.043,.012),(.045,.043),(.041,.057),(.025,.085),
+        (.029,.110),(.050,.115),(.050,.123),(.043,.122)])
+    for side in (-1,1):
+        for i in range(6):
+            a = math.tau*i/6
+            y,z = .085*math.cos(a),.085*math.sin(a)
+            b.box("rubber",side*.031,y,z,.009,.018,.016)
+        for i in range(4):
+            a = math.tau*i/4
+            y,z = .040*math.cos(a),.040*math.sin(a)
+            b.box("panel",side*.046,y,z,.012,.012,.012)
+        b.box("iron",side*.047,0,0,.023,.033,.033)
     return b
 
 def commercial(kind,L,W,H):
@@ -204,3 +345,4 @@ if __name__=="__main__":
         fleet[key]=commercial(key,*data)
     for key,body in fleet.items():
         write("SM_Traffic"+key,body.parts,MATS,(0,0,0),args.out)
+    write("SM_TrafficRickshawWheel",rickshaw_wheel().parts,MATS,(0,0,0),args.out)

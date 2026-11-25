@@ -842,7 +842,9 @@ void ARiverfrontCar::CycleCamera()
     RotationFrom=LastCameraRotation;
     ViewBlend=HasCameraSample?0.f:1.f;
     ViewMode=(ViewMode+1)%(FleetBody?2:3);
-    if (Controller) Controller->SetControlRotation(FRotator(ViewMode==0?-13.:-3.,GetActorRotation().Yaw,0));
+    const bool bRickshaw = FleetBody && FleetBody->WheelCount == 3;
+    if (bRickshaw) FleetBody->SetDriverVisible(ViewMode == 0);
+    if (Controller) Controller->SetControlRotation(FRotator(ViewMode==0?-13.:bRickshaw?-9.:-3.,GetActorRotation().Yaw,0));
 }
 
 void ARiverfrontCar::CalcCamera(float Dt,FMinimalViewInfo& View)
@@ -851,13 +853,23 @@ void ARiverfrontCar::CalcCamera(float Dt,FMinimalViewInfo& View)
     if (ViewMode!=0 && Controller)
     {
         const FRotator Look=Controller->GetControlRotation(), Facing=GetActorRotation();
-        const FVector Seat = FleetBody ? FVector(FleetBody->HalfLength + 6.,0,GetCollisionExtents().Z * .53)
-            : ViewMode==1 ? FVector(-33,37,bCrossover?61:55) : FVector(115,0,bCrossover?37:29);
+        const bool bRickshaw = FleetBody && FleetBody->WheelCount == 3;
+        FVector Seat;
+        if (FleetBody)
+        {
+            Seat = bRickshaw
+                ? FVector(26., 0., 124. - GroundHeight)
+                : FVector(FleetBody->HalfLength + 6., 0., GetCollisionExtents().Z * .53);
+        }
+        else
+        {
+            Seat = ViewMode==1 ? FVector(-33,37,bCrossover?61:55) : FVector(115,0,bCrossover?37:29);
+        }
         View.Location=GetActorTransform().TransformPosition(Seat);
         const double Relative=FMath::FindDeltaAngleDegrees(Facing.Yaw,Look.Yaw);
         View.Rotation=FRotator(FMath::Clamp(Look.Pitch>180?Look.Pitch-360:Look.Pitch,-42.,38.)+Facing.Pitch,
             Facing.Yaw+FMath::Clamp(Relative,-105.,105.),Facing.Roll*.42);
-        View.FOV=ViewMode==1?83.f:76.f;
+        View.FOV=ViewMode==1?(bRickshaw?94.f:83.f):76.f;
     }
     if (ViewBlend<1.f)
     {
