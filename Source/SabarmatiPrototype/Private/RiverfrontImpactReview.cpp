@@ -66,13 +66,18 @@ void ARiverfrontPlayerController::RunImpactReview()
             for (TActorIterator<ARiverfrontCharacter> It(GetWorld());It;++It) Ejected |= It->ActorHasTag(TEXT("DisplacedDriver"));
             if (!Ejected || !Seat || Seat->GetSkinnedAsset()!=Walker->GetAvatarMesh()->GetSkeletalMeshAsset())
                 return Fail(TEXT("ejected NPC or player seat mesh"));
+            FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("traffic-takeover.png")),false,false);
             UE_LOG(LogTemp,Display,TEXT("Sabarmati impact review: E takeover, displaced NPC and matching player mesh."));
-            Key(EKeys::E,IE_Pressed);Next();
+            Next();
         }
         else if (Run->Step==2 && Age>.18)
         {
             Key(EKeys::E,IE_Released);
-            if (GetPawn()!=Walker) return Fail(TEXT("exit borrowed vehicle"));
+            if (GetPawn()!=Walker)
+            {
+                if (Age>1.5) return Fail(TEXT("exit borrowed vehicle"));
+                Key(EKeys::E,IE_Pressed); return true;
+            }
             TInlineComponentArray<UInstancedStaticMeshComponent*> Components(Mode->GetDistrict());
             for (auto* Trees:Components)
             {
