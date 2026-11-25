@@ -144,5 +144,7 @@ private:
     FReply QuitDrive();
     void SaveLookPreference();
     void SwitchFreeRoamMap();
+    void ReturnHome();
+    void LoadFreeRoamMap(FString Options);
     void RemoveOverlay();
 };

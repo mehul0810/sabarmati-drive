@@ -35,9 +35,10 @@ bool ARiverfrontPlayerController::HasLifeCheckpoint() const
 
 void ARiverfrontPlayerController::BeginLifeSession()
 {
+    const bool bReturnHome = GetWorld()->URL.HasOption(TEXT("SabarmatiReturnHome"));
 #if !UE_BUILD_SHIPPING
     // Historical benchmark routes start at Atal; the morning review uses the normal home.
-    if (ProfileSlot.StartsWith(TEXT("SabarmatiQA-")) &&
+    if (!bReturnHome && ProfileSlot.StartsWith(TEXT("SabarmatiQA-")) &&
         !FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview"))) return;
 #endif
     auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
@@ -62,7 +63,7 @@ void ARiverfrontPlayerController::BeginLifeSession()
     bParcelInHand = Profile->bPrintDeliveryActive;
     bParcelDelivered = Profile->CompletedPrintDeliveries > 0;
     Walker->ApplyProfileAppearance(*Profile);
-    const bool bReturning = Profile->bHasLifeCheckpoint && Profile->CheckpointDistrict == District;
+    const bool bReturning = !bReturnHome && Profile->bHasLifeCheckpoint && Profile->CheckpointDistrict == District;
     bool bPlaced = false;
     if (bReturning)
     {
@@ -72,6 +73,12 @@ void ARiverfrontPlayerController::BeginLifeSession()
     }
     if (!bPlaced && !bCity)
         bPlaced = Walker->TeleportTo(FRiverfrontFirstMorningWorld::HomeStart(), FRotator(0, FRiverfrontFirstMorningWorld::HomeYaw(), 0));
+    if (bReturnHome && (!bPlaced || bCity))
+    {
+        bLifeActive = false;
+        Notice(TEXT("Could not return to Flat 2B."));
+        return;
+    }
     Walker->GetCharacterMovement()->StopMovementImmediately();
     SetControlRotation(FRotator(-9, Walker->GetActorRotation().Yaw, 0));
     if (bParcelInHand) PointToChai();
@@ -79,8 +86,10 @@ void ARiverfrontPlayerController::BeginLifeSession()
         PlayWakeup();
     else
         SaveLifeCheckpoint();
+    if (bReturnHome)
+        Notice(TEXT("Flat 2B  ·  Kesar Apartments"));
     GetWorldTimerManager().SetTimer(LifeSaveTimer, this, &ARiverfrontPlayerController::SaveLifeCheckpoint, 15.f, true);
-    UE_LOG(LogTemp, Display, TEXT("Sabarmati morning: %s in %s at %s"), bReturning ? TEXT("Continue") : TEXT("Start"),
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati morning: %s in %s at %s"), bReturnHome ? TEXT("Return Home") : bReturning ? TEXT("Continue") : TEXT("Start"),
         *District.ToString(), *Walker->GetActorLocation().ToCompactString());
 }
 

@@ -215,6 +215,7 @@ public:
         SLATE_ARGUMENT(bool, CityAvailable)
         SLATE_ARGUMENT(bool, CityFailed)
         SLATE_EVENT(FSimpleDelegate, OnSwitchMap)
+        SLATE_EVENT(FSimpleDelegate, OnReturnHome)
         SLATE_EVENT(FCreateLocalProfile, OnCreateProfile)
         SLATE_EVENT(FOnFloatValueChanged, OnSensitivity)
         SLATE_EVENT(FSimpleDelegate, OnContinue)
@@ -367,6 +368,14 @@ public:
                                 .Label(bIsPause ? LOCTEXT("Resume", "Resume") : Args._HasCheckpoint ? LOCTEXT("ContinueHome", "Continue") : LOCTEXT("Start", "Start"))
                                 .ClickMethod(EButtonClickMethod::MouseDown)
                                 .OnClicked(this, &SRiverfrontMenu::OnPrimaryClicked)
+                            ]
+                            + SVerticalBox::Slot().AutoHeight()
+                            [
+                                SNew(SRiverfrontMenuAction)
+                                .Tag(TEXT("ReturnHome"))
+                                .Visibility_Lambda([this]() { return NeedsProfile() ? EVisibility::Collapsed : EVisibility::Visible; })
+                                .Label(LOCTEXT("ReturnHome", "Return Home"))
+                                .OnClicked_Lambda([ReturnHome = Args._OnReturnHome] { ReturnHome.ExecuteIfBound(); return FReply::Handled(); })
                             ]
                             + SVerticalBox::Slot().AutoHeight()
                             [
@@ -706,7 +715,7 @@ void ARiverfrontPlayerController::ShowTitle()
     {
         SetViewTarget(TitleCamera.Get());
     }
-    if (GetWorld()->URL.HasOption(TEXT("SabarmatiRestore")) && HasLocalProfile())
+    if ((GetWorld()->URL.HasOption(TEXT("SabarmatiRestore")) || GetWorld()->URL.HasOption(TEXT("SabarmatiReturnHome"))) && HasLocalProfile())
     {
         ResumeDrive();
         return;
@@ -1232,6 +1241,7 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
         .CityAvailable(bCity || (!bCityFailed && ARiverfrontWorld::HasCityData()))
         .CityFailed(bCityFailed)
         .OnSwitchMap(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::SwitchFreeRoamMap))
+        .OnReturnHome(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ReturnHome))
         .UnreadableProfile(bUnreadableProfile)
         .OnCreateProfile(FCreateLocalProfile::CreateUObject(this, &ARiverfrontPlayerController::CreateLocalProfile))
         .Sensitivity(MouseSensitivity)
@@ -1342,9 +1352,23 @@ void ARiverfrontPlayerController::SwitchFreeRoamMap()
         return;
     }
     SaveLifeCheckpoint();
+    LoadFreeRoamMap(bCity ? TEXT("SabarmatiRiverfront") : TEXT("SabarmatiCity"));
+}
+
+void ARiverfrontPlayerController::ReturnHome()
+{
+    if (bTravelling || !HasLocalProfile() || (Screen != EScreen::Title && Screen != EScreen::Paused))
+    {
+        return;
+    }
+    SaveLookPreference();
+    LoadFreeRoamMap(TEXT("SabarmatiRiverfront?SabarmatiReturnHome"));
+}
+
+void ARiverfrontPlayerController::LoadFreeRoamMap(FString Options)
+{
     bTravelling = true;
     SetPause(false);
-    FString Options = bCity ? TEXT("SabarmatiRiverfront") : TEXT("SabarmatiCity");
 #if !UE_BUILD_SHIPPING
     if (ProfileSlot.StartsWith(TEXT("SabarmatiQA-")))
     {
