@@ -545,6 +545,12 @@ void ARiverfrontCharacter::EndChangingPose()
     ChangingMesh=nullptr;
 }
 
+bool ARiverfrontCharacter::SupportsClothingChange() const
+{
+    return !bBlueprintAvatarActive && DefaultAvatarMesh
+        && DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
+}
+
 void ARiverfrontCharacter::PoseChangingSleeves(float Lift)
 {
     auto* Source=GetMesh();
@@ -575,12 +581,13 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift)
             auto Transform=ChangingMesh->GetBoneTransformByName(Bone,EBoneSpaces::ComponentSpace);
             const FVector From=(ChangingMesh->GetBoneLocationByName(Child,EBoneSpaces::ComponentSpace)-Transform.GetLocation()).GetSafeNormal();
             const FVector To=Source->GetRelativeRotation().UnrotateVector(Direction.GetSafeNormal());
-            const FQuat Delta=FQuat::Slerp(FQuat::Identity,FQuat::FindBetweenNormals(From,To),Lift);
+            const float Reach=Index ? FMath::SmoothStep(.12f,1.f,Lift) : FMath::SmoothStep(0.f,.84f,Lift);
+            const FQuat Delta=FQuat::Slerp(FQuat::Identity,FQuat::FindBetweenNormals(From,To),Reach);
             Transform.SetRotation(Delta*Transform.GetRotation());
             ChangingMesh->SetBoneTransformByName(Bone,Transform,EBoneSpaces::ComponentSpace);
         };
-        Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.6,.45*Sign,-.35));
-        Aim(TEXT("Elbow"),TEXT("Hand"),FVector(.15,-.57*Sign,.9));
+        Aim(TEXT("Shoulder"),TEXT("Elbow"),FVector(.38,.30*Sign,-.89));
+        Aim(TEXT("Elbow"),TEXT("Hand"),FVector(.24,-.83*Sign,Index?.45:.72));
     }
     // The fitting room pauses the world; publish the pose on Slate's active timer.
     ChangingMesh->RefreshBoneTransforms();
@@ -597,6 +604,14 @@ bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
     BeforeBed=Body->GetRelativeTransform();
     HeadInMesh=Body->GetSocketTransform(TEXT("Head"),RTS_Component).GetLocation();
     BedHead=Pillow;
+    const int32 Shoes=Body->GetMaterialIndex(TEXT("shoe"));
+    if (Shoes!=INDEX_NONE)
+        for (int32 LOD=0;LOD<Body->GetSkinnedAsset()->GetLODNum();++LOD)
+            if (Body->IsMaterialSectionShown(Shoes,LOD))
+            {
+                Body->ShowMaterialSection(Shoes,INDEX_NONE,false,LOD);
+                BedShoeLODs.Add(LOD);
+            }
     BedTime=0.f;
     bLyingOnBed=true;
     UpdateBedPose();
@@ -618,7 +633,10 @@ void ARiverfrontCharacter::LeaveBed()
 {
     if (!bLyingOnBed) return;
     bLyingOnBed=false;
-    GetAvatarMesh()->SetRelativeTransform(BeforeBed);
+    auto* Body=GetAvatarMesh();
+    for (int32 LOD:BedShoeLODs) Body->ShowMaterialSection(Body->GetMaterialIndex(TEXT("shoe")),INDEX_NONE,true,LOD);
+    BedShoeLODs.Reset();
+    Body->SetRelativeTransform(BeforeBed);
     SetFittingPose(false);
 }
 

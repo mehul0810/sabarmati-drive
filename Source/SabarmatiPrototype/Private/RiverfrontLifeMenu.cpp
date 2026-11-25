@@ -483,7 +483,7 @@ private:
         const FRiverfrontWearable* Chosen = Item(Id);
         auto* Walker=Resident();
         const bool ChangeClothes=Page==ERiverfrontLifeMenu::Wardrobe && Chosen && !Chosen->bAccessory
-            && Walker && Walker->GetWardrobeOutfit()!=Id && Preview;
+            && Walker && Walker->SupportsClothingChange() && Walker->GetWardrobeOutfit()!=Id && Preview;
         StopDressing();
         if (ChangeClothes)
         {

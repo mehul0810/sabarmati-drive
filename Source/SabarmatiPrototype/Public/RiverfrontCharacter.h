@@ -48,6 +48,7 @@ public:
     void SetFittingPose(bool bFitting);
     bool LieOnBed(const FVector& Pillow);
     void LeaveBed();
+    bool SupportsClothingChange() const;
     void PoseChangingSleeves(float Lift);
     void EndChangingPose();
     bool IsLyingOnBed() const { return bLyingOnBed; }
@@ -166,6 +167,7 @@ private:
     bool bLyingOnBed=false;
     FTransform BeforeBed;
     FVector BedHead, HeadInMesh;
+    TArray<int32,TInlineAllocator<4>> BedShoeLODs;
     float BedTime=0.f;
     void UpdateBedPose();
     bool bInFittingPose = false;

@@ -104,18 +104,19 @@ void FitTextiles(ARiverfrontWorld& World)
             const double Foot=FMath::Clamp((.10-V)/.10,0.,1.);
             const double Z=Upper+58.5-26.*Roll*Roll-17.*Foot*Foot
                 +1.3*FMath::Sin(16.*U+3.*V)+.8*FMath::Sin(26.*U-6.*V);
-            const double X=-218.+94.*Across, Y=472.+168.*V;
+            const double X=-218.+94.*Across;
+            const double Y=Occupied ? 458.+137.*V : 472.+168.*V;
             // Interpolate the cover over the sleeping body and back onto the mattress.
-            const double AcrossBody=(X+180.)/35.;
+            const double AcrossBody=(X+181.)/46.;
             const double Shoulder=(Y-607.)/45.;
-            const double Rise=Occupied ? (26.+22.*FMath::Exp(-Shoulder*Shoulder))*
+            const double Rise=Occupied ? (34.+5.*FMath::Exp(-Shoulder*Shoulder))*
                 FMath::Exp(-FMath::Square(AcrossBody*AcrossBody))*
-                FMath::SmoothStep(472.,488.,Y) : 0.;
+                FMath::SmoothStep(457.,479.,Y) : 0.;
             return At(X,Y,Z+Rise);
         };
-        Cover[0].Add(36,28,Quilt);
+        Cover[0].Add(Occupied?60:36,Occupied?48:28,Quilt);
         for (double V0 : {.145,.18,.925,.96})
-            Cover[1].Add(36,1,[&](double U,double V){return Quilt(U,V0+V*.008)+FVector(0,0,.2);});
+            Cover[1].Add(Occupied?60:36,1,[&](double U,double V){return Quilt(U,V0+V*.008)+FVector(0,0,Occupied?.5:.2);});
         for (int32 J=0; J<5; ++J)
         {
             for (int32 I=0; I<7; ++I)
@@ -124,7 +125,7 @@ void FitTextiles(ARiverfrontWorld& World)
                 const auto Stamp=[&](double U,double V,double Scale,double Bias)
                 {
                     const double Diamond=1.-FMath::Abs(2.*V-1.);
-                    return Quilt(CX+(U-.5)*.057*Diamond*Scale,CY+(V-.5)*.064*Scale)+FVector(0,0,Bias);
+                    return Quilt(CX+(U-.5)*.057*Diamond*Scale,CY+(V-.5)*.064*Scale)+FVector(0,0,Bias+(Occupied?.3:0.));
                 };
                 Cover[1].Add(2,2,[&](double U,double V){return Stamp(U,V,1.,.24);});
                 Cover[2].Add(2,2,[&](double U,double V){return Stamp(U,V,.48,.37);});
