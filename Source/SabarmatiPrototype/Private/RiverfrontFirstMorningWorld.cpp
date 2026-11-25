@@ -21,6 +21,7 @@ constexpr int32 Steps = 20;
 constexpr double Rise = (Upper-ApartmentGroundZ)/Steps;
 constexpr double Landing = FirstRiser + Tread*Steps;
 constexpr double FenceX = 782., FenceY = -111.;
+constexpr double FenceWidth = 318., FenceDepth = 9., FenceRailZ = 90., FenceRailHeight = 12.;
 constexpr double WallX = 1234., WallY = -32.;
 
 void Lettering(ARiverfrontWorld& World, const TCHAR* Words, FVector Position, double Yaw,
@@ -283,6 +284,14 @@ FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,Apartme
 FVector FRiverfrontFirstMorningWorld::FenceApproach() { return At(FenceX,FenceY-97.,99.); }
 FVector FRiverfrontFirstMorningWorld::WallApproach() { return At(WallX,WallY-205.,99.); }
 
+#if WITH_EDITOR
+FBox FRiverfrontFirstMorningWorld::FenceTraversalBounds()
+{
+    return FBox(At(FenceX - FenceWidth / 2., FenceY - FenceDepth / 2., ApartmentGroundZ),
+        At(FenceX + FenceWidth / 2., FenceY + FenceDepth / 2., FenceRailZ + FenceRailHeight / 2.));
+}
+#endif
+
 FTransform FRiverfrontFirstMorningWorld::WakeStartView()
 {
     const FVector Eye=At(-202,643,Upper+82);
@@ -342,8 +351,8 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
 
     // An open courtyard beside Kesar. The thin iron fence crosses to the same
     // paving, while the solid stone edge leads onto a raised dispatch landing.
-    Part(ETint::Rail,FenceX,FenceY,90.,318.,9.,12.,true);
-    Part(ETint::Rail,FenceX,FenceY,19.,318.,7.,6.,true);
+    Part(ETint::Rail,FenceX,FenceY,FenceRailZ,FenceWidth,FenceDepth,FenceRailHeight,true);
+    Part(ETint::Rail,FenceX,FenceY,19.,FenceWidth,7.,6.,true);
     for (int32 Bar = -7; Bar <= 7; ++Bar)
         Part(ETint::Rail,FenceX+Bar*21.,FenceY,54.,4.,5.,68.,true);
     for (const double Side : {-1.,1.})

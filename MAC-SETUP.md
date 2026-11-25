@@ -81,7 +81,7 @@ bash "$UE_ENGINE/Build/BatchFiles/Mac/Build.sh" SabarmatiPrototypeEditor Mac Dev
 
 The editor stages Flat 2B and uses the sample's visual override to attach Epic's Kellan MetaHuman to its motion-matching character. Omit `?SabarmatiSampleHuman` to use the sample mannequin. The preview includes licensed sample content and belongs outside the public repository.
 
-The sample's traversal Blueprint expects its own ledge actor. Walking downstairs, collision recovery, a hurdle on an isolated sample obstacle, and a mantle on a separate sample obstacle have been exercised on the M2 Air. Adapting the existing riverfront fence to that ledge system and integrating the sample character with the game's wardrobe, vehicles and saved profile remain open.
+In the Kellan preview, walk toward the iron fence in the courtyard and press **Space** as you approach the rail. The preview aligns a sample ledge actor to the rail so Unreal's traversal Blueprint can choose its hurdle animation. Integration with the game's wardrobe, vehicles and saved profile remains open.
 
 ### Fixed-camera rendering benchmark
 

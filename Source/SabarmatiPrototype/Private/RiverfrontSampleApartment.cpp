@@ -3,7 +3,9 @@
 #include "Components/ChildActorComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Containers/Ticker.h"
+#include "Engine/CollisionProfile.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -16,6 +18,43 @@
 
 namespace
 {
+void PrepareSampleFence(UWorld& World)
+{
+    constexpr ECollisionChannel Traversable = ECC_GameTraceChannel1;
+    if (UCollisionProfile::Get()->ReturnChannelNameFromContainerIndex(Traversable) != TEXT("Traversable"))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Sample fence needs the Game Animation Sample's Traversable channel."));
+        return;
+    }
+
+    UClass* LedgeClass = LoadClass<AActor>(nullptr, TEXT("/Game/Levels/LevelPrototyping/LevelBlock_Traversable.LevelBlock_Traversable_C"));
+    if (!LedgeClass) return;
+
+    // The sample's 100 cm block starts at its bottom corner. Match its ledges to the real rail.
+    const FBox Bounds = FRiverfrontFirstMorningWorld::FenceTraversalBounds();
+    const FTransform Placement(FQuat::Identity, Bounds.Min, Bounds.GetSize() / 100.);
+    AActor* Ledge = World.SpawnActorDeferred<AActor>(LedgeClass, Placement, nullptr, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    if (!Ledge) return;
+    Ledge->FinishSpawning(Placement);
+    UStaticMeshComponent* Mesh = Ledge->FindComponentByClass<UStaticMeshComponent>();
+    if (!Mesh)
+    {
+        Ledge->Destroy();
+        UE_LOG(LogTemp, Warning, TEXT("Sample fence could not find the ledge mesh."));
+        return;
+    }
+
+    // The existing fence supplies visuals and physical collision. Only traversal traces need the ledge actor.
+    Ledge->SetActorHiddenInGame(true);
+    Mesh->SetCanEverAffectNavigation(false);
+    Mesh->SetGenerateOverlapEvents(false);
+    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+    Mesh->SetCollisionResponseToChannel(Traversable, ECR_Block);
+    UE_LOG(LogTemp, Display, TEXT("Sabarmati sample fence: traversal ledges aligned to the riverfront rail."));
+}
+
 void PrepareSampleHuman(UWorld& World)
 {
     const TWeakObjectPtr<UWorld> PreviewWorld(&World);
@@ -67,6 +106,7 @@ void PrepareSampleHuman(UWorld& World)
         }
         Driver->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
         Driver->SetVisibility(false, false);
+        PrepareSampleFence(*World);
         UE_LOG(LogTemp, Display, TEXT("Sabarmati sample human preview: Kellan is driven by %s."),
             *Pawn->GetClass()->GetPathName());
         return false;
