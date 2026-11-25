@@ -5,6 +5,7 @@
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontPlayerController.h"
+#include "RiverfrontTraffic.h"
 #include "RiverfrontWorld.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
@@ -465,6 +466,12 @@ void ARiverfrontHUD::DrawHUD()
     if (Nearby)
     {
         Prompt=FString::Printf(TEXT("Enter %s"),Nearby->GetVehicleLabel());
+        Key=ActionKey(*Player,TEXT("Interact"),TEXT("E"));
+    }
+    else if (const auto* Fleet = Character && Mode && Mode->GetTraffic()
+        ? Mode->GetTraffic()->FindEnterableVehicle(*Character) : nullptr)
+    {
+        Prompt=FString::Printf(TEXT("Drive %s"),Fleet->GetVehicleLabel());
         Key=ActionKey(*Player,TEXT("Interact"),TEXT("E"));
     }
     else

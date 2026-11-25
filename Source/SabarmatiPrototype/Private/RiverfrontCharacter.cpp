@@ -28,6 +28,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "RiverfrontCar.h"
+#include "RiverfrontTraffic.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontWorld.h"
@@ -758,9 +759,10 @@ void ARiverfrontCharacter::EnterCar()
     const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     if (ARiverfrontCar* Available = Mode ? Mode->FindEnterableCar(*this) : nullptr)
     {
-        Available->Enter(*this);
-        return;
+        if (Available->Enter(*this)) return;
     }
+    if (ARiverfrontTraffic* Traffic = Mode ? Mode->GetTraffic() : nullptr)
+        if (Traffic->EnterVehicle(*this)) return;
     if (auto* Driver=Cast<ARiverfrontPlayerController>(GetController())) Driver->InteractWithPlace();
 }
 

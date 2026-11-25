@@ -25,6 +25,7 @@
 #include "Misc/Parse.h"
 #include "RiverfrontCharacter.h"
 #include "RiverfrontGameMode.h"
+#include "RiverfrontTraffic.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -44,16 +45,17 @@ UStaticMesh* LoadVehicleMesh(const TCHAR* Name)
         ? LoadObject<UStaticMesh>(nullptr, *(Package + TEXT(".") + Name)) : nullptr;
 }
 
-bool FindGround(UWorld* World, const FVector& Position, const AActor* Ignored, FHitResult& Floor)
+bool FindGround(UWorld* World, const FVector& Position, const AActor* Ignored, FHitResult& Floor, double RideHeight)
 {
     if (!World)
     {
         return false;
     }
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontGroundTrace), false, Ignored);
-    return World->LineTraceSingleByChannel(Floor, Position + FVector(0, 0, 180),
-        Position - FVector(0, 0, 175), ECC_Visibility, Query) && Floor.ImpactNormal.Z > .65
-        && Position.Z - Floor.ImpactPoint.Z >= 27. && Position.Z - Floor.ImpactPoint.Z <= 137.;
+    const double Delta = RideHeight - 68.;
+    return World->LineTraceSingleByChannel(Floor, Position + FVector(0, 0, 180 - Delta),
+        Position - FVector(0, 0, 175 + Delta), ECC_Visibility, Query) && Floor.ImpactNormal.Z > .65
+        && Position.Z - Floor.ImpactPoint.Z >= 27. + Delta && Position.Z - Floor.ImpactPoint.Z <= 137. + Delta;
 }
 }
 
@@ -298,18 +300,49 @@ bool ARiverfrontCar::InstallDetailedVisuals()
     return true;
 }
 
+const TCHAR* ARiverfrontCar::GetVehicleLabel() const
+{
+    if (FleetBody) return FleetBody->GetVehicleLabel();
+    return bCrossover ? TEXT("Crossover") : TEXT("Hatchback");
+}
+
+void ARiverfrontCar::UseTrafficBody(ARiverfrontRoadAgent& Agent)
+{
+    FleetBody = &Agent;
+    GroundHeight = Agent.GetRideHeight();
+}
+
+FVector ARiverfrontCar::GetCollisionExtents() const
+{
+    return Body->GetScaledBoxExtent();
+}
+
 void ARiverfrontCar::BeginPlay()
 {
     Super::BeginPlay();
     Home = GetActorTransform();
-    if (bCrossover)
+    if (FleetBody)
+    {
+        const FVector Hull = FleetBody->GetDriveHull();
+        Body->SetBoxExtent(Hull);
+        Arm->TargetOffset.Z = Hull.Z + 75.;
+        Arm->TargetArmLength = FMath::Max(480., Hull.X + 410.);
+        for (UStaticMeshComponent* PanelMesh : Panels) PanelMesh->DestroyComponent();
+        Panels.Reset();
+        PanelColors.Reset();
+        for (USceneComponent* Pivot : WheelPivots) Pivot->DestroyComponent();
+        for (USceneComponent* Pivot : SteerPivots) Pivot->DestroyComponent();
+        WheelPivots.Reset();
+        SteerPivots.Reset();
+    }
+    else if (bCrossover)
     {
         // A taller body and longer bumpers share the hatch's axle positions.
         Body->SetBoxExtent(GetCrossoverBounds(), true);
         Arm->TargetOffset.Z += 14.0;
         Arm->TargetArmLength += 26.0;
     }
-    bDetailedVisuals = InstallDetailedVisuals();
+    bDetailedVisuals = !FleetBody && InstallDetailedVisuals();
     TravelYaw = GetActorRotation().Yaw;
     if (bDetailedVisuals && !bCrossover && !FParse::Param(FCommandLine::Get(), TEXT("SabarmatiLegacyDrive")))
         ConfigureHatchbackPhysics();
@@ -328,7 +361,8 @@ void ARiverfrontCar::BeginPlay()
     TyreLoop=Loop(TEXT("/Game/Sabarmati/Riverfront/Audio/S_Tyres.S_Tyres"),FVector(0,0,-36));
     ShiftSound=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_Shift.S_Shift"));
     ImpactSound=LoadObject<USoundWave>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Audio/S_Contact.S_Contact"));
-    if (auto* Lens = LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
+    if (auto* Lens = FleetBody ? nullptr : LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
     {
         TurnMaterial=UMaterialInstanceDynamic::Create(Lens,this);
         ReverseMaterial=UMaterialInstanceDynamic::Create(Lens,this);
@@ -373,6 +407,13 @@ void ARiverfrontCar::BeginPlay()
     }
 }
 
+void ARiverfrontCar::EndPlay(const EEndPlayReason::Type Reason)
+{
+    if (Reason == EEndPlayReason::Destroyed && IsValid(FleetBody) && FleetBody->GetAttachParentActor() == this)
+        FleetBody->Destroy();
+    Super::EndPlay(Reason);
+}
+
 void ARiverfrontCar::SetNightDriving(bool AtNight)
 {
     if (bNightDriving != AtNight)
@@ -385,6 +426,11 @@ void ARiverfrontCar::SetNightDriving(bool AtNight)
 void ARiverfrontCar::UpdateDrivingLights()
 {
     const bool On = bNightDriving && IsValid(Driver);
+    if (FleetBody)
+    {
+        FleetBody->UpdateLights(On, IsValid(Driver) && (bBraking || Throttle * Speed < -10), On);
+        return;
+    }
     for (USpotLightComponent* Light : Headlights)
     {
         Light->SetVisibility(On);
@@ -446,6 +492,7 @@ void ARiverfrontCar::SetupPlayerInputComponent(UInputComponent* Input)
 
 bool ARiverfrontCar::IsNearDoor(const ARiverfrontCharacter& Character) const
 {
+    if (FleetBody) return !IsValid(Driver) && FleetBody->IsNearAccess(Character);
     if (IsValid(Driver) || FMath::Abs(Character.GetActorLocation().Z - GetActorLocation().Z) > 130)
     {
         return false;
@@ -462,12 +509,12 @@ bool ARiverfrontCar::IsNearDoor(const ARiverfrontCharacter& Character) const
     return false;
 }
 
-void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
+bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
 {
     APlayerController* Player = Cast<APlayerController>(Character.GetController());
     if (!Player || !IsNearDoor(Character))
     {
-        return;
+        return false;
     }
     if (DoorHinges.Num()==2)
     {
@@ -480,6 +527,20 @@ void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     if (MotorLoop && TyreLoop) { MotorLoop->FadeIn(.24f,.32f); TyreLoop->FadeIn(.18f,.02f); }
     Character.SetInCar(true);
     Player->Possess(this);
+    if (Player->GetPawn() != this)
+    {
+        Driver = nullptr;
+        Character.SetInCar(false);
+        Player->Possess(&Character);
+        if (MotorLoop && TyreLoop) { MotorLoop->Stop(); TyreLoop->Stop(); }
+        return false;
+    }
+    if (FleetBody)
+    {
+        FleetBody->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+        FleetBody->SetActorEnableCollision(false);
+        FleetBody->SetManualDriver(&Character);
+    }
     if (bChaosDrive)
     {
         VehicleMovement->SetParked(false);
@@ -490,7 +551,15 @@ void ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     SetHint(Mode && Mode->IsCityMode() ? TEXT("Explore the mapped Ahmedabad streets.")
         : TEXT("Cross the bridge, then follow the far bank."));
-    UE_LOG(LogTemp, Display, TEXT("Sabarmati Drive: entered parked %s."), GetVehicleLabel());
+    if (FleetBody)
+    {
+        UE_LOG(LogTemp, Display, TEXT("Sabarmati Drive: took control of traffic %s."), GetVehicleLabel());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("Sabarmati Drive: entered parked %s."), GetVehicleLabel());
+    }
+    return true;
 }
 
 bool ARiverfrontCar::FindDriverExit(FVector& Point, int32& Side) const
@@ -503,12 +572,13 @@ bool ARiverfrontCar::FindDriverExit(FVector& Point, int32& Side) const
     const FVector Extents = Body->GetScaledBoxExtent();
     const double LateralOffset = Extents.Y + 66.0;
     const double LengthOffset = Extents.X + 60.0;
-    for (const FVector& Offset : {FVector(0, LateralOffset, 0), FVector(0, -LateralOffset, 0),
+    const double DoorX = FleetBody ? FleetBody->GetAccessX() : 0.;
+    for (const FVector& Offset : {FVector(DoorX, LateralOffset, 0), FVector(DoorX, -LateralOffset, 0),
         FVector(-LengthOffset, 0, 0), FVector(LengthOffset, 0, 0)})
     {
         FVector Candidate = GetActorTransform().TransformPosition(Offset);
         FHitResult Floor;
-        if (!FindGround(GetWorld(), Candidate, this, Floor))
+        if (!FindGround(GetWorld(), Candidate, this, Floor, GroundHeight))
         {
             continue;
         }
@@ -553,6 +623,7 @@ void ARiverfrontCar::Exit()
     Player->Possess(Walker);
     Player->SetControlRotation(FRotator(-7, GetActorRotation().Yaw, 0));
     Driver = nullptr;
+    if (FleetBody) FleetBody->SetManualDriver(nullptr);
     if (MotorLoop && TyreLoop) { MotorLoop->FadeOut(.28f,.0f); TyreLoop->FadeOut(.15f,0.f); }
     ViewMode=Signal=0;
     bBraking=false;
@@ -581,10 +652,16 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         return;
     }
     const float T=FMath::Clamp(DeltaSeconds,0.f,.10f);
+    const bool bBike = FleetBody && FleetBody->WheelCount == 2;
+    const bool bRickshaw = FleetBody && FleetBody->WheelCount == 3;
+    const bool bHeavy = FleetBody && FleetBody->HalfLength > 300.;
+    const double Wheelbase = FleetBody ? FleetBody->Wheelbase : 260.;
+    const double Track = FleetBody ? FleetBody->Track : 77.;
     const float Mass=bCrossover?1540.f:1210.f;
     const float Grip=(bCrossover?.89f:.96f)*FMath::Lerp(1.f,.65f,Wetness);
     const float AbsSpeed=FMath::Abs(Speed);
-    const float MaxVelocity=bCrossover?2420.f:2660.f;
+    const float MaxVelocity=bRickshaw?1520.f:bHeavy?2000.f:bCrossover?2420.f:2660.f;
+    const float ReverseSpeed=bBike?115.f:bHeavy?300.f:ReverseLimit;
     const bool Opposing=Throttle*Speed < -12.f;
     const float PrevSpeed=Speed;
     const int32 PreviousGear=Gear;
@@ -595,9 +672,11 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     }
     else if (Fuel>0.f && FMath::Abs(Throttle)>.05f)
     {
-        const float Force=(bCrossover?4820.f:4050.f)*FMath::Lerp(1.f,.50f,FMath::Clamp(AbsSpeed/MaxVelocity,0.f,1.f));
-        const float Accel=100.f*Force/Mass*FMath::Lerp(.54f,1.f,Condition);
-        Speed=FMath::FInterpConstantTo(Speed,Throttle>0?MaxVelocity:-ReverseLimit,T,Accel*FMath::Abs(Throttle));
+        const float StandingAccel = bBike ? 435.f : bRickshaw ? 240.f : bHeavy ? 185.f
+            : 100.f * (bCrossover ? 4820.f : 4050.f) / Mass;
+        const float Accel = StandingAccel * FMath::Lerp(1.f,.50f,FMath::Clamp(AbsSpeed/MaxVelocity,0.f,1.f))
+            * FMath::Lerp(.54f,1.f,Condition);
+        Speed=FMath::FInterpConstantTo(Speed,Throttle>0?MaxVelocity:-ReverseSpeed,T,Accel*FMath::Abs(Throttle));
     }
     else
     {
@@ -606,7 +685,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     }
     const float SteerLimit=FMath::Lerp(34.f,13.f,FMath::Clamp(AbsSpeed/2100.f,0.f,1.f));
     TurnAngle=FMath::FInterpTo(TurnAngle,Steering*SteerLimit,T,7.f);
-    float TurnRate=FMath::RadiansToDegrees((Speed/260.f)*FMath::Tan(FMath::DegreesToRadians(TurnAngle)));
+    float TurnRate=FMath::RadiansToDegrees((Speed/Wheelbase)*FMath::Tan(FMath::DegreesToRadians(TurnAngle)));
     const float MaxRate=FMath::RadiansToDegrees(981.f*Grip/FMath::Max(110.f,AbsSpeed));
     TurnRate=FMath::Clamp(TurnRate,-MaxRate,MaxRate);
     Fuel=FMath::Max(0.f,Fuel-(FMath::Abs(Speed)*T/13000000.f));
@@ -614,6 +693,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     const int32 Steps=FMath::Max(1,FMath::CeilToInt(FMath::Abs(Speed)*T/22.f));
     const double StepT=T/Steps;
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontCarTurn),false,this);
+    double Travel = 0.;
     for (int32 S=0; S<Steps; ++S)
     {
         const FVector Here=GetActorLocation();
@@ -632,13 +712,15 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         ContactCount=4;
         const double Front=(H[0]+H[2])*.5, Rear=(H[1]+H[3])*.5;
         const double Right=(H[2]+H[3])*.5, Left=(H[0]+H[1])*.5;
-        const double Pitch=FMath::RadiansToDegrees(FMath::Atan2(Front-Rear,260.));
-        const double Bank=FMath::RadiansToDegrees(FMath::Atan2(Right-Left,154.));
-        const double Camber=FMath::Clamp(Speed*FMath::DegreesToRadians(TurnRate)*.0024,-3.4,3.4);
+        const double Pitch=FMath::RadiansToDegrees(FMath::Atan2(Front-Rear,Wheelbase));
+        const double Bank=Track > 0. ? FMath::RadiansToDegrees(FMath::Atan2(Right-Left,Track*2.)) : 0.;
+        const double LeanLimit = bBike ? 19. : 3.4;
+        const double Camber=FMath::Clamp(Speed*FMath::DegreesToRadians(TurnRate)*(bBike?-.026:.0024),
+            -LeanLimit,LeanLimit);
         BodyRoll=FMath::FInterpTo(BodyRoll,float(Camber),StepT,5.);
         const FRotator Facing(FMath::FInterpTo(Previous.Pitch,Pitch+FMath::Clamp(Accel*.0017,-1.6,1.2),StepT,7.),
             Yaw,FMath::FInterpTo(Previous.Roll,-Bank+BodyRoll,StepT,8.));
-        Desired.Z=(Front+Rear)*.5+68.;
+        Desired.Z=(Front+Rear)*.5+GroundHeight;
         if (GetWorld()->OverlapBlockingTestByProfile(Desired,Facing.Quaternion(),Body->GetCollisionProfileName(),
             FCollisionShape::MakeBox(Body->GetScaledBoxExtent()),Query))
         {
@@ -651,8 +733,10 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         FRotator Look=Controller->GetControlRotation();
         Look.Yaw+=TurnRate*StepT;
         Controller->SetControlRotation(Look);
+        const double StepTravel = FVector::Dist2D(Here,GetActorLocation()) * FMath::Sign(Speed);
+        Travel += StepTravel;
         const double Radius=bDetailedVisuals?DetailedWheelRadius:WheelRadius;
-        WheelAngle=FMath::Fmod(WheelAngle-float(FMath::RadiansToDegrees(FVector::Dist2D(Here,GetActorLocation())/Radius))*FMath::Sign(Speed),360.f);
+        WheelAngle=FMath::Fmod(WheelAngle-float(FMath::RadiansToDegrees(StepTravel/Radius)),360.f);
         if (bDetailedVisuals)
         {
             for (int32 I=0;I<4;++I)
@@ -666,7 +750,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         }
     }
     const float Ratios[]={3.76f,2.18f,1.48f,1.08f,.84f,.69f};
-    const float WheelRpm=FMath::Abs(Speed)*60.f/(2.f*PI*float(DetailedWheelRadius));
+    const float WheelRpm=FMath::Abs(Speed)*60.f/(2.f*PI*float(FleetBody ? FleetBody->TyreRadius : DetailedWheelRadius));
     const float Coupled=WheelRpm*4.08f;
     if (Gear<6 && Coupled*Ratios[Gear-1]>3800.f) ++Gear;
     else if (Gear>1 && Coupled*Ratios[Gear-1]<1400.f) --Gear;
@@ -680,6 +764,11 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         HitSoundDelay=.45f;
     }
     UpdateMotorAudio();
+    if (FleetBody)
+    {
+        FleetBody->AnimateWheels(Travel, TurnAngle);
+        UpdateDrivingLights();
+    }
     UpdateSignalLenses(T);
     for (USceneComponent* Steer : SteerPivots)
     {
@@ -731,9 +820,17 @@ bool ARiverfrontCar::SampleWheels(const FVector& Centre,double Yaw,double (&H)[4
     const FRotator Heading(0,Yaw,0);
     for (int32 I=0;I<4;++I)
     {
-        const FVector Wheel=Centre+Heading.RotateVector(FVector(I%2==0?122.:-138.,I<2?-77.:77.,0));
+        const bool bFront = I % 2 == 0;
+        const double Axle = FleetBody ? FleetBody->Wheelbase * .5 * (bFront ? 1. : -1.) : bFront ? 122. : -138.;
+        const double HalfTrack = FleetBody ? (bFront && FleetBody->WheelCount == 3 ? 0. : FleetBody->Track) : 77.;
+        if (I >= 2 && HalfTrack == 0.)
+        {
+            H[I] = H[I-2];
+            continue;
+        }
+        const FVector Wheel=Centre+Heading.RotateVector(FVector(Axle,I<2?-HalfTrack:HalfTrack,0));
         FHitResult Hit;
-        if (!FindGround(GetWorld(),Wheel,this,Hit)) return false;
+        if (!FindGround(GetWorld(),Wheel,this,Hit,GroundHeight)) return false;
         H[I]=Hit.ImpactPoint.Z;
     }
     return true;
@@ -744,7 +841,7 @@ void ARiverfrontCar::CycleCamera()
     CameraFrom=LastCameraLocation;
     RotationFrom=LastCameraRotation;
     ViewBlend=HasCameraSample?0.f:1.f;
-    ViewMode=(ViewMode+1)%3;
+    ViewMode=(ViewMode+1)%(FleetBody?2:3);
     if (Controller) Controller->SetControlRotation(FRotator(ViewMode==0?-13.:-3.,GetActorRotation().Yaw,0));
 }
 
@@ -754,8 +851,9 @@ void ARiverfrontCar::CalcCamera(float Dt,FMinimalViewInfo& View)
     if (ViewMode!=0 && Controller)
     {
         const FRotator Look=Controller->GetControlRotation(), Facing=GetActorRotation();
-        View.Location=GetActorTransform().TransformPosition(ViewMode==1?
-            FVector(-33,37,bCrossover?61:55):FVector(115,0,bCrossover?37:29));
+        const FVector Seat = FleetBody ? FVector(FleetBody->HalfLength + 6.,0,GetCollisionExtents().Z * .53)
+            : ViewMode==1 ? FVector(-33,37,bCrossover?61:55) : FVector(115,0,bCrossover?37:29);
+        View.Location=GetActorTransform().TransformPosition(Seat);
         const double Relative=FMath::FindDeltaAngleDegrees(Facing.Yaw,Look.Yaw);
         View.Rotation=FRotator(FMath::Clamp(Look.Pitch>180?Look.Pitch-360:Look.Pitch,-42.,38.)+Facing.Pitch,
             Facing.Yaw+FMath::Clamp(Relative,-105.,105.),Facing.Roll*.42);
@@ -880,7 +978,7 @@ bool ARiverfrontCar::TravelToStreet(const FVector& Position, double Heading)
     if (!Driver || GetSpeedKph()>1.f) return false;
     double Wheels[4];
     if (!SampleWheels(Position,Heading,Wheels)) return false;
-    const FVector Arrival(Position.X,Position.Y,(Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25+68.);
+    const FVector Arrival(Position.X,Position.Y,(Wheels[0]+Wheels[1]+Wheels[2]+Wheels[3])*.25+GroundHeight);
     if (!TeleportTo(Arrival,FRotator(0,Heading,0))) return false;
     StopHatchbackPhysics(false);
     Speed=Throttle=Steering=TurnAngle=BodyRoll=0.f;

@@ -9,6 +9,7 @@ class ARiverfrontWorld;
 class USplineComponent;
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
+class ARiverfrontCharacter;
 class ARiverfrontCar;
 
 UCLASS()
@@ -20,16 +21,27 @@ public:
     bool Assemble(int32 Style, int32 Variant);
     bool MoveOnRoad(const FVector& Position, const FRotator& Heading, double Travel, bool Near);
     void UpdateLights(bool Night, bool Stopping, bool Project);
+    void AnimateWheels(double Travel, double Steering);
+    void SetManualDriver(const ARiverfrontCharacter* Driver);
+    bool IsNearAccess(const ARiverfrontCharacter& Character) const;
+    const TCHAR* GetVehicleLabel() const;
+    FVector GetDriveHull() const { return FVector(HalfLength, HalfWidth, (RoofHeight - 12.) * .5); }
+    double GetRideHeight() const { return GetDriveHull().Z + 12.; }
+    double GetAccessX() const;
     double HalfLength=200., HalfWidth=85., TyreRadius=32.;
-    double Wheelbase=240.;
+    double Wheelbase=240., Track=77.;
+    int32 WheelCount=4;
     bool IsEmergency=false;
 private:
     UPROPERTY() TObjectPtr<UBoxComponent> Bounds;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> DriverFigure;
     UPROPERTY() TArray<TObjectPtr<USceneComponent>> Wheels;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Beacons;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> HeadLens;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailLens;
     UPROPERTY() TObjectPtr<USpotLightComponent> DippedBeam;
+    int32 BodyStyle=0;
+    double RoofHeight=150.;
     int32 LightState=-1;
     int32 FrontWheels=0;
     float Spin=0;
@@ -57,6 +69,9 @@ public:
     int32 GetTurns() const { return Turns; }
     double GetTravelMetres() const { return TravelCm/100.; }
     FVector GetCrossing() const { return PedestrianCrossing; }
+    ARiverfrontCar* FindParkedCar(const ARiverfrontCharacter& Character) const;
+    const ARiverfrontRoadAgent* FindEnterableVehicle(const ARiverfrontCharacter& Character) const;
+    bool EnterVehicle(ARiverfrontCharacter& Character);
 private:
     UPROPERTY() TArray<TObjectPtr<USplineComponent>> Routes;
     UPROPERTY() TArray<TObjectPtr<ARiverfrontRoadAgent>> Agents;

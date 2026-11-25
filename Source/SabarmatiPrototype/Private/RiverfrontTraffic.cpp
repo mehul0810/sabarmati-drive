@@ -1,6 +1,7 @@
 #include "RiverfrontTraffic.h"
 #include "Algo/Reverse.h"
 #include "RiverfrontCar.h"
+#include "RiverfrontCharacter.h"
 #include "RiverfrontPedestrian.h"
 #include "RiverfrontCrossings.h"
 #include "RiverfrontWorld.h"
@@ -26,15 +27,22 @@ namespace
 constexpr double CrossingHalfRoadWidth = 510.;
 constexpr double CrossingHalfStripeWidth = 142.5;
 constexpr double CrossingClearance = CrossingHalfStripeWidth + 16.;
+constexpr double BoardingSpeed = 42.; // Walking up to traffic that has come to a stop.
 
-struct FVehicleShape { const TCHAR* Name; float Length, Width, Wheel, Axle, Track; int32 WheelCount; };
+struct FVehicleShape { const TCHAR* Name; const TCHAR* Label; float Length, Width, Wheel, Axle, Track; int32 WheelCount; };
 const FVehicleShape Bodies[]={
-    {TEXT("Rickshaw"),257,141,22,77,53,3},{TEXT("Scooter"),188,52,22,63,0,2},
-    {TEXT("Sedan"),467,183,32,143,78,4},{TEXT("Bus"),860,240,43,273,97,4},
-    {TEXT("PremiumHatch"),406,175,31,122,73,4},{TEXT("Motorcycle"),195,60,28,65,0,2},
-    {TEXT("Van"),490,194,35,149,80,4},{TEXT("LuxurySUV"),508,198,37,157,84,4},
-    {TEXT("Truck"),683,228,44,215,92,4},{TEXT("Sport"),436,194,32,132,83,4},
-    {TEXT("Ambulance"),513,201,35,156,84,4},{TEXT("Lorry"),810,239,48,258,100,4}};
+    {TEXT("Rickshaw"),TEXT("Auto-rickshaw"),257,141,22,77,53,3},
+    {TEXT("Scooter"),TEXT("Scooter"),188,52,22,63,0,2},
+    {TEXT("Sedan"),TEXT("Sedan"),467,183,32,143,78,4},
+    {TEXT("Bus"),TEXT("Bus"),860,240,43,273,97,4},
+    {TEXT("PremiumHatch"),TEXT("City hatchback"),406,175,31,122,73,4},
+    {TEXT("Motorcycle"),TEXT("Motorcycle"),195,60,28,65,0,2},
+    {TEXT("Van"),TEXT("Van"),490,194,35,149,80,4},
+    {TEXT("LuxurySUV"),TEXT("SUV"),508,198,37,157,84,4},
+    {TEXT("Truck"),TEXT("Truck"),683,228,44,215,92,4},
+    {TEXT("Sport"),TEXT("Sport coupe"),436,194,32,132,83,4},
+    {TEXT("Ambulance"),TEXT("Ambulance"),513,201,35,156,84,4},
+    {TEXT("Lorry"),TEXT("Lorry"),810,239,48,258,100,4}};
 UStaticMesh* MeshAt(const FString& Path) { return LoadObject<UStaticMesh>(nullptr,*(Path+TEXT(".")+FPaths::GetCleanFilename(Path))); }
 }
 ARiverfrontRoadAgent::ARiverfrontRoadAgent()
@@ -45,9 +53,10 @@ ARiverfrontRoadAgent::ARiverfrontRoadAgent()
 }
 bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
 {
-    const auto& S=Bodies[Style%UE_ARRAY_COUNT(Bodies)];
-    HalfLength=S.Length*.5; HalfWidth=S.Width*.5; TyreRadius=S.Wheel; IsEmergency=Style%UE_ARRAY_COUNT(Bodies)==10;
-    Wheelbase=2.*S.Axle;
+    BodyStyle = Style;
+    const auto& S=Bodies[BodyStyle];
+    HalfLength=S.Length*.5; HalfWidth=S.Width*.5; TyreRadius=S.Wheel; IsEmergency=BodyStyle==10;
+    Wheelbase=2.*S.Axle; Track=S.Track; WheelCount=S.WheelCount;
     FrontWheels=S.WheelCount==4?2:1;
     Bounds->SetBoxExtent(FVector(HalfLength,HalfWidth,S.Wheel*.85));
     const FString Base=TEXT("/Game/Sabarmati/Riverfront/Vehicles/");
@@ -59,6 +68,7 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         UE_LOG(LogTemp,Warning,TEXT("Sabarmati road traffic: missing body or wheels for %s."),S.Name);
         return false;
     }
+    RoofHeight = Model->GetBounds().Origin.Z + Model->GetBounds().BoxExtent.Z;
     auto Visual=[&](UStaticMesh* M,USceneComponent* Parent,const FVector& At,const FRotator& Facing,const FVector& Scale)
     {
         auto* C=NewObject<UStaticMeshComponent>(this); AddInstanceComponent(C); C->SetupAttachment(Parent);
@@ -100,8 +110,8 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         const double DriverX=Open?(S.WheelCount==3?41.:2.):(S.Length>600?S.Length*.35:S.Length*.035);
         const double SeatZ=Open?(S.WheelCount==3?-2.:6.):(S.Length>600?44.:0.);
         const double Side=Open?0.:S.Width*.21;
-        Visual(Occupant(Variant),Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
-        if (Style%12==3)
+        DriverFigure=Visual(Occupant(Variant),Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
+        if (BodyStyle==3)
             for (int32 Row=0;Row<3;++Row)
                 Visual(Occupant(Variant+Row+1),Bounds,FVector(75-Row*104.,-56.,38.-S.Wheel),FRotator(0,-90,0),FVector(.9));
     }
@@ -135,6 +145,57 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
     }
     return true;
 }
+
+const TCHAR* ARiverfrontRoadAgent::GetVehicleLabel() const
+{
+    return Bodies[BodyStyle].Label;
+}
+
+double ARiverfrontRoadAgent::GetAccessX() const
+{
+    if (HalfLength > 300.) return HalfLength * .70;
+    return WheelCount == 3 ? 41. : 10.;
+}
+
+bool ARiverfrontRoadAgent::IsNearAccess(const ARiverfrontCharacter& Character) const
+{
+    const FVector Local = GetActorTransform().InverseTransformPosition(Character.GetActorLocation());
+    const double Height = Local.Z + TyreRadius + 6.;
+    if (IsHidden() || Height < 20. || Height > 190.
+        || FMath::Abs(Local.X - GetAccessX()) > (HalfLength > 300. ? 120. : 103.)
+        || FMath::Abs(Local.Y) > HalfWidth + 125.)
+    {
+        return false;
+    }
+    const FVector Anchor = GetActorTransform().TransformPosition(
+        FVector(GetAccessX(), FMath::Sign(Local.Y) * (HalfWidth + 9.), Local.Z));
+    FHitResult Hit;
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontBoarding), false, &Character);
+    return !GetWorld()->LineTraceSingleByChannel(Hit, Character.GetActorLocation(), Anchor, ECC_Visibility, Query)
+        || Hit.GetActor() == this || Hit.GetActor() == GetAttachParentActor();
+}
+
+void ARiverfrontRoadAgent::SetManualDriver(const ARiverfrontCharacter* Driver)
+{
+    if (!DriverFigure) return;
+    if (Driver)
+    {
+        auto* Mesh = Driver->GetAvatarGender() == ERiverfrontGender::Female
+            ? MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Female/Poses/SM_FemaleSeatedResident"))
+            : MeshAt(TEXT("/Game/Sabarmati/Riverfront/People/SM_SeatedResident"));
+        if (Mesh) DriverFigure->SetStaticMesh(Mesh);
+    }
+    DriverFigure->SetVisibility(Driver != nullptr);
+}
+
+void ARiverfrontRoadAgent::AnimateWheels(double Travel, double Steering)
+{
+    Spin = FMath::Fmod(Spin - float(FMath::RadiansToDegrees(Travel / TyreRadius)), 360.f);
+    for (int32 I = 0; I < Wheels.Num(); ++I)
+        Wheels[I]->SetRelativeRotation(FRotator(0,I<FrontWheels?Steering:0.,0).Quaternion()
+            * FRotator(Spin,0,0).Quaternion());
+}
+
 bool ARiverfrontRoadAgent::MoveOnRoad(const FVector& Position,const FRotator& Heading,double Travel,bool Near)
 {
     const double Turn=FMath::FindDeltaAngleDegrees(GetActorRotation().Yaw,Heading.Yaw);
@@ -143,12 +204,9 @@ bool ARiverfrontRoadAgent::MoveOnRoad(const FVector& Position,const FRotator& He
     if (Hit.bBlockingHit) return false;
     if (Near)
     {
-        Spin=FMath::Fmod(Spin-float(FMath::RadiansToDegrees(Travel/TyreRadius)),360.f);
         const double Steering=Travel>1.?FMath::Clamp(FMath::RadiansToDegrees(
             FMath::Atan(FMath::DegreesToRadians(Turn)*Wheelbase/Travel)),-32.,32.):0.;
-        for (int32 I=0;I<Wheels.Num();++I)
-            Wheels[I]->SetRelativeRotation(FRotator(0,I<FrontWheels?Steering:0.,0).Quaternion()
-                * FRotator(Spin,0,0).Quaternion());
+        AnimateWheels(Travel, Steering);
         for (int32 I=0;I<Beacons.Num();++I) Beacons[I]->SetVisibility((int32(GetWorld()->GetTimeSeconds()*5.)+I)%2==0);
     }
     return true;
@@ -157,6 +215,73 @@ ARiverfrontTraffic::ARiverfrontTraffic()
 {
     RootComponent=CreateDefaultSubobject<USceneComponent>(TEXT("RoadNetwork"));
     PrimaryActorTick.bCanEverTick=true; PrimaryActorTick.TickInterval=.05f;
+}
+
+ARiverfrontCar* ARiverfrontTraffic::FindParkedCar(const ARiverfrontCharacter& Character) const
+{
+    ARiverfrontCar* Closest = nullptr;
+    double Best = TNumericLimits<double>::Max();
+    for (const auto& WeakCar : Parked)
+    {
+        auto* Car = WeakCar.Get();
+        if (!Car || !Car->IsNearDoor(Character)) continue;
+        const double Distance = FVector::DistSquared2D(Car->GetActorLocation(), Character.GetActorLocation());
+        if (Distance < Best)
+        {
+            Best = Distance;
+            Closest = Car;
+        }
+    }
+    return Closest;
+}
+
+const ARiverfrontRoadAgent* ARiverfrontTraffic::FindEnterableVehicle(const ARiverfrontCharacter& Character) const
+{
+    const ARiverfrontRoadAgent* Closest = nullptr;
+    double Best = TNumericLimits<double>::Max();
+    for (int32 I = 0; I < Agents.Num(); ++I)
+    {
+        const auto* Agent = Agents[I].Get();
+        if (!IsValid(Agent) || Drivers[I].Speed > BoardingSpeed) continue;
+        const double Distance = FVector::DistSquared2D(Agent->GetActorLocation(), Character.GetActorLocation());
+        if (Distance < Best && Agent->IsNearAccess(Character))
+        {
+            Best = Distance;
+            Closest = Agent;
+        }
+    }
+    return Closest;
+}
+
+bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
+{
+    const auto* Target = FindEnterableVehicle(Character);
+    const int32 Index = Target ? Agents.IndexOfByPredicate([Target](const auto& Agent)
+    {
+        return Agent.Get() == Target;
+    }) : INDEX_NONE;
+    if (Index == INDEX_NONE) return false;
+
+    ARiverfrontRoadAgent* Agent = Agents[Index];
+    FTransform Placement = Agent->GetActorTransform();
+    Placement.AddToTranslation(Placement.TransformVectorNoScale(FVector(0, 0,
+        Agent->GetRideHeight() - Agent->TyreRadius - 6.)));
+    auto* Car = GetWorld()->SpawnActorDeferred<ARiverfrontCar>(ARiverfrontCar::StaticClass(), Placement,
+        nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    if (!Car) return false;
+    Car->UseTrafficBody(*Agent);
+    Car->SetRoadWetness(District.IsValid() ? District->GetWetness() : 0.f);
+    Car->FinishSpawning(Placement);
+    if (!Car->Enter(Character))
+    {
+        Car->Destroy();
+        return false;
+    }
+
+    Agents.RemoveAtSwap(Index, EAllowShrinking::No);
+    Drivers.RemoveAtSwap(Index, EAllowShrinking::No);
+    Parked.Add(Car);
+    return true;
 }
 void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse,bool bClosed)
 {
@@ -426,7 +551,8 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
             const FVector V=C->GetActorLocation()-At;
             if (!bCity && Along && !C->IsOccupied() && V.Dot(D)>-360 && V.Dot(D)<1600 &&
                 FMath::Abs(V.X*D.Y-V.Y*D.X)<340) Obstacle=true;
-            Ahead(C->GetActorLocation(),210,91);
+            const FVector Hull = C->GetCollisionExtents();
+            Ahead(C->GetActorLocation(),Hull.X,Hull.Y);
         }
     if (const auto* PC=GetWorld()->GetFirstPlayerController())
         if (const APawn* Pawn=PC->GetPawn();Pawn && !Cast<ARiverfrontCar>(Pawn)) Ahead(Pawn->GetActorLocation(),36,37);

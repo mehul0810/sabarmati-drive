@@ -161,6 +161,8 @@ ARiverfrontCar* ARiverfrontGameMode::SpawnCrossover(ARiverfrontWorld& WorldActor
 
 ARiverfrontCar* ARiverfrontGameMode::FindEnterableCar(const ARiverfrontCharacter& Character) const
 {
+    if (Traffic)
+        if (ARiverfrontCar* Available = Traffic->FindParkedCar(Character)) return Available;
     ARiverfrontCar* Result = nullptr;
     double Nearest = TNumericLimits<double>::Max();
     for (ARiverfrontCar* Candidate : {Car.Get(), Crossover.Get()})

@@ -5,6 +5,7 @@
 #include "RiverfrontCar.generated.h"
 
 class ARiverfrontCharacter;
+class ARiverfrontRoadAgent;
 class UBoxComponent;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
@@ -24,12 +25,15 @@ class SABARMATIPROTOTYPE_API ARiverfrontCar : public APawn
 public:
     ARiverfrontCar();
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 
     void UseCrossoverBody() { bCrossover = true; }
     static FVector GetCrossoverBounds() { return FVector(229, 99, 53); }
-    const TCHAR* GetVehicleLabel() const { return bCrossover ? TEXT("Crossover") : TEXT("Hatchback"); }
+    const TCHAR* GetVehicleLabel() const;
+    void UseTrafficBody(ARiverfrontRoadAgent& Agent);
+    FVector GetCollisionExtents() const;
 
     void SetNightDriving(bool AtNight);
     void OperateDoor(const FVector& User);
@@ -48,7 +52,7 @@ public:
     bool IsOccupied() const { return Driver.Get() != nullptr; }
     bool FindDriverExit(FVector& Point, int32& Side) const;
     bool IsNearDoor(const ARiverfrontCharacter& Character) const;
-    void Enter(ARiverfrontCharacter& Character);
+    bool Enter(ARiverfrontCharacter& Character);
     float GetSpeedKph() const { return FMath::Abs(Speed) * 0.036f; }
     FString GetHint() const;
 
@@ -65,6 +69,7 @@ private:
     TObjectPtr<UCameraComponent> Camera;
     UPROPERTY()
     TObjectPtr<ARiverfrontCharacter> Driver;
+    UPROPERTY() TObjectPtr<ARiverfrontRoadAgent> FleetBody;
     UPROPERTY()
     TObjectPtr<UStaticMesh> BoxMesh;
     UPROPERTY()
@@ -121,6 +126,7 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TurnMaterial;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> ReverseMaterial;
     FTransform Home;
+    double GroundHeight = 68.;
     float Speed = 0.f;
     float Throttle = 0.f;
     float Steering = 0.f;
