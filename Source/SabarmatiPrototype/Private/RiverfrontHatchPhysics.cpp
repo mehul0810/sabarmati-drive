@@ -138,7 +138,7 @@ void ARiverfrontCar::UpdateHatchbackWheels()
 {
     auto& Motion = *VehicleMovement;
     if (!Motion.HasValidPhysicsState()) return;
-    const float Friction = FMath::Lerp(1.04f,.73f,Wetness);
+    const float Friction = FMath::Lerp(1.23f,.91f,Wetness);
     const bool bFrictionChanged = !FMath::IsNearlyEqual(Friction, AppliedTyreFriction, .006f);
     ContactCount = 0;
     TurnAngle = 0.f;
@@ -176,7 +176,7 @@ void ARiverfrontCar::TickHatchbackPhysics(float DeltaSeconds)
     Motion.SetThrottleInput(bBraking || bOpposing || Fuel<=0.f ? 0.f
         : FMath::Abs(Throttle)*Limiter*FMath::Lerp(.54f,1.f,Condition));
     Motion.SetBrakeInput(bBraking || bOpposing ? 1.f : 0.f);
-    Motion.SetSteeringInput(Steering);
+    Motion.SetSteeringInput(Steering*FMath::Lerp(1.f,.48f,FMath::Clamp((FMath::Abs(Speed)-850.f)/2000.f,0.f,1.f)));
 
     const double Yaw = GetActorRotation().Yaw;
     FRotator Look = Controller->GetControlRotation();

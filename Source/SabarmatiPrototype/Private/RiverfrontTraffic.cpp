@@ -1,4 +1,6 @@
 #include "RiverfrontTraffic.h"
+#include "RiverfrontLocalProfile.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "SabarmatiDistrict.h"
 #include "Algo/Reverse.h"
 #include "RiverfrontCar.h"
@@ -118,6 +120,7 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
         const double DriverX=Open?(S.WheelCount==3?41.:2.):(S.Length>600?S.Length*.35:S.Length*.035);
         const double SeatZ=Open?(S.WheelCount==3?-2.:6.):(S.Length>600?44.:0.);
         const double Side=Open?0.:S.Width*.21;
+        bFemaleOccupant=Variant%2==0 && FemaleSeated;
         DriverFigure=Visual(Occupant(Variant),Bounds,FVector(DriverX,Side,SeatZ-S.Wheel-6),FRotator(0,-90,0),FVector(.94));
         if (BodyStyle==3)
             for (int32 Row=0;Row<3;++Row)
@@ -160,6 +163,22 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
 const TCHAR* ARiverfrontRoadAgent::GetVehicleLabel() const
 {
     return Bodies[BodyStyle].Label;
+}
+
+float ARiverfrontRoadAgent::GetTopSpeed() const
+{
+    // Per-body speed governors in cm/s, in the same order as the imported fleet.
+    static constexpr float Limits[]={1520,2220,3890,1945,3335,4720,2780,3890,2220,5555,3335,2085};
+    static_assert(UE_ARRAY_COUNT(Limits)==UE_ARRAY_COUNT(Bodies));
+    return Limits[BodyStyle];
+}
+
+FVector ARiverfrontRoadAgent::SeatPoint() const
+{
+    // Hip pivot of the seated occupant, relative to the axle origin.
+    const double Side=WheelCount<4?0.:HalfWidth*.42;
+    const double Height=WheelCount==2?77.:WheelCount==3?50.:HalfLength>300.?99.:52.;
+    return FVector(GetAccessX(),Side,Height-TyreRadius-6.);
 }
 
 double ARiverfrontRoadAgent::GetAccessX() const
@@ -294,6 +313,27 @@ bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
         return false;
     }
 
+    if (!Drivers[Index].bParked)
+    {
+        FVector Clear;
+        int32 Side=1;
+        if (Car->FindDriverExit(Clear,Side))
+        {
+            const FVector Out=Car->GetActorRightVector()*Side;
+            FActorSpawnParameters Params;
+            Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+            if (auto* Passenger=GetWorld()->SpawnActor<ARiverfrontCharacter>(Clear,Out.Rotation(),Params))
+            {
+                auto* Look=NewObject<URiverfrontLocalProfile>(Passenger);
+                Look->AvatarGender=Agent->bFemaleOccupant?ERiverfrontGender::Female:ERiverfrontGender::Male;
+                Passenger->ApplyProfileAppearance(*Look);
+                Passenger->GetCharacterMovement()->bRunPhysicsWithNoController=true;
+                Passenger->LaunchCharacter(Out*275.+FVector(0,0,210.),true,true);
+                Passenger->SetLifeSpan(24.f);
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic: displaced driver exited %s."),Agent->GetVehicleLabel());
+            }
+        }
+    }
     Agents.RemoveAtSwap(Index, EAllowShrinking::No);
     Drivers.RemoveAtSwap(Index, EAllowShrinking::No);
     Parked.Add(Car);
@@ -393,10 +433,17 @@ FTransform ARiverfrontTraffic::RoadPose(const USplineComponent& Route,double Dis
     return FTransform(Facing,Centre);
 }
 
-bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,int32 Variant)
+bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,int32 Variant,bool ParkAtKerb)
 {
     const auto& Shape=Bodies[Style];
-    const FTransform Pose=RoadPose(*Routes[Route],Distance,0.,Shape.Wheel,2.*Shape.Axle,true);
+    const FTransform Pose=RoadPose(*Routes[Route],Distance,ParkAtKerb?-193.:0.,Shape.Wheel,2.*Shape.Axle,true);
+    if (ParkAtKerb)
+    {
+        FHitResult Floor;
+        const FVector P=Pose.GetLocation();
+        if (!GetWorld()->LineTraceSingleByObjectType(Floor,P+FVector(0,0,20),P-FVector(0,0,100),
+            FCollisionObjectQueryParams(ECC_WorldStatic)) || Floor.ImpactNormal.Z<.95 || FMath::Abs(Floor.ImpactPoint.Z)>4.) return false;
+    }
     // Leave room for moving traffic to brake, even on circuits that share a lane.
     const FCollisionShape Clearance=FCollisionShape::MakeBox(FVector(Shape.Length*.5+245.,Shape.Width*.5+12.,Shape.Wheel*.8));
     if (GetWorld()->OverlapBlockingTestByProfile(Pose.GetLocation(),Pose.GetRotation(),TEXT("BlockAllDynamic"),Clearance))
@@ -415,6 +462,8 @@ bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,in
     LaneState.At=Distance;
     const double BaseSpeed=Shape.WheelCount<4?650.:Shape.Length>600.?620.:790.;
     LaneState.Cruise=BaseSpeed+(Variant*67)%207;
+    LaneState.bParked=ParkAtKerb;
+    if (ParkAtKerb) Agent->SetDriverVisible(false);
     Drivers.Add(LaneState);
     Agents.Add(Agent);
     return true;
@@ -493,6 +542,17 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         }
     }
     const int32 StreetCount=Agents.Num();
+    const int32 KerbFleet[]={9,5,2,4,0,7};
+    int32 ParkedCount=0;
+    const auto* NearLane=Routes[Nearest].Get();
+    const double Origin=NearLane->GetDistanceAlongSplineAtLocation(StreetStart,ESplineCoordinateSpace::World);
+    for (int32 I=0;I<36 && ParkedCount<UE_ARRAY_COUNT(KerbFleet);++I)
+    {
+        const double Distance=Origin+(I%2?1.:-1.)*(2400.+(I/2)*1020.);
+        if (Distance<700. || Distance>NearLane->GetSplineLength()-700.) continue;
+        if (SpawnVehicle(Nearest,Distance,KerbFleet[ParkedCount],I+21,true)) ++ParkedCount;
+    }
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati parking: %d curbside vehicles"),ParkedCount);
     const int32 Population=bCity?30:36;
     for (int32 I=0;I<Population*2 && Agents.Num()<Population;++I)
     {
@@ -674,6 +734,11 @@ void ARiverfrontTraffic::Tick(float Dt)
     for (int32 I=0;I<Agents.Num();++I)
     {
         auto* A=Agents[I].Get(); auto& L=Drivers[I]; auto* R=Routes[L.Route].Get();
+        if (L.bParked)
+        {
+            A->SetActorHiddenInGame(FVector::DistSquared2D(A->GetActorLocation(),Eye)>FMath::Square(51000.));
+            continue;
+        }
         const bool Near=FVector::DistSquared2D(A->GetActorLocation(),Eye)<FMath::Square(23000.);
         const double Length=R->GetSplineLength();
         const bool bClosed=R->IsClosedLoop();

@@ -7,6 +7,7 @@
 class ARiverfrontCharacter;
 class ARiverfrontRoadAgent;
 class UBoxComponent;
+class UPoseableMeshComponent;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class USpotLightComponent;
@@ -70,6 +71,9 @@ private:
     UPROPERTY()
     TObjectPtr<ARiverfrontCharacter> Driver;
     UPROPERTY() TObjectPtr<ARiverfrontRoadAgent> FleetBody;
+    UPROPERTY() TObjectPtr<UPoseableMeshComponent> SeatedPlayer;
+    void SeatPlayer(const ARiverfrontCharacter& Walker);
+    void ClearSeat();
     UPROPERTY()
     TObjectPtr<UStaticMesh> BoxMesh;
     UPROPERTY()

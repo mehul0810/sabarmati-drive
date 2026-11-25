@@ -31,6 +31,10 @@ public:
     double GetAccessX() const;
     double HalfLength=200., HalfWidth=85., TyreRadius=32.;
     double Wheelbase=240., Track=77.;
+    float GetTopSpeed() const;
+    bool IsSport() const { return BodyStyle==9; }
+    FVector SeatPoint() const;
+    bool bFemaleOccupant=false;
     int32 WheelCount=4;
     bool IsEmergency=false;
 private:
@@ -54,6 +58,7 @@ struct FSabarmatiLane
     int32 ClearingJunction=INDEX_NONE;
     double At=0, Speed=0, Cruise=800, Offset=0;
     bool WasStopped=false;
+    bool bParked=false;
 };
 
 UCLASS()
@@ -88,7 +93,7 @@ private:
     bool bCity=false;
     void AddDistrictRoute(const TArray<FVector>& Nodes, bool Closed=true);
     void Lane(const TArray<FVector>& Nodes, bool Reverse, bool bClosed=true);
-    bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant);
+    bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant, bool ParkAtKerb=false);
     FTransform RoadPose(const USplineComponent& Route, double Distance, double Offset,
         double Radius, double Wheelbase, bool bSampleRoad) const;
     void SetUpSignals();

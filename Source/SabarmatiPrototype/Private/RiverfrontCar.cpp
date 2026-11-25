@@ -1,4 +1,5 @@
 #include "RiverfrontCar.h"
+#include "Components/PoseableMeshComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "EngineUtils.h"
@@ -509,6 +510,73 @@ bool ARiverfrontCar::IsNearDoor(const ARiverfrontCharacter& Character) const
     return false;
 }
 
+void ARiverfrontCar::ClearSeat()
+{
+    if (!SeatedPlayer) return;
+    TArray<USceneComponent*> Accessories;
+    SeatedPlayer->GetChildrenComponents(false,Accessories);
+    for (auto* Part:Accessories) Part->DestroyComponent();
+    SeatedPlayer->DestroyComponent();
+    SeatedPlayer=nullptr;
+}
+
+void ARiverfrontCar::SeatPlayer(const ARiverfrontCharacter& Walker)
+{
+    const auto* Source=Walker.GetAvatarMesh();
+    auto* Asset=Source?Source->GetSkeletalMeshAsset():nullptr;
+    if (!Asset) return;
+    ClearSeat();
+    SeatedPlayer=NewObject<UPoseableMeshComponent>(this);
+    AddInstanceComponent(SeatedPlayer);
+    SeatedPlayer->SetupAttachment(Body);
+    SeatedPlayer->SetSkinnedAssetAndUpdate(Asset);
+    SeatedPlayer->SetRelativeRotation(Source->GetRelativeRotation());
+    SeatedPlayer->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    for (int32 I=0;I<Source->GetNumMaterials();++I) SeatedPlayer->SetMaterial(I,Source->GetMaterial(I));
+    SeatedPlayer->RegisterComponent();
+    const bool Epic=SeatedPlayer->GetBoneIndex(TEXT("thigh_l"))!=INDEX_NONE;
+    const auto Aim=[&](FName Bone,FName Child,const FVector& Direction)
+    {
+        if (SeatedPlayer->GetBoneIndex(Bone)==INDEX_NONE || SeatedPlayer->GetBoneIndex(Child)==INDEX_NONE) return;
+        auto T=SeatedPlayer->GetBoneTransformByName(Bone,EBoneSpaces::ComponentSpace);
+        const FVector From=SeatedPlayer->GetBoneLocationByName(Child,EBoneSpaces::ComponentSpace)-T.GetLocation();
+        const FVector To=SeatedPlayer->GetRelativeRotation().UnrotateVector(Direction);
+        T.SetRotation(FQuat::FindBetweenNormals(From.GetSafeNormal(),To.GetSafeNormal())*T.GetRotation());
+        SeatedPlayer->SetBoneTransformByName(Bone,T,EBoneSpaces::ComponentSpace);
+    };
+    FVector Hips=FVector::ZeroVector;
+    for (int32 I=0;I<2;++I)
+    {
+        const FString S=I?TEXT("r"):TEXT("l");
+        const auto Name=[&](const TCHAR* Public,const TCHAR* Manny){return FName(*(FString(Epic?Manny:Public)+S));};
+        const FName Hip=Name(TEXT("Hip"),TEXT("thigh_")),Knee=Name(TEXT("Knee"),TEXT("calf_")),Foot=Name(TEXT("Foot"),TEXT("foot_"));
+        const FName ArmBone=Name(TEXT("Shoulder"),TEXT("upperarm_")),Elbow=Name(TEXT("Elbow"),TEXT("lowerarm_")),Hand=Name(TEXT("Hand"),TEXT("hand_"));
+        const double Side=I?1.:-1.;
+        Hips+=SeatedPlayer->GetBoneLocationByName(Hip,EBoneSpaces::ComponentSpace)*.5;
+        Aim(Hip,Knee,FVector(1.,.17*Side,-.16));
+        Aim(Knee,Foot,FVector(.32,0,-1.));
+        Aim(ArmBone,Elbow,FVector(.38,.30*Side,-.80));
+        Aim(Elbow,Hand,FVector(1.,-.26*Side,.42));
+    }
+    const FVector Seat=FleetBody ? GetActorTransform().InverseTransformPosition(FleetBody->GetActorTransform().TransformPosition(FleetBody->SeatPoint()))
+        : FVector(-15.,35.,bCrossover?7.:-12.);
+    SeatedPlayer->SetRelativeLocation(Seat-SeatedPlayer->GetRelativeRotation().RotateVector(Hips));
+    for (USceneComponent* Child:Source->GetAttachChildren())
+    {
+        auto* Original=Cast<UStaticMeshComponent>(Child);
+        if (!Original || !Original->IsVisible() || !Original->GetStaticMesh() || Original->GetAttachSocketName().IsNone()) continue;
+        auto* Part=NewObject<UStaticMeshComponent>(this);
+        AddInstanceComponent(Part);
+        Part->SetupAttachment(SeatedPlayer,Original->GetAttachSocketName());
+        Part->SetStaticMesh(Original->GetStaticMesh());
+        Part->SetRelativeTransform(Original->GetRelativeTransform());
+        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        for (int32 I=0;I<Original->GetNumMaterials();++I) Part->SetMaterial(I,Original->GetMaterial(I));
+        Part->RegisterComponent();
+    }
+    if (FleetBody) FleetBody->SetDriverVisible(false);
+}
+
 bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
 {
     APlayerController* Player = Cast<APlayerController>(Character.GetController());
@@ -541,6 +609,7 @@ bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
         FleetBody->SetActorEnableCollision(false);
         FleetBody->SetManualDriver(&Character);
     }
+    SeatPlayer(Character);
     StopHatchbackPhysics(false);
     UpdateDrivingLights();
     Player->SetControlRotation(FRotator(-13, GetActorRotation().Yaw, 0));
@@ -619,6 +688,7 @@ void ARiverfrontCar::Exit()
     Player->Possess(Walker);
     Player->SetControlRotation(FRotator(-7, GetActorRotation().Yaw, 0));
     Driver = nullptr;
+    ClearSeat();
     if (FleetBody) FleetBody->SetManualDriver(nullptr);
     if (MotorLoop && TyreLoop) { MotorLoop->FadeOut(.28f,.0f); TyreLoop->FadeOut(.15f,0.f); }
     ViewMode=Signal=0;
@@ -654,9 +724,9 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     const double Wheelbase = FleetBody ? FleetBody->Wheelbase : 260.;
     const double Track = FleetBody ? FleetBody->Track : 77.;
     const float Mass=bCrossover?1540.f:1210.f;
-    const float Grip=(bCrossover?.89f:.96f)*FMath::Lerp(1.f,.65f,Wetness);
+    const float Grip=(FleetBody && FleetBody->IsSport()?1.23f:bCrossover?1.03f:1.12f)*FMath::Lerp(1.f,.78f,Wetness);
     const float AbsSpeed=FMath::Abs(Speed);
-    const float MaxVelocity=bRickshaw?1520.f:bHeavy?2000.f:bCrossover?2420.f:2660.f;
+    const float MaxVelocity=FleetBody?FleetBody->GetTopSpeed():bCrossover?3100.f:2660.f;
     const float ReverseSpeed=bBike?115.f:bHeavy?300.f:ReverseLimit;
     const bool Opposing=Throttle*Speed < -12.f;
     const float PrevSpeed=Speed;
@@ -668,7 +738,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     }
     else if (Fuel>0.f && FMath::Abs(Throttle)>.05f)
     {
-        const float StandingAccel = bBike ? 435.f : bRickshaw ? 240.f : bHeavy ? 185.f
+        const float StandingAccel = FleetBody && FleetBody->IsSport() ? 670.f : bBike ? 470.f : bRickshaw ? 240.f : bHeavy ? 185.f
             : 100.f * (bCrossover ? 4820.f : 4050.f) / Mass;
         const float Accel = StandingAccel * FMath::Lerp(1.f,.50f,FMath::Clamp(AbsSpeed/MaxVelocity,0.f,1.f))
             * FMath::Lerp(.54f,1.f,Condition);
@@ -695,7 +765,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         const FVector Here=GetActorLocation();
         const FRotator Previous=GetActorRotation();
         const double Yaw=Previous.Yaw+TurnRate*StepT;
-        const double Response=(bBraking?3.:7.)*Grip;
+        const double Response=(bBraking?8.:13.)*Grip;
         TravelYaw+=FMath::FindDeltaAngleDegrees(double(TravelYaw),Yaw)*(1.-FMath::Exp(-Response*StepT));
         FVector Desired=Here+FRotator(0,TravelYaw,0).Vector()*(Speed*StepT);
         double H[4];
@@ -841,7 +911,8 @@ void ARiverfrontCar::CycleCamera()
     ViewBlend=HasCameraSample?0.f:1.f;
     ViewMode=(ViewMode+1)%(FleetBody?2:3);
     const bool bRickshaw = FleetBody && FleetBody->WheelCount == 3;
-    if (bRickshaw) FleetBody->SetDriverVisible(ViewMode == 0);
+    if (SeatedPlayer) SeatedPlayer->SetVisibility(ViewMode==0,true);
+    else if (bRickshaw) FleetBody->SetDriverVisible(ViewMode == 0);
     if (Controller) Controller->SetControlRotation(FRotator(ViewMode==0?-13.:bRickshaw?-9.:-3.,GetActorRotation().Yaw,0));
 }
 
