@@ -1,3 +1,4 @@
+#include "SabarmatiDistrict.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCar.h"
 #include "RiverfrontPedestrian.h"
@@ -68,7 +69,8 @@ void ARiverfrontPlayerController::BeginLifeSession()
     if (bReturning)
     {
         TActorIterator<ARiverfrontWorld> World(GetWorld());
-        if (!bCity || (World && World->PrepareCityTravel(Profile->CheckpointLocation)))
+        if (SabarmatiDistrict::Contains(Profile->CheckpointLocation,bCity) &&
+            (!bCity || (World && World->PrepareCityTravel(Profile->CheckpointLocation))))
             bPlaced = Walker->TeleportTo(Profile->CheckpointLocation, FRotator(0, Profile->CheckpointYaw, 0));
     }
     if (!bPlaced && !bCity)

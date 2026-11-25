@@ -86,6 +86,7 @@ private:
     int32 Stops=0, Turns=0, LastPhase=-1;
     TWeakObjectPtr<ARiverfrontWorld> District;
     bool bCity=false;
+    void AddDistrictRoute(const TArray<FVector>& Nodes, bool Closed=true);
     void Lane(const TArray<FVector>& Nodes, bool Reverse, bool bClosed=true);
     bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant);
     FTransform RoadPose(const USplineComponent& Route, double Distance, double Offset,

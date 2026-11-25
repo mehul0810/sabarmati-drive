@@ -1,3 +1,4 @@
+#include "SabarmatiDistrict.h"
 #include "RiverfrontTraffic.h"
 #include "Algo/Reverse.h"
 #include "RiverfrontCar.h"
@@ -298,9 +299,33 @@ bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
     Parked.Add(Car);
     return true;
 }
+void ARiverfrontTraffic::AddDistrictRoute(const TArray<FVector>& Nodes, bool Closed)
+{
+    if (Nodes.Num()<2) return;
+    TArray<FVector> Run;
+    const auto Flush=[&](bool Loop)
+    {
+        if (Run.Num()>=2) { Lane(Run,false,Loop); Lane(Run,true,Loop); }
+        Run.Reset();
+    };
+    bool Cut=false;
+    for (int32 I=0; I<(Closed?Nodes.Num():Nodes.Num()-1); ++I)
+    {
+        FVector A=Nodes[I], B=Nodes[(I+1)%Nodes.Num()];
+        const FVector OriginalA=A, OriginalB=B;
+        if (!SabarmatiDistrict::Clip(A,B,bCity,900.)) { Cut=true; Flush(false); continue; }
+        Cut |= !A.Equals(OriginalA,1.) || !B.Equals(OriginalB,1.);
+        if (!Run.IsEmpty() && FVector::DistSquared2D(Run.Last(),A)>4.) Flush(false);
+        if (Run.IsEmpty()) Run.Add(A);
+        Run.Add(B);
+    }
+    if (Closed && !Cut && Run.Num()>2) Run.Pop();
+    Flush(Closed && !Cut);
+}
+
 void ARiverfrontTraffic::Lane(const TArray<FVector>& Nodes,bool Reverse,bool bClosed)
 {
-    if (Nodes.Num()<3) return;
+    if (Nodes.Num()<2) return;
     TArray<FVector> Ordered=Nodes;
     if (Reverse) Algo::Reverse(Ordered);
     const int32 N=Ordered.Num();
@@ -349,7 +374,7 @@ FTransform ARiverfrontTraffic::RoadPose(const USplineComponent& Route,double Dis
     };
     const FVector Forward=(At(70.)-At(-70.)).GetSafeNormal2D();
     FVector Centre=At(0.)+FVector(-Forward.Y,Forward.X,0.)*Offset;
-    const bool bBridge=!bCity && FMath::Abs(Forward.Y)>.65 && FMath::Abs(Centre.X-3150)>850;
+    const bool bBridge=!bCity && FMath::Abs(Forward.Y)>.65;
     const auto ExpectedZ=[&](const FVector& P){return bBridge?RiverfrontCrossings::DeckZ(P.Y):0.;};
     const auto Surface=[&](const FVector& P)
     {
@@ -406,7 +431,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         {
             const double L=Pair.X,R=Pair.Y;
             const TArray<FVector> Nodes={{L,W,1020},{R,W,R==3150?720.:640.},{R,E,1020},{L,E,L==3150?720.:1520.}};
-            Lane(Nodes,false); Lane(Nodes,true);
+            AddDistrictRoute(Nodes);
         }
         Junctions={PedestrianCrossing,FVector(3150,W,0),FVector(3150,E,0),FVector(-64400,W,0),FVector(59310,E,0)};
     }
@@ -433,7 +458,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
             }
             bool bClosed=true;
             O->TryGetBoolField(TEXT("closed"),bClosed);
-            Lane(Nodes,false,bClosed); Lane(Nodes,true,bClosed);
+            AddDistrictRoute(Nodes,bClosed);
         }
     }
     if (!Routes.Num()) return;

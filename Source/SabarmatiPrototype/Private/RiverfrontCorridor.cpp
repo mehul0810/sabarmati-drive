@@ -163,7 +163,7 @@ void ARiverfrontWorld::BuildRiverfrontCorridor()
             Stretch(ETint::Paving, Bank, Start, End, 3100, 960, 2, 50, true);
             Stretch(ETint::Asphalt, Bank, Start, End, 4090, 1020, 0, 56, true);
             Stretch(ETint::Paving, Bank, Start, End, 5020, 840, 4, 56, true);
-            Stretch(ETint::Stone, Bank, Start, End, 10060, 9240, 0, 100, true);
+            Stretch(ETint::Earth, Bank, Start, End, 10060, 9240, 0, 100, true);
             Stretch(ETint::Paving, Bank, LowerStart, LowerEnd, 2350, 310, -84, 52, true);
             Stretch(ETint::Retaining, Bank, LowerStart, LowerEnd, 2200, 28, -89, 92, true);
             for (const double Height : {-49.0, 9.0})

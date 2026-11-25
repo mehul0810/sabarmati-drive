@@ -1,3 +1,4 @@
+#include "SabarmatiDistrict.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontCrossings.h"
 #include "RiverfrontFirstMorningWorld.h"
@@ -5,6 +6,7 @@
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -72,6 +74,7 @@ void ARiverfrontWorld::Build()
 
     DistrictLoadProgress::Reached(1);
     BuildBanks();
+    BuildDistrictBoundary(false);
     BuildBridge();
     BuildAtalBridge();
     BuildRiverfrontCorridor();
@@ -93,7 +96,7 @@ void ARiverfrontWorld::LoadSurfaceMaterials()
         return;
     }
     const TPair<ETint, const TCHAR*> Surfaces[] = {
-        {ETint::Asphalt, TEXT("M_Asphalt")}, {ETint::Paving, TEXT("M_Paving")},
+        {ETint::Earth, TEXT("M_StreetGround")}, {ETint::Asphalt, TEXT("M_Asphalt")}, {ETint::Paving, TEXT("M_Paving")},
         {ETint::Stone, TEXT("M_Concrete")}, {ETint::Water, TEXT("M_River")},
         {ETint::Retaining, TEXT("M_Retaining")}, {ETint::Plaster, TEXT("M_FacadePlaster")},
         {ETint::FacadeStone, TEXT("M_FacadeSandstone")}, {ETint::Terracotta, TEXT("M_FacadeTerracotta")},
@@ -129,7 +132,7 @@ void ARiverfrontWorld::Shape(EShape Mesh, ETint Tint, const FVector& Pos, const 
         FColor(223, 209, 183), FColor(187, 142, 98), FColor(154, 86, 60), FColor(88, 124, 57),
         FColor(213, 216, 208), FColor(105, 75, 52), FColor(170, 85, 115),
         FColor(119, 87, 60), FColor(91, 65, 47), FColor(210, 206, 184),
-        FColor(140, 176, 182), FColor(160, 119, 62), FColor(110, 68, 40), FColor(165, 107, 78), FColor(211, 204, 177)
+        FColor(140, 176, 182), FColor(160, 119, 62), FColor(110, 68, 40), FColor(165, 107, 78), FColor(211, 204, 177), FColor(119, 90, 59)
     };
     const int32 MaterialIndex = static_cast<int32>(Tint);
     const int32 Key = MaterialIndex + static_cast<int32>(Mesh) * TintCount + (bSolid ? TintCount * static_cast<int32>(EShape::Count) : 0);
@@ -186,6 +189,30 @@ void ARiverfrontWorld::Beam(ETint Tint, const FVector& From, const FVector& To, 
 {
     const FVector Direction = To - From;
     Box(Tint, (From + To) * 0.5, FVector(Direction.Size(), Width, Width), false, Direction.Rotation());
+}
+
+void ARiverfrontWorld::BuildDistrictBoundary(bool City)
+{
+    // Low retaining walls mark the closed streets. Taller invisible blocking
+    // volumes also contain jumps, swimming and vehicles at the same map edge.
+    for (int32 Axis=0; Axis<2; ++Axis)
+        for (const double Side : {-1., 1.})
+        {
+            FVector P = SabarmatiDistrict::Center(City);
+            P[Axis] += Side * (SabarmatiDistrict::HalfWidth+25.);
+            FVector Size(100100.,100100.,95.);
+            Size[Axis]=50.;
+            Box(ETint::Retaining,P+FVector(0,0,44),Size,true);
+            auto* Barrier=NewObject<UBoxComponent>(this);
+            AddInstanceComponent(Barrier);
+            Barrier->SetupAttachment(GetRootComponent());
+            Barrier->SetRelativeLocation(P);
+            Barrier->SetBoxExtent(FVector(Size.X*.5,Size.Y*.5,10000.));
+            Barrier->SetCollisionProfileName(TEXT("BlockAll"));
+            Barrier->SetGenerateOverlapEvents(false);
+            Barrier->SetCanEverAffectNavigation(false);
+            Barrier->RegisterComponent();
+        }
 }
 
 void ARiverfrontWorld::BuildBanks()
@@ -252,7 +279,7 @@ void ARiverfrontWorld::BuildBanks()
         Box(ETint::Paving, FVector(0, BankY(Bank, 3100), -23), FVector(15500, 960, 50), true);
         Box(ETint::Asphalt, FVector(0, BankY(Bank, 4090), -28), FVector(15500, 1020, 56), true);
         Box(ETint::Paving, FVector(0, BankY(Bank, 5020), -24), FVector(15500, 840, 56), true);
-        Box(ETint::Stone, FVector(0, BankY(Bank, 6540), -50), FVector(15500, 2240, 100), true);
+        Box(ETint::Earth, FVector(0, BankY(Bank, 6540), -50), FVector(15500, 2240, 100), true);
         Box(ETint::Stone, FVector(0, BankY(Bank, 7640), 72), FVector(15640, 105, 144), true);
 
         // Coping, lower wall joints and edge drainage break up large planar surfaces.
@@ -341,26 +368,43 @@ void ARiverfrontWorld::BuildBridge()
 {
     // Generic road crossing with solid bearings and regular piers. Not the Atal footbridge.
     const double DeckLength = 2.0 * BridgeHalfLength;
-    Box(ETint::Retaining, FVector(BridgeX, ChannelCenter, -89), FVector(1060, DeckLength, 120));
-    Box(ETint::Asphalt, FVector(BridgeX, ChannelCenter, -20), FVector(720, DeckLength, 40), true);
+    const auto DeckBox=[this](ETint Tint,const FVector& P,const FVector& Size,bool Solid=false)
+    {
+        const double End=P.Y+Size.Y*.5;
+        double Start=P.Y-Size.Y*.5;
+        const auto Span=[&](double Y)
+        {
+            const double Z0=RiverfrontCrossings::DeckZ(Start), Z1=RiverfrontCrossings::DeckZ(Y);
+            const double Pitch=FMath::RadiansToDegrees(FMath::Atan2(Z1-Z0,Y-Start));
+            Box(Tint,FVector(P.X,(Y+Start)*.5,P.Z+(Z0+Z1)*.5),
+                FVector(Size.X,FMath::Sqrt(FMath::Square(Y-Start)+FMath::Square(Z1-Z0)),Size.Z),
+                Solid,FRotator(0,0,-Pitch));
+            Start=Y;
+        };
+        for (double Offset:{-14760.,-13480.,13480.,14760.})
+            if (ChannelCenter+Offset>Start && ChannelCenter+Offset<End) Span(ChannelCenter+Offset);
+        Span(End);
+    };
+    DeckBox(ETint::Retaining, FVector(BridgeX, ChannelCenter, -89), FVector(1060, DeckLength, 120));
+    DeckBox(ETint::Asphalt, FVector(BridgeX, ChannelCenter, -20), FVector(720, DeckLength, 40), true);
     for (const double Side : {-1.0, 1.0})
     {
         const double OuterX = BridgeX + Side * 520;
         const double KerbX = BridgeX + Side * 369;
-        Box(ETint::Paving, FVector(BridgeX + Side * 435, ChannelCenter, -18),
+        DeckBox(ETint::Paving, FVector(BridgeX + Side * 435, ChannelCenter, -18),
             FVector(158, DeckLength, 50), true);
-        Box(ETint::Retaining, FVector(KerbX, ChannelCenter, 4), FVector(18, DeckLength, 12));
-        Box(ETint::Rail, FVector(OuterX, ChannelCenter, 105), FVector(11, DeckLength - 340, 11), true);
-        Box(ETint::Retaining, FVector(OuterX, ChannelCenter, 21), FVector(26, DeckLength - 340, 48), true);
+        DeckBox(ETint::Retaining, FVector(KerbX, ChannelCenter, 4), FVector(18, DeckLength, 12));
+        DeckBox(ETint::Rail, FVector(OuterX, ChannelCenter, 105), FVector(11, DeckLength - 340, 11), true);
+        DeckBox(ETint::Retaining, FVector(OuterX, ChannelCenter, 21), FVector(26, DeckLength - 340, 48), true);
         const double RailEnd = BridgeHalfLength - 170.0;
         for (double Y = -RailEnd; Y <= RailEnd; Y += 162.0)
         {
-            Box(ETint::Rail, FVector(OuterX, ChannelCenter + Y, 74), FVector(9, 9, 58), true);
+            DeckBox(ETint::Rail, FVector(OuterX, ChannelCenter + Y, 74), FVector(9, 9, 58), true);
         }
         for (double Y = -BridgeHalfLength + 780; Y < BridgeHalfLength - 780; Y += 3250.0)
         {
-            const FVector Mast(OuterX, ChannelCenter + Y, 620);
-            Beam(ETint::Rail, FVector(OuterX, Mast.Y, 38), Mast, 11);
+            const FVector Mast(OuterX, ChannelCenter + Y, 620 + RiverfrontCrossings::DeckZ(ChannelCenter + Y));
+            Beam(ETint::Rail, FVector(OuterX, Mast.Y, 38 + RiverfrontCrossings::DeckZ(Mast.Y)), Mast, 11);
             Beam(ETint::Rail, Mast, Mast + FVector(-Side * 131, 0, 23), 8);
             Box(ETint::Paint, Mast + FVector(-Side * 132, 0, 24), FVector(38, 21, 8));
         }
@@ -369,14 +413,15 @@ void ARiverfrontWorld::BuildBridge()
     for (double Y = -10000.0; Y <= 10000.0; Y += 3300.0)
     {
         const double WorldY = ChannelCenter + Y;
-        Box(ETint::Retaining, FVector(BridgeX, WorldY, -261), FVector(580, 193, 262));
-        Box(ETint::Retaining, FVector(BridgeX, WorldY, -163), FVector(942, 224, 56));
-        Box(ETint::Shadow, FVector(BridgeX, WorldY + 119, -149), FVector(570, 12, 10));
-        Box(ETint::Shadow, FVector(BridgeX, WorldY, .32), FVector(722, 4, .45));
+        const double Cap = RiverfrontCrossings::DeckZ(WorldY)-135.;
+        Box(ETint::Retaining, FVector(BridgeX, WorldY, (Cap+SabarmatiDistrict::BedZ)*.5), FVector(580, 193, Cap-SabarmatiDistrict::BedZ));
+        DeckBox(ETint::Retaining, FVector(BridgeX, WorldY, -163), FVector(942, 224, 56));
+        DeckBox(ETint::Shadow, FVector(BridgeX, WorldY + 119, -149), FVector(570, 12, 10));
+        DeckBox(ETint::Shadow, FVector(BridgeX, WorldY, .32), FVector(722, 4, .45));
     }
     for (double Y = -BridgeHalfLength + 260; Y <= BridgeHalfLength - 260; Y += 272.0)
     {
-        Box(ETint::RoadPaint, FVector(BridgeX, ChannelCenter + Y, 0.68), FVector(10, 139, 1.1));
+        DeckBox(ETint::RoadPaint, FVector(BridgeX, ChannelCenter + Y, 0.68), FVector(10, 139, 1.1));
     }
     UE_LOG(LogTemp, Display, TEXT("Sabarmati riverfront: %0.1f m channel; %0.1f m road crossing."),
         ChannelWidth / 100.0, DeckLength / 100.0);

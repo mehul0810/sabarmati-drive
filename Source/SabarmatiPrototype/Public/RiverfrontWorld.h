@@ -65,7 +65,7 @@ private:
     {
         Asphalt, Stone, Sandstone, PaleStone, Clay, Roof, Shadow, Glass,
         Rail, Paving, Paint, Water, Ripple, Bark, Foliage, FoliageDark,
-        Sail, Ad, Retaining, Plaster, FacadeStone, Terracotta, Leaf, BridgeSteel, DeckWood, Flower, WoodLight, WoodDark, RoadPaint, ClearGlass, Brass, Timber, Canvas, Ceramic, Count
+        Sail, Ad, Retaining, Plaster, FacadeStone, Terracotta, Leaf, BridgeSteel, DeckWood, Flower, WoodLight, WoodDark, RoadPaint, ClearGlass, Brass, Timber, Canvas, Ceramic, Earth, Count
     };
 
     UPROPERTY()
@@ -98,6 +98,7 @@ private:
     void LoadSurfaceMaterials();
     void UpdateCityTiles(const FVector& Focus, bool Immediate=false);
     void BuildBanks();
+    void BuildDistrictBoundary(bool City);
     void BuildBridge();
     void BuildAtalBridge();
     void BuildRiverfrontCorridor();

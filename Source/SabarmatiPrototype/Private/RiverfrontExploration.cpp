@@ -1,3 +1,4 @@
+#include "SabarmatiDistrict.h"
 #include "RiverfrontPlayerController.h"
 #include "RiverfrontCar.h"
 #include "RiverfrontLifeMenu.h"
@@ -56,6 +57,7 @@ void ARiverfrontPlayerController::LoadSites()
             const auto& XYZ=Where->AsArray(); Point=FVector(XYZ[0]->AsNumber(),XYZ[1]->AsNumber(),XYZ[2]->AsNumber());
         }
         else continue;
+        if (!SabarmatiDistrict::Contains(Point,bCitySites)) continue;
         const auto Kind=Type==TEXT("Tea")?ERiverSiteKind::Tea:Type==TEXT("Print")?ERiverSiteKind::Print:
             Type==TEXT("Service")?ERiverSiteKind::Service:Type==TEXT("Wardrobe")?ERiverSiteKind::Wardrobe:
             Type==TEXT("ClothesShop")?ERiverSiteKind::ClothesShop:ERiverSiteKind::Visit;
