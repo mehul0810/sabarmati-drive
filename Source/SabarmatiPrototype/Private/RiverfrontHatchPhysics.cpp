@@ -125,6 +125,8 @@ void ARiverfrontCar::StopHatchbackPhysics(bool bPark)
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool bCity = Mode && Mode->IsCityMode();
     if (bCity && !bPark) PhysicsChassis->SetSimulatePhysics(true);
+    ChassisVelocityBeforeImpact=FVector::ZeroVector;
+    PhysicsImpactSpeed=0.f;
     PhysicsChassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
     PhysicsChassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     VehicleMovement->SetThrottleInput(0.f);
@@ -164,6 +166,7 @@ void ARiverfrontCar::TickHatchbackPhysics(float DeltaSeconds)
 {
     auto& Motion = *VehicleMovement;
     const float PreviousSpeed = Speed;
+    ChassisVelocityBeforeImpact=PhysicsChassis->GetPhysicsLinearVelocity();
     Speed = Motion.GetForwardSpeed();
     const int32 PreviousGear = Gear;
     Gear = Motion.GetCurrentGear();

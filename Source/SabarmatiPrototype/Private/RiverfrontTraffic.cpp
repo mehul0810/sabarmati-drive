@@ -288,6 +288,13 @@ const ARiverfrontRoadAgent* ARiverfrontTraffic::FindEnterableVehicle(const ARive
     return Closest;
 }
 
+FVector ARiverfrontTraffic::RoadVelocity(const ARiverfrontRoadAgent* Agent) const
+{
+    const int32 Index=Agents.IndexOfByKey(Agent);
+    if (Index==INDEX_NONE || Drivers[Index].bParked) return FVector::ZeroVector;
+    return Agent->GetActorForwardVector()*Drivers[Index].Speed;
+}
+
 bool ARiverfrontTraffic::RemoveCrashedAgent(ARiverfrontRoadAgent* Agent)
 {
     const int32 Index=Agents.IndexOfByKey(Agent);

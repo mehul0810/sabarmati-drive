@@ -120,6 +120,8 @@ private:
     UPROPERTY() TObjectPtr<UAudioComponent> TyreLoop;
     UPROPERTY() TObjectPtr<USoundWave> ShiftSound;
     UPROPERTY() TObjectPtr<USoundWave> ImpactSound;
+    float ClosingSpeed(const UPrimitiveComponent* Other,const FVector& Normal) const;
+    FVector ChassisVelocityBeforeImpact=FVector::ZeroVector;
     bool Wreck(const FHitResult& Hit,float ImpactSpeed);
     bool bWrecked=false;
     FHitResult PhysicsImpact;

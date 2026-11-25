@@ -707,13 +707,26 @@ void ARiverfrontCar::Exit()
     StopHatchbackPhysics(true);
 }
 
+float ARiverfrontCar::ClosingSpeed(const UPrimitiveComponent* Other,const FVector& Normal) const
+{
+    if (!Other) return 0.f;
+    FVector OtherVelocity=Other->GetComponentVelocity();
+    if (const auto* Agent=Cast<ARiverfrontRoadAgent>(Other->GetOwner()))
+    {
+        const auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
+        if (Mode && Mode->GetTraffic()) OtherVelocity=Mode->GetTraffic()->RoadVelocity(Agent);
+    }
+    const FVector Velocity=bChaosDrive?ChassisVelocityBeforeImpact:FRotator(0.,TravelYaw,0.).Vector()*Speed;
+    return FMath::Max(0.,-FVector::DotProduct(Velocity-OtherVelocity,Normal));
+}
+
 void ARiverfrontCar::NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimitiveComponent* OtherComp,
     bool bSelfMoved,FVector HitLocation,FVector HitNormal,FVector NormalImpulse,const FHitResult& Hit)
 {
     Super::NotifyHit(MyComp,Other,OtherComp,bSelfMoved,HitLocation,HitNormal,NormalImpulse,Hit);
     if (bChaosDrive && Driver && OtherComp && FMath::Abs(HitNormal.Z)<.65)
     {
-        const float Closing=FMath::Abs(Speed*GetActorForwardVector().Dot(HitNormal));
+        const float Closing=ClosingSpeed(OtherComp,HitNormal);
         if (Closing>PhysicsImpactSpeed)
         {
             PhysicsImpact=Hit;
@@ -730,6 +743,7 @@ bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
     bWrecked=true;
     Condition=0.f;
     auto* Object=Hit.GetComponent()->GetOwner();
+    const FString Target=GetNameSafe(Object);
     if (auto* WorldActor=Cast<ARiverfrontWorld>(Object))
     {
         const bool Broken=WorldActor->BreakAtImpact(Hit);
@@ -785,7 +799,7 @@ bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
             Driver=nullptr;
         }
     }
-    UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s wrecked at %.1f km/h"),GetVehicleLabel(),ImpactSpeed*.036f);
+    UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s wrecked at %.1f km/h against %s"),GetVehicleLabel(),ImpactSpeed*.036f,*Target);
     Destroy();
     return true;
 }
@@ -883,7 +897,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         if (GetWorld()->SweepSingleByProfile(Obstacle,Here,Desired,Facing.Quaternion(),Body->GetCollisionProfileName(),
             FCollisionShape::MakeBox(Body->GetScaledBoxExtent()),Query))
         {
-            if (FMath::Abs(Obstacle.ImpactNormal.Z)<.65 && Wreck(Obstacle,FMath::Abs(Speed*GetActorForwardVector().Dot(Obstacle.ImpactNormal)))) return;
+            if (FMath::Abs(Obstacle.ImpactNormal.Z)<.65 && Wreck(Obstacle,ClosingSpeed(Obstacle.GetComponent(),Obstacle.ImpactNormal))) return;
             Speed=0;
             break;
         }
@@ -891,7 +905,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         SetActorLocationAndRotation(Desired,Facing,true,&Hit);
         if (Hit.bBlockingHit)
         {
-            if (FMath::Abs(Hit.ImpactNormal.Z)<.65 && Wreck(Hit,FMath::Abs(Speed*GetActorForwardVector().Dot(Hit.ImpactNormal)))) return;
+            if (FMath::Abs(Hit.ImpactNormal.Z)<.65 && Wreck(Hit,ClosingSpeed(Hit.GetComponent(),Hit.ImpactNormal))) return;
             Speed=0;
             break;
         }
