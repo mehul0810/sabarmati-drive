@@ -13,6 +13,8 @@ struct FRiverfrontFirstMorningWorld
     static FVector Bedside();
     static FVector Pillow();
     static FVector WardrobePoint();
+    static FVector MirrorCentre();
+    static FVector2D MirrorSize();
     static FVector ShopPoint();
     static FVector StreetPoint();
     static FVector FenceApproach();

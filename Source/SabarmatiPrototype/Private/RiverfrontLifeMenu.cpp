@@ -131,9 +131,9 @@ public:
                 SNew(SButton).Tag(TEXT("LifeEquip")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
                 .ContentPadding(FMargin(10,8)).HAlign(HAlign_Center)
                 .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected) && !Wearing(Selected)); })
-                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid(); })
                 .OnClicked(this,&SRiverfrontLifeMenu::WearSelected)
-                [Label(Copy(TEXT("Wear now")),13,Panel,true)]
+                [SNew(STextBlock).ColorAndOpacity(Panel).Font(FCoreStyle::GetDefaultFontStyle("Bold",13))
+                    .Text_Lambda([this]{ return Copy(DressingTimer.IsValid()?TEXT("Changing top…"):TEXT("Wear now")); })]
             ];
             Body->AddSlot().AutoHeight().Padding(0,3)
             [
@@ -461,6 +461,7 @@ private:
         const float Alpha=FMath::Clamp(float((Now-DressStageStart)/Seconds[DressStage]),0.f,1.f);
         const float Ease=FMath::SmoothStep(0.f,1.f,Alpha);
         Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease,DressStage==0 ? Outfit==TEXT("kurta") : Selected==TEXT("kurta"));
+        if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
         if (Alpha<1.f) return EActiveTimerReturnType::Continue;
         ++DressStage;
         DressStageStart=Now;

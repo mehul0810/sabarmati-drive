@@ -317,6 +317,8 @@ void FRiverfrontFirstMorningWorld::CoverSleeper(ARiverfrontWorld& World,bool Occ
 FVector FRiverfrontFirstMorningWorld::HomeStart() { return Bedside(); }
 FVector FRiverfrontFirstMorningWorld::Bedside() { return At(-94,580,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::Pillow() { return At(-180,648,Upper+72); }
+FVector FRiverfrontFirstMorningWorld::MirrorCentre() { return At(174,646.8,Upper+115); }
+FVector2D FRiverfrontFirstMorningWorld::MirrorSize() { return FVector2D(88,180); }
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,ApartmentGroundZ+95); }
 FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,ApartmentGroundZ+95); }
@@ -580,7 +582,7 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
         Part(ETint::WoodDark,X,655,Upper+111,3,3,204);
         Part(ETint::Brass,X+8,650,Upper+110,3,6,22);
     }
-    Mirror(174,651,Upper+115,69,175);
+    Mirror(174,651,Upper+115,MirrorSize().X,MirrorSize().Y);
 
     // The pivoting mirror lamp shines across the dressing spot from above eye level.
     const FRotator LampAim(0,-143,0);

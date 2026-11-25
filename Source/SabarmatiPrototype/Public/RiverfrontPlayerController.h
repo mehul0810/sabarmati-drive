@@ -31,6 +31,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerControl
 
 public:
     bool IsShowingMenu() const { return Screen != EScreen::Playing; }
+    void RefreshWardrobeMirror();
     bool SetFittingPortraitView(bool bPortrait);
 
     void InteractWithPlace();
@@ -94,6 +95,12 @@ private:
     void CloseLifeMenu();
     void RefreshLifeAppearance();
     void PrepareFittingCamera();
+    bool OpenWardrobeMirror();
+    TWeakObjectPtr<class USceneCaptureComponent2D> MirrorCapture;
+    FVector BeforeMirrorLocation = FVector::ZeroVector;
+    bool bMirrorPortrait = false;
+    uint32 MirrorUpdates = 0;
+    uint64 LastMirrorFrame = MAX_uint64;
     bool UpdatePrintDelivery(ERiverSiteKind Kind);
     void PointToChai();
     ARiverfrontPedestrian* NearbyCompanion() const;

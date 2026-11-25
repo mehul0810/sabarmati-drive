@@ -12,6 +12,7 @@
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -110,6 +111,7 @@ void ARiverfrontPlayerController::SaveLifeCheckpoint()
     else if (const auto* Walker = Cast<ARiverfrontCharacter>(GetPawn()))
     {
         if (!Walker->GetCharacterMovement()->IsMovingOnGround()) return;
+        if (MirrorCapture.IsValid()) Location=BeforeMirrorLocation;
         if (LifeCamera.IsValid() && Screen == EScreen::Life) Yaw = BeforeFittingRotation.Yaw;
     }
     else return;
@@ -206,8 +208,10 @@ bool ARiverfrontPlayerController::SetFittingPortraitView(bool bPortrait)
     else
     {
         View->SetActorTransform(FullOutfitView);
-        View->GetCameraComponent()->SetFieldOfView(70.f);
+        View->GetCameraComponent()->SetFieldOfView(MirrorCapture.IsValid()?62.f:70.f);
     }
+    bMirrorPortrait=bPortrait;
+    if (!bPortrait) RefreshWardrobeMirror();
     if (PlayerCameraManager)
     {
         PlayerCameraManager->SetGameCameraCutThisFrame();
@@ -226,7 +230,7 @@ void ARiverfrontPlayerController::OpenLifeMenu(ERiverfrontLifeMenu Page)
     if (Screen != EScreen::Playing || !HasLocalProfile() || !GetWorld()->GetGameViewport()) return;
     if (bWaking) FinishWakeup();
     SaveLifeCheckpoint();
-    if (Page != ERiverfrontLifeMenu::Wallet) PrepareFittingCamera();
+    if (Page == ERiverfrontLifeMenu::Shop || (Page == ERiverfrontLifeMenu::Wardrobe && !OpenWardrobeMirror())) PrepareFittingCamera();
     Screen = EScreen::Life;
     SetPause(true);
     FlushPressedKeys();
@@ -238,7 +242,10 @@ void ARiverfrontPlayerController::OpenLifeMenu(ERiverfrontLifeMenu Page)
         {
             if (Weak.IsValid())
                 if (auto* Walker = Cast<ARiverfrontCharacter>(Weak->GetPawn()))
+                {
                     Walker->ApplyWardrobeLook(Outfit, Accessory, Tone);
+                    Weak->RefreshWardrobeMirror();
+                }
         });
     Overlay = Menu;
     GetWorld()->GetGameViewport()->AddViewportWidgetContent(Menu, 20);
@@ -257,10 +264,13 @@ void ARiverfrontPlayerController::CloseLifeMenu()
     {
         if (auto* Walker = Cast<ARiverfrontCharacter>(GetPawn()))
         {
+            if (MirrorCapture.IsValid()) Walker->SetActorLocation(BeforeMirrorLocation);
             Walker->SetActorRotation(BeforeFittingRotation);
             Walker->SetFittingPose(false);
         }
         SetViewTarget(GetPawn());
+        MirrorCapture.Reset();
+        bMirrorPortrait=false;
         LifeCamera->Destroy();
         LifeCamera.Reset();
     }

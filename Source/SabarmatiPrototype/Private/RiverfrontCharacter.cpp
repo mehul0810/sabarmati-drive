@@ -566,6 +566,11 @@ bool ARiverfrontCharacter::PreparePosedMesh()
         ChangingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         for (int32 I=0;I<Source->GetNumMaterials();++I) ChangingMesh->SetMaterial(I,Source->GetMaterial(I));
         ChangingMesh->RegisterComponent();
+        // Keep the original scalp hidden beneath the fitted haircut on the posing mesh.
+        const int32 Scalp=Source->GetMaterialIndex(TEXT("hair"));
+        for (int32 LOD=0;Scalp!=INDEX_NONE && LOD<Source->GetNumLODs();++LOD)
+            if (!Source->IsMaterialSectionShown(Scalp,LOD))
+                ChangingMesh->ShowMaterialSection(Scalp,INDEX_NONE,false,LOD);
         for (auto* Part : { Hair.Get(), Wristwatch.Get() })
             if (Part && Part->GetAttachParent()==Source)
                 Part->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
