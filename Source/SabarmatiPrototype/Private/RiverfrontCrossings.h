@@ -8,6 +8,7 @@ namespace RiverfrontCrossings
 {
 constexpr double CentreY = -10960.;
 constexpr double WalkZ = -84.;
+constexpr double CentralRoadX = 3150.;
 inline double DeckZ(double WorldY)
 {
     const double Offset = FMath::Abs(WorldY - CentreY);

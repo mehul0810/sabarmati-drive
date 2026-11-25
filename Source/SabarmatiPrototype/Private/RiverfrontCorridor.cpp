@@ -33,6 +33,17 @@ constexpr double BankPosition(double Bank, double Distance)
 }
 }
 
+void ARiverfrontWorld::VisitRiverfrontMapRoads(FMapRoadVisitor Visit)
+{
+    const double West = BankPosition(1., 4090.);
+    const double East = BankPosition(-1., 4090.);
+    for (const double Bank : {West, East})
+        Visit(FVector(SouthEnd, Bank, 0), FVector(NorthEnd, Bank, 0), true);
+    for (const double Crossing : {SardarX, RiverfrontCrossings::CentralRoadX,
+        EllisX - EllisRoadOffset, EllisX + EllisRoadOffset})
+        Visit(FVector(Crossing, West, 0), FVector(Crossing, East, 0), true);
+}
+
 void ARiverfrontWorld::BuildRiverfrontCorridor()
 {
     const auto Stretch = [this](ETint Tint, double Bank, double Start, double End,

@@ -812,6 +812,35 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
         State->Loaded.Num(), State->Tiles.Num(), Center.X, Center.Y);
 }
 
+void ARiverfrontWorld::VisitMapRoads(const FVector& Focus, double Radius, FMapRoadVisitor Visit) const
+{
+    if (!CityState)
+    {
+        VisitRiverfrontMapRoads(Visit);
+        return;
+    }
+    const FVector Range(Radius, Radius, 0);
+    const FVector Low = Focus - Range;
+    const FVector High = Focus + Range;
+    const FIntPoint First = TileAt(Low);
+    const FIntPoint Last = TileAt(High);
+    for (int32 Y = First.Y; Y <= Last.Y; ++Y)
+    {
+        for (int32 X = First.X; X <= Last.X; ++X)
+        {
+            const FCityTile* Tile = CityState->Tiles.Find(FIntPoint(X, Y));
+            if (!Tile) continue;
+            for (const FCityRoad& Road : Tile->Roads)
+            {
+                if (FMath::Max(Road.Ax, Road.Bx) < Low.X || FMath::Min(Road.Ax, Road.Bx) > High.X
+                    || FMath::Max(Road.Ay, Road.By) < Low.Y || FMath::Min(Road.Ay, Road.By) > High.Y)
+                    continue;
+                Visit(FVector(Road.Ax, Road.Ay, 0), FVector(Road.Bx, Road.By, 0), Road.Major || Road.Bridge);
+            }
+        }
+    }
+}
+
 bool ARiverfrontWorld::FindCityFootway(const FVector& Origin,double Yaw,FVector& Surface) const
 {
     if (!CityState) return false;

@@ -1,4 +1,5 @@
 #include "RiverfrontWorld.h"
+#include "RiverfrontCrossings.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "DistrictLoadProgress.h"
 
@@ -15,7 +16,7 @@ const FVector ARiverfrontWorld::CarPosition(-4180, 3960, 68);
 
 namespace
 {
-constexpr double BridgeX = 3150.0;
+constexpr double BridgeX = RiverfrontCrossings::CentralRoadX;
 constexpr double BridgeSide = 540.0;
 constexpr double SegmentHalfLength = 7600.0;
 constexpr double StairX = -3215.0;

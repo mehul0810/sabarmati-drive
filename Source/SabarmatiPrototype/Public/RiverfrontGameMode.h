@@ -23,6 +23,7 @@ public:
     ARiverfrontCar* GetCar() const { return Car; }
     ARiverfrontCar* FindEnterableCar(const ARiverfrontCharacter& Character) const;
     ARiverfrontTraffic* GetTraffic() const;
+    const ARiverfrontWorld* GetDistrict() const { return District.Get(); }
     bool IsCityMode() const { return bCityBuilt; }
     bool CityFailed() const { return bCityRequested && !bCityBuilt; }
     FVector GetWalkSpawn() const { return WalkSpawn; }
@@ -39,6 +40,7 @@ private:
     bool bCityBuilt = false;
 
     UPROPERTY() TObjectPtr<ARiverfrontTraffic> Traffic;
+    UPROPERTY() TObjectPtr<ARiverfrontWorld> District;
     UPROPERTY()
     TObjectPtr<APlayerStart> RiverStart;
     UPROPERTY()

@@ -53,7 +53,6 @@ public:
     virtual void Tick(float Dt) override;
     bool WalkSignal() const;
     int32 ActiveCount() const { return Agents.Num(); }
-    const TArray<TPair<FVector,FVector>>& MapSegments() const { return MapLines; }
     int32 GetStops() const { return Stops; }
     int32 GetTurns() const { return Turns; }
     double GetTravelMetres() const { return TravelCm/100.; }
@@ -64,7 +63,6 @@ private:
     UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> Signals;
     TArray<FSabarmatiLane> Drivers;
     TArray<FVector> Junctions;
-    TArray<TPair<FVector,FVector>> MapLines;
     TArray<TWeakObjectPtr<ARiverfrontCar>> Parked;
     FVector PedestrianCrossing=FVector(-5350,4090,0);
     float Elapsed=0;

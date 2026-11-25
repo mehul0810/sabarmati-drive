@@ -297,21 +297,6 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         }
     }
     if (!Routes.Num()) return;
-    TSet<TPair<FIntPoint,FIntPoint>> Seen;
-    for (int32 I=0;I<Routes.Num();I+=2)
-    {
-        auto* Road=Routes[I].Get(); const int32 N=Road->GetNumberOfSplinePoints();
-        const int32 Segments=Road->IsClosedLoop()?N:N-1;
-        for (int32 J=0;J<Segments;++J)
-        {
-            const FVector A=Road->GetLocationAtSplinePoint(J,ESplineCoordinateSpace::World);
-            const FVector B=Road->GetLocationAtSplinePoint((J+1)%N,ESplineCoordinateSpace::World);
-            if (FVector::DistSquared2D(A,B)<100.) continue;
-            const TPair<FIntPoint,FIntPoint> K{FIntPoint(FMath::RoundToInt(A.X/75),FMath::RoundToInt(A.Y/75)),
-                FIntPoint(FMath::RoundToInt(B.X/75),FMath::RoundToInt(B.Y/75))};
-            if (!Seen.Contains(K)) { Seen.Add(K); MapLines.Emplace(A,B); }
-        }
-    }
     SetUpSignals();
     for (TActorIterator<ARiverfrontCar> It(GetWorld());It;++It) Parked.Add(*It);
     // First populate the two directions on the street nearest the player's start.

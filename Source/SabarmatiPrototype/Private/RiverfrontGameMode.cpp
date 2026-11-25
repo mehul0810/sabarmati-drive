@@ -59,6 +59,7 @@ void ARiverfrontGameMode::BeginPlay()
     FVector CarSpawn = ARiverfrontWorld::CarPosition;
     double CarYaw = 0.0;
     ARiverfrontWorld* River = GetWorld()->SpawnActor<ARiverfrontWorld>();
+    District = River;
     if (River)
     {
         if (bCityRequested)

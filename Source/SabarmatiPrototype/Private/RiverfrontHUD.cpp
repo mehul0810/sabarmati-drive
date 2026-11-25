@@ -2,9 +2,10 @@
 
 #include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
+#include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontGameMode.h"
 #include "RiverfrontPlayerController.h"
-#include "RiverfrontTraffic.h"
+#include "RiverfrontWorld.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -24,6 +25,7 @@ const FLinearColor Silver(FColor(179,195,182));
 const FLinearColor Water(FColor(43,91,101));
 const FLinearColor Road(FColor(153,167,143));
 const FLinearColor Warning(FColor(248,120,83));
+const FLinearColor Home(FColor(173,224,197));
 
 FVector2D Radial(double Degrees)
 {
@@ -146,15 +148,19 @@ bool ClipToDisc(FVector2D& A,FVector2D& B,double Radius)
     return true;
 }
 
+void House(FInstruments& Draw,FVector2D P,FLinearColor Ink)
+{
+    Draw.Stroke(P+FVector2D(-4,0),P+FVector2D(0,-4),1.6f,Ink);
+    Draw.Stroke(P+FVector2D(0,-4),P+FVector2D(4,0),1.6f,Ink);
+    Draw.Quad(P+FVector2D(-2.7,0),P+FVector2D(2.7,0),P+FVector2D(2.7,3),P+FVector2D(-2.7,3),Ink);
+}
+
 void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
 {
-    // Distinguish home, shops and other places by silhouette, including on a monochrome display.
     const FLinearColor Ink = Ivory.CopyWithNewOpacity(.86f);
     if (Kind==ERiverSiteKind::Wardrobe)
     {
-        Draw.Stroke(P+FVector2D(-4,0),P+FVector2D(0,-4),1.6f,Ink);
-        Draw.Stroke(P+FVector2D(0,-4),P+FVector2D(4,0),1.6f,Ink);
-        Draw.Quad(P+FVector2D(-2.7,0),P+FVector2D(2.7,0),P+FVector2D(2.7,3),P+FVector2D(-2.7,3),Ink);
+        return; // Flat 2B has its own persistent marker.
     }
     else if (Kind==ERiverSiteKind::ClothesShop || Kind==ERiverSiteKind::Tea || Kind==ERiverSiteKind::Print)
     {
@@ -165,12 +171,15 @@ void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
 }
 
 void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerController& Player,
-    const ARiverfrontTraffic& Traffic,bool City,bool Driving,const FString& Destination)
+    const ARiverfrontWorld& District,bool Driving,const FString& Destination)
 {
+    const bool City = District.IsCityMode();
     const float Radius = Driving ? 80.f : 72.f;
     const FVector2D Centre(32+Radius,Draw.Height-36-Radius);
-    const double MapScale = Radius / (Driving ? 17000. : 11500.);
+    const double ViewRange = Driving ? 17000. : 11500.;
+    const double MapScale = Radius / ViewRange;
     const FVector Here = Pawn.GetActorLocation();
+    bool bVisibleRoad = false;
     auto Project = [&](const FVector& Point)
     {
         return FVector2D(Here.Y-Point.Y,Here.X-Point.X)*MapScale;
@@ -203,8 +212,13 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
             Segment(Project(FVector(-84000,Bank,0)),Project(FVector(84000,Bank,0)),1.4f,Silver);
         Segment(Project(FVector(-5350,2800,0)),Project(FVector(-5350,-24700,0)),2.f,Ivory);
     }
-    for (const auto& RoadSegment : Traffic.MapSegments())
-        Segment(Project(RoadSegment.Key),Project(RoadSegment.Value),2.5f,Road);
+    District.VisitMapRoads(Here, ViewRange, [&](const FVector& A, const FVector& B, bool bMajor)
+    {
+        FVector2D From = Project(A), To = Project(B);
+        if (!ClipToDisc(From, To, Radius-3.f)) return;
+        bVisibleRoad = true;
+        Draw.Stroke(Centre+From,Centre+To,bMajor ? 2.15f : 1.15f,Road.CopyWithNewOpacity(bMajor ? 1.f : .68f));
+    });
     for (const auto& Place : Player.GetPlaces())
     {
         const FVector2D P = Project(Place.Point);
@@ -232,6 +246,25 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
         const FVector2D Tip = Centre+Nose*Size, Tail = Centre-Nose*(Size*.28);
         Draw.Fill(Tip,Centre-Nose*(Size*.63)+Side*(Size*.69),Tail,Color);
         Draw.Fill(Tip,Tail,Centre-Nose*(Size*.63)-Side*(Size*.69),Color);
+    }
+    if (City)
+    {
+        if (!bVisibleRoad) Draw.Label(TEXT("No mapped streets"),Centre+FVector2D(0,23),11,TEXT("Medium"),Ivory,true);
+        House(Draw, Centre+FVector2D(-64,-Radius-30), Home);
+        Draw.Label(TEXT("Flat 2B · Pause to return"),Centre+FVector2D(4,-Radius-30),11,TEXT("Medium"),Home,true);
+    }
+    else
+    {
+        const FVector Entry = FRiverfrontFirstMorningWorld::StreetPoint();
+        const FVector2D Offset = Project(Entry);
+        // Leave space for the player chevron while standing at the entrance.
+        const FVector2D Marker = Centre + (Offset.SizeSquared()<196. ? FVector2D(13,9)
+            : Offset.GetClampedToMaxSize(Radius-11.));
+        Draw.Disc(Marker,8,Graphite,Graphite);
+        House(Draw,Marker,Home);
+        const int32 Metres = FMath::RoundToInt(FVector::Dist2D(Here,Entry)/100.);
+        Draw.Label(Metres<15 ? TEXT("Flat 2B") : FString::Printf(TEXT("Flat 2B  ·  %d m"),Metres),
+            Centre+FVector2D(0,-Radius-30),11,TEXT("Medium"),Home,true);
     }
     Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-11),12,TEXT("Bold"),Ivory,true);
     Draw.Label(City ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
@@ -402,9 +435,9 @@ void ARiverfrontHUD::DrawHUD()
     const bool City = Mode && Mode->IsCityMode();
     const auto* Car = Cast<ARiverfrontCar>(Pawn);
     const FString Destination=Player->NavigationText();
-    if (Player->MapVisible() && Mode && Mode->GetTraffic())
+    if (Player->MapVisible() && Mode && Mode->GetDistrict())
     {
-        StreetMap(Draw,*Pawn,*Player,*Mode->GetTraffic(),City,Car!=nullptr,Destination);
+        StreetMap(Draw,*Pawn,*Player,*Mode->GetDistrict(),Car!=nullptr,Destination);
     }
     if (!Destination.IsEmpty()) Guidance(Draw,*Player,Destination);
     if (Car) DriveCluster(Draw,*Car);

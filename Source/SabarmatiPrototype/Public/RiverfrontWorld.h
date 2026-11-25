@@ -39,6 +39,8 @@ public:
     const FVector& GetTeaCounter() const { return TeaCounter; }
     const FVector& GetPressCounter() const { return PressCounter; }
     bool PrepareCityTravel(const FVector& Focus);
+    using FMapRoadVisitor = TFunctionRef<void(const FVector&, const FVector&, bool)>;
+    void VisitMapRoads(const FVector& Focus, double Radius, FMapRoadVisitor Visit) const;
     bool FindCityFootway(const FVector& Origin, double Yaw, FVector& Surface) const;
     bool HasStreetDistricts() const { return bStreetDistricts; }
     bool IsCityMode() const { return CityState.IsValid(); }
@@ -99,6 +101,7 @@ private:
     void BuildBridge();
     void BuildAtalBridge();
     void BuildRiverfrontCorridor();
+    static void VisitRiverfrontMapRoads(FMapRoadVisitor Visit);
     void BuildFrontage();
     void DressStreetSurface();
     void DressMarketUtilities();
