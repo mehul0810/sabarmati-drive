@@ -694,15 +694,29 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
         if (Distance>0 && Distance<2350 && FMath::Abs(V.X*D.Y-V.Y*D.X)<Agents[Index]->HalfWidth+OtherWidth+22.)
             Restrict(Distance-Length-OtherLength-84.,Reason,Other);
     };
+    // Check parked vehicles against the original lane, so a driver keeps its
+    // passing offset until its rear has cleared the obstacle.
+    const FVector LaneOrigin=At+FVector(D.Y,-D.X,0.)*Drivers[Index].Offset;
+    const auto BlocksLane=[&](const FVector& Position,double OtherLength)
+    {
+        const FVector V=Position-LaneOrigin;
+        const double Forward=V.Dot(D);
+        return !bCity && Along && Forward>-(Length+OtherLength+110.) && Forward<1600.
+            && FMath::Abs(V.X*D.Y-V.Y*D.X)<340.;
+    };
     for (int32 I=0;I<Agents.Num();++I)
-        if (I!=Index) Ahead(Agents[I]->GetActorLocation(),Agents[I]->HalfLength,Agents[I]->HalfWidth,Agents[I],TEXT("traffic"));
+        if (I!=Index)
+        {
+            const auto* Other=Agents[I].Get();
+            if (Drivers[I].bParked && BlocksLane(Other->GetActorLocation(),Other->HalfLength)) Obstacle=true;
+            Ahead(Other->GetActorLocation(),Other->HalfLength,Other->HalfWidth,Other,
+                Drivers[I].bParked?TEXT("parked_traffic"):TEXT("traffic"));
+        }
     for (const auto& C:Parked)
         if (C.IsValid())
         {
-            const FVector V=C->GetActorLocation()-At;
-            if (!bCity && Along && !C->IsOccupied() && V.Dot(D)>-360 && V.Dot(D)<1600 &&
-                FMath::Abs(V.X*D.Y-V.Y*D.X)<340) Obstacle=true;
             const FVector Hull = C->GetCollisionExtents();
+            if (!C->IsOccupied() && BlocksLane(C->GetActorLocation(),Hull.X)) Obstacle=true;
             Ahead(C->GetActorLocation(),Hull.X,Hull.Y,C.Get(),TEXT("car"));
         }
     if (const auto* PC=GetWorld()->GetFirstPlayerController())
@@ -806,10 +820,25 @@ void ARiverfrontTraffic::Tick(float Dt)
         const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I,CrossingWalkers,Diagnostic);
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
         bool Passing=ParkedAhead;
-        if (Passing)
+        if (Passing && L.Offset<=20.)
             for (int32 K=0;K<Agents.Num();++K)
-                if (K!=I && Agents[K]->GetActorForwardVector().Dot(D)<-.65 &&
-                    FVector::DistSquared2D(A->GetActorLocation(),Agents[K]->GetActorLocation())<FMath::Square(1500.)) Passing=false;
+                if (K!=I && !Drivers[K].bParked && Agents[K]->GetActorForwardVector().Dot(D)<-.65 &&
+                    (Agents[K]->GetActorLocation()-A->GetActorLocation()).Dot(D)>-250. &&
+                    FVector::DistSquared2D(A->GetActorLocation(),Agents[K]->GetActorLocation())<FMath::Square(2200.)) Passing=false;
+#if !UE_BUILD_SHIPPING
+        if (bTrafficTrace && Passing && !L.bRecordedPass)
+        {
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s began passing a parked vehicle at %s."),
+                *A->GetName(),*A->GetActorLocation().ToCompactString());
+            L.bRecordedPass=true;
+        }
+        if (bTrafficTrace && !ParkedAhead && L.bRecordedPass)
+        {
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s cleared the parked vehicle at %s."),
+                *A->GetName(),*A->GetActorLocation().ToCompactString());
+            L.bRecordedPass=false;
+        }
+#endif
         bool Yielding=false;
         if (!A->IsEmergency && !bCity && FMath::Abs(D.X)>.9)
         {

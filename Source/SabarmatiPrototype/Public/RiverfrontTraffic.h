@@ -61,6 +61,7 @@ struct FSabarmatiLane
     bool bParked=false;
 #if !UE_BUILD_SHIPPING
     double LastDiagnosticAt=-100.;
+    bool bRecordedPass=false;
 #endif
 };
 
