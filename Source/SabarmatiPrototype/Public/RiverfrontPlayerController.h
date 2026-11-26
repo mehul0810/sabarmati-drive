@@ -10,7 +10,7 @@ class FReply;
 class ACameraActor;
 class ALevelSequenceActor;
 enum class ERiverfrontLifeMenu : uint8;
-enum class EFittingView : uint8 { Full, Face, Tailoring, Trousers };
+enum class EFittingView : uint8 { Full, Face, Tailoring, Trousers, Feet };
 class ARiverfrontWorld;
 class ARiverfrontPedestrian;
 

@@ -111,11 +111,12 @@ public:
                 ];
             }
             for (auto WearSlot : {ERiverfrontWearSlot::Top,ERiverfrontWearSlot::Bottom,ERiverfrontWearSlot::InnerTop,
-                ERiverfrontWearSlot::InnerBottom,ERiverfrontWearSlot::Accessory})
+                ERiverfrontWearSlot::InnerBottom,ERiverfrontWearSlot::Socks,ERiverfrontWearSlot::Shoes,ERiverfrontWearSlot::Accessory})
             {
                 if (WearSlot==ERiverfrontWearSlot::Top) AddCaption(Body,TEXT("Tops"));
                 if (WearSlot==ERiverfrontWearSlot::Bottom) AddCaption(Body,TEXT("Bottoms"));
                 if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Body,TEXT("Innerwear"));
+                if (WearSlot==ERiverfrontWearSlot::Shoes) AddCaption(Body,TEXT("Footwear"));
                 if (WearSlot==ERiverfrontWearSlot::Accessory) AddCaption(Body,TEXT("Accessories"));
                 for (const auto& Entry : RiverfrontLife::Catalog())
                     if (Entry.Slot==WearSlot)
@@ -276,7 +277,7 @@ private:
     TSharedPtr<SButton> CloseButton;
     TMap<FName,TSharedPtr<SButton>> Rows;
     TArray<FName> Owned;
-    FName Selected, Outfit, Bottom, InnerTop, InnerBottom, Accessory, Held, Tone;
+    FName Selected, Outfit, Bottom, InnerTop, InnerBottom, Shoes, Socks, Accessory, Held, Tone;
     ERiverfrontGender Gender = ERiverfrontGender::Male;
     int64 Cash = 0, Bank = 0;
     int32 Deliveries = 0;
@@ -291,6 +292,7 @@ private:
     FName PendingItem;
     bool bTransferred=false;
     bool bChangingBottom=false;
+    bool bChangingFeet=false;
     TStrongObjectPtr<USoundBase> SelectionTick, CounterBell;
 
     float PanelScale() const
@@ -327,6 +329,8 @@ private:
         Bottom = Saved->EquippedBottom;
         InnerTop = Saved->EquippedInnerTop;
         InnerBottom = Saved->EquippedInnerBottom;
+        Shoes = Saved->EquippedShoes;
+        Socks = Saved->EquippedSocks;
         Accessory = Saved->EquippedAccessory;
         Tone = Saved->AppearanceTone;
         Held = Saved->HeldWardrobeItem;
@@ -370,7 +374,7 @@ private:
             ];
     }
 
-    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id == InnerBottom || (Id == InnerTop && Gender==ERiverfrontGender::Female) || Id == Accessory); }
+    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id==Shoes || Id==Socks || Id == InnerBottom || (Id == InnerTop && Gender==ERiverfrontGender::Female) || Id == Accessory); }
 
     TSharedRef<SWidget> ItemRow(const FRiverfrontWearable& Entry)
     {
@@ -427,8 +431,9 @@ private:
         const auto Target=[this,Mode]
         {
             const auto* Choice=Item(Selected);
-            return Mode==EFittingView::Tailoring && Choice && (Choice->Slot==ERiverfrontWearSlot::Bottom || Choice->Slot==ERiverfrontWearSlot::InnerBottom)
-                ? EFittingView::Trousers : Mode;
+            if (Mode!=EFittingView::Tailoring || !Choice) return Mode;
+            if (Choice->Slot==ERiverfrontWearSlot::Shoes || Choice->Slot==ERiverfrontWearSlot::Socks) return EFittingView::Feet;
+            return Choice->Slot==ERiverfrontWearSlot::Bottom || Choice->Slot==ERiverfrontWearSlot::InnerBottom ? EFittingView::Trousers : Mode;
         };
         return SNew(SButton).Tag(Tag).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
             .ContentPadding(FMargin(8,7)).HAlign(HAlign_Center)
@@ -488,12 +493,14 @@ private:
     FName Cover() const
     {
         const auto* Choice=Item(Selected);
-        return Choice ? RiverfrontLife::CoveringItem(Choice->Slot,Outfit,Bottom) : NAME_None;
+        return Choice ? RiverfrontLife::CoveringItem(Choice->Slot,Outfit,Bottom,Shoes) : NAME_None;
     }
 
     FName WornInSlot() const
     {
         const auto* Choice=Item(Selected);
+        if (Choice && Choice->Slot==ERiverfrontWearSlot::Shoes) return Shoes;
+        if (Choice && Choice->Slot==ERiverfrontWearSlot::Socks) return Socks;
         if (Choice && Choice->Slot==ERiverfrontWearSlot::InnerTop) return InnerTop;
         if (Choice && Choice->Slot==ERiverfrontWearSlot::InnerBottom) return InnerBottom;
         if (Choice && Choice->Slot==ERiverfrontWearSlot::Bottom) return Bottom;
@@ -531,13 +538,14 @@ private:
     EActiveTimerReturnType AdvanceDressing(double Now,float)
     {
         auto* Walker=Resident();
-        const float Time=FMath::Clamp(float((Now-DressStageStart)/(bChangingBottom ? 3.25 : PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
+        const float Time=FMath::Clamp(float((Now-DressStageStart)/((bChangingBottom || bChangingFeet) ? 3.25 : PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
-            if (bChangingBottom || PendingItem==RiverfrontLife::SportsBra)
+            if (bChangingBottom || bChangingFeet || PendingItem==RiverfrontLife::SportsBra)
             {
                 const float Undress=PendingAction==EAction::TakeOff ? Time : 1.f-Time;
                 if (bChangingBottom) Walker->PoseChangingTrousers(PendingItem,Undress);
+                else if (bChangingFeet) Walker->PoseChangingFootwear(PendingItem,Undress);
                 else Walker->PoseChangingSportsBra(Undress);
                 if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
                 return EActiveTimerReturnType::Continue;
@@ -575,6 +583,7 @@ private:
         auto* Walker=Resident();
         if (Action==EAction::Take || !Choice || Choice->Slot==ERiverfrontWearSlot::Accessory || !Walker || !Walker->SupportsClothingChange())
             return FinishAction(Action,Id);
+        bChangingFeet=Choice->Slot==ERiverfrontWearSlot::Shoes || Choice->Slot==ERiverfrontWearSlot::Socks;
         bChangingBottom=Choice->Slot==ERiverfrontWearSlot::Bottom || Choice->Slot==ERiverfrontWearSlot::InnerBottom;
         bTransferred=false;
         PendingAction=Action;

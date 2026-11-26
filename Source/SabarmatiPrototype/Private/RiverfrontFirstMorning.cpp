@@ -192,13 +192,16 @@ bool ARiverfrontPlayerController::SetFittingView(EFittingView Mode)
         const bool bFace = Mode == EFittingView::Face;
         const USkeletalMeshComponent* Body = Walker->GetAvatarMesh();
         const bool bLegs=Mode==EFittingView::Trousers;
+        const bool bFeet=Mode==EFittingView::Feet;
         const FName FocusBone = bFace ? FName(TEXT("Head")) : bLegs ? FName(TEXT("Pelvis")) : FName(TEXT("Neck"));
-        const FVector Focus = Body && Body->DoesSocketExist(FocusBone)
+        FVector Focus = Body && Body->DoesSocketExist(FocusBone)
             ? Body->GetSocketLocation(FocusBone) + FVector(0,0,bFace ? 2. : bLegs ? -33. : -15.)
             : Walker->GetPawnViewLocation() - FVector(0,0,bFace ? 0. : 18.);
+        if (bFeet && Body && Body->DoesSocketExist(TEXT("Footl")) && Body->DoesSocketExist(TEXT("Footr")))
+            Focus=(Body->GetSocketLocation(TEXT("Footl"))+Body->GetSocketLocation(TEXT("Footr")))*.5+FVector(0,0,11.);
         const FVector Forward = Walker->GetActorForwardVector().RotateAngleAxis(bFace ? 0. : -36., FVector::UpVector);
         const FVector Right = FVector::CrossProduct(FVector::UpVector, -Forward);
-        const FVector Desired = Focus + Forward*(bFace ? 80. : 126.) + FVector(0,0,bFace ? 1.5 : 5.);
+        const FVector Desired = Focus + Forward*(bFace ? 80. : bFeet ? 87. : 126.) + FVector(0,0,bFace ? 1.5 : bFeet ? 23. : 5.);
         FHitResult Hit;
         const FCollisionQueryParams Query(SCENE_QUERY_STAT(WardrobePortrait), false, Walker);
         const bool bObstructed = GetWorld()->SweepSingleByChannel(Hit, Focus, Desired, FQuat::Identity,

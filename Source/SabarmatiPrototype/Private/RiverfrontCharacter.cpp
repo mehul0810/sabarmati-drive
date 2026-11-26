@@ -424,6 +424,8 @@ void ARiverfrontCharacter::UpdateHair()
 
 void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile& Profile)
 {
+    bWearingShoes=Profile.EquippedShoes==RiverfrontLife::StreetShoes;
+    bWearingSocks=Profile.EquippedSocks==RiverfrontLife::CottonSocks;
     bWearingBra = Profile.EquippedInnerTop==RiverfrontLife::SportsBra;
     bWearingBriefs = Profile.EquippedInnerBottom==RiverfrontLife::Briefs;
     WardrobeBottom = Profile.EquippedBottom.IsNone() ? RiverfrontLife::StarterBottom : Profile.EquippedBottom;
@@ -551,10 +553,11 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
 
 void ARiverfrontCharacter::EndChangingPose()
 {
-    if (MovingGarment)
+    if (MovingGarment || ChangingFoot!=INDEX_NONE)
     {
-        MovingGarment->DestroyComponent();
+        if (MovingGarment) MovingGarment->DestroyComponent();
         MovingGarment=nullptr;
+        ChangingFoot=INDEX_NONE;
         SetBraFabricVisible(bWearingBra);
         SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
     }
@@ -665,6 +668,7 @@ bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
             }
     BedTime=0.f;
     bLyingOnBed=true;
+    if (SupportsClothingChange()) SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
     UpdateBedPose();
     return true;
 }
@@ -742,6 +746,7 @@ void ARiverfrontCharacter::LeaveBed()
     BedShoeLODs.Reset();
     Body->SetRelativeTransform(BeforeBed);
     SetFittingPose(false);
+    if (SupportsClothingChange()) SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
 }
 
 void ARiverfrontCharacter::SetFittingPose(bool bFitting)

@@ -122,7 +122,8 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
     if (!Body->DoesSocketExist(Hand)) return;
     const auto* Item=RiverfrontLife::Catalog().FindByPredicate([Id](const auto& Entry){return Entry.Id==Id;});
     if (!Item) return;
-    if (Item->Slot==ERiverfrontWearSlot::Bottom || Item->Slot==ERiverfrontWearSlot::InnerBottom || Item->Slot==ERiverfrontWearSlot::InnerTop)
+    if (Item->Slot==ERiverfrontWearSlot::Bottom || Item->Slot==ERiverfrontWearSlot::InnerBottom || Item->Slot==ERiverfrontWearSlot::InnerTop ||
+        Item->Slot==ERiverfrontWearSlot::Shoes || Item->Slot==ERiverfrontWearSlot::Socks)
     {
         HeldProp=CreateGarmentDisplay(Id);
         if (HeldProp)
