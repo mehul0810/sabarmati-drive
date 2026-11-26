@@ -52,13 +52,19 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
 
     TestTrue(TEXT("original denim is owned"), Profile->OwnedItems.Contains(RiverfrontLife::StarterBottom));
     TestEqual(TEXT("legacy player starts in their jeans"), Profile->EquippedBottom, RiverfrontLife::StarterBottom);
+    TestFalse(TEXT("briefs are under the jeans"), Dress(Slot,EAction::TakeOff,RiverfrontLife::Briefs).IsEmpty());
     TestTrue(TEXT("remove jeans independently"), Dress(Slot,EAction::TakeOff,RiverfrontLife::StarterBottom).IsEmpty());
     TestEqual(TEXT("shirt survives jeans removal"), RiverfrontLife::Load(Slot)->EquippedOutfit,FName(TEXT("cotton-sand")));
     TestEqual(TEXT("underwear saved across reload"), RiverfrontLife::Load(Slot)->EquippedBottom,RiverfrontLife::Underwear);
+    TestTrue(TEXT("remove inner layer"), Dress(Slot,EAction::TakeOff,RiverfrontLife::Briefs).IsEmpty());
+    TestTrue(TEXT("empty inner slot survives reload"), RiverfrontLife::Load(Slot)->EquippedInnerBottom.IsNone());
     TestFalse(TEXT("cannot equip jeans directly"), Dress(Slot,EAction::PutOn,RiverfrontLife::StarterBottom).IsEmpty());
     TestTrue(TEXT("pick up jeans"), Dress(Slot,EAction::Take,RiverfrontLife::StarterBottom).IsEmpty());
     TestFalse(TEXT("one item in hand across slots"), Dress(Slot,EAction::TakeOff,TEXT("cotton-sand")).IsEmpty());
     TestTrue(TEXT("put jeans back on"), Dress(Slot,EAction::PutOn,RiverfrontLife::StarterBottom).IsEmpty());
+
+    TestTrue(TEXT("replacing denim preserves empty inner slot"),RiverfrontLife::Load(Slot)->EquippedInnerBottom.IsNone());
+    TestFalse(TEXT("cannot dress underneath worn jeans"),Dress(Slot,EAction::Take,RiverfrontLife::Briefs).IsEmpty());
 
     TestTrue(TEXT("buy indigo shirt for cash"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
     TestTrue(TEXT("repeat request"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
@@ -198,6 +204,18 @@ bool FSabarmatiFinderProfile::RunTest(const FString& Parameters)
     if (!TestNotNull(TEXT("canonical progress readable"), Continued)) return false;
     TestEqual(TEXT("canonical wins over stale legacy"), Continued->CashRupees, int64(350));
 
+    Current->Schema=3;
+    Current->EquippedBottom=RiverfrontLife::Underwear;
+    Current->OwnedItems.Remove(RiverfrontLife::Briefs);
+    Current->OwnedItems.Remove(RiverfrontLife::SportsBra);
+    Current->EquippedInnerTop=Current->EquippedInnerBottom=NAME_None;
+    if (!TestTrue(TEXT("seed V3 innerwear migration"),Finder.Write(*Current))) return false;
+    Current=Finder.Load();
+    if (!TestNotNull(TEXT("V3 wardrobe reopens"),Current)) return false;
+    TestEqual(TEXT("V3 empty outer bottom preserved"),Current->EquippedBottom,RiverfrontLife::Underwear);
+    TestEqual(TEXT("previously visible briefs retained"),Current->EquippedInnerBottom,RiverfrontLife::Briefs);
+    TestEqual(TEXT("previously visible sports bra retained"),Current->EquippedInnerTop,RiverfrontLife::SportsBra);
+    TestTrue(TEXT("previously fixed layers now owned"),Current->OwnedItems.Contains(RiverfrontLife::Briefs) && Current->OwnedItems.Contains(RiverfrontLife::SportsBra));
     Current->Schema = URiverfrontLocalProfile::CurrentSchema + 1;
     if (!TestTrue(TEXT("write future fixture"), Finder.Write(*Current))) return false;
     TArray<uint8> FutureBefore, FutureAfter;

@@ -6,7 +6,7 @@
 #include "RiverfrontLifeProfile.generated.h"
 
 UENUM()
-enum class ERiverfrontWearSlot : uint8 { Top, Bottom, Accessory };
+enum class ERiverfrontWearSlot : uint8 { Top, Bottom, Accessory, InnerTop, InnerBottom };
 
 USTRUCT()
 struct FRiverfrontWearable
@@ -37,6 +37,9 @@ namespace RiverfrontLife
     URiverfrontLocalProfile* Load(const FString& Slot);
     bool Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender = ERiverfrontGender::Male);
     bool MergeExploration(const FString& Slot, const FString& DisplayName, const TArray<FName>& Visits, float BestTime);
+    FName CoveringItem(ERiverfrontWearSlot Slot, FName Outfit, FName Bottom);
+    inline const FName SportsBra(TEXT("sports-bra"));
+    inline const FName Briefs(TEXT("boxer-briefs"));
     inline const FName StarterBottom(TEXT("denim-dark"));
     inline const FName Underwear(TEXT("underwear"));
     inline const FName BaseLayer(TEXT("fitting-base"));

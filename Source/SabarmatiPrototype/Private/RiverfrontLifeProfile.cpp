@@ -38,6 +38,14 @@ URiverfrontLocalProfile* Supported(URiverfrontLocalProfile* Profile)
     return (Profile->Schema >= 1 && Profile->Schema <= URiverfrontLocalProfile::CurrentSchema) ? Profile : nullptr;
 }
 
+void AddOriginalInnerwear(URiverfrontLocalProfile& Profile)
+{
+    Profile.OwnedItems.AddUnique(RiverfrontLife::Briefs);
+    Profile.OwnedItems.AddUnique(RiverfrontLife::SportsBra);
+    Profile.EquippedInnerTop=RiverfrontLife::SportsBra;
+    Profile.EquippedInnerBottom=RiverfrontLife::Briefs;
+}
+
 void StartLife(URiverfrontLocalProfile& Profile)
 {
     Profile.CashRupees = 100000;
@@ -45,6 +53,7 @@ void StartLife(URiverfrontLocalProfile& Profile)
     Profile.OwnedItems = { StarterOutfit, RiverfrontLife::StarterBottom };
     Profile.EquippedBottom = RiverfrontLife::StarterBottom;
     Profile.EquippedOutfit = StarterOutfit;
+    AddOriginalInnerwear(Profile);
     Profile.Schema = URiverfrontLocalProfile::CurrentSchema;
 }
 
@@ -55,7 +64,12 @@ void UpgradeWardrobe(URiverfrontLocalProfile& Profile)
     {
         Profile.OwnedItems.AddUnique(RiverfrontLife::StarterBottom);
         Profile.EquippedBottom = RiverfrontLife::StarterBottom;
-        Profile.Schema = URiverfrontLocalProfile::CurrentSchema;
+        Profile.Schema = 3;
+    }
+    if (Profile.Schema==3)
+    {
+        AddOriginalInnerwear(Profile);
+        Profile.Schema=URiverfrontLocalProfile::CurrentSchema;
     }
 }
 
@@ -257,6 +271,13 @@ FText RiverfrontLife::Buy(const FString& Slot, FName Id, bool bPayFromBank)
     });
 }
 
+FName RiverfrontLife::CoveringItem(ERiverfrontWearSlot Slot,FName Outfit,FName Bottom)
+{
+    if (Slot==ERiverfrontWearSlot::InnerTop && Outfit!=BaseLayer) return Outfit.IsNone() ? StarterOutfit : Outfit;
+    if (Slot==ERiverfrontWearSlot::InnerBottom && Bottom!=Underwear) return Bottom.IsNone() ? StarterBottom : Bottom;
+    return NAME_None;
+}
+
 FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName Id)
 {
     const auto* Item = FindItem(Id);
@@ -266,7 +287,16 @@ FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName I
         if (!Profile.OwnedItems.Contains(Id)) return LOCTEXT("NotOwned", "Purchase this item first.");
         const bool bTop=Item->Slot==ERiverfrontWearSlot::Top;
         const bool bBottom=Item->Slot==ERiverfrontWearSlot::Bottom;
-        FName& Worn=bTop ? Profile.EquippedOutfit : bBottom ? Profile.EquippedBottom : Profile.EquippedAccessory;
+        if (Action!=EDressingAction::PutBack)
+        {
+            if (Item->Slot==ERiverfrontWearSlot::InnerTop && Profile.AvatarGender!=ERiverfrontGender::Female)
+                return LOCTEXT("InnerFit", "This garment is fitted to the female avatar.");
+            if (const auto* Cover=FindItem(CoveringItem(Item->Slot,Profile.EquippedOutfit,Profile.EquippedBottom)))
+                return FText::Format(LOCTEXT("CoveredLayer","Take off {0} first."),FText::FromString(Cover->Label));
+        }
+        FName& Worn=bTop ? Profile.EquippedOutfit : bBottom ? Profile.EquippedBottom :
+            Item->Slot==ERiverfrontWearSlot::InnerTop ? Profile.EquippedInnerTop :
+            Item->Slot==ERiverfrontWearSlot::InnerBottom ? Profile.EquippedInnerBottom : Profile.EquippedAccessory;
         if (bTop && Worn.IsNone()) Worn=StarterOutfit;
         const FName Empty=bTop ? BaseLayer : bBottom ? Underwear : NAME_None;
         if (Action==EDressingAction::TakeOff && !Profile.HeldWardrobeItem.IsNone())
@@ -304,6 +334,7 @@ FText RiverfrontLife::SetAvatarGender(const FString& Slot, ERiverfrontGender Gen
     return Update(Slot, [Gender](URiverfrontLocalProfile& Profile)
     {
         Profile.AvatarGender = Gender;
+        if (Gender==ERiverfrontGender::Male && Profile.HeldWardrobeItem==SportsBra) Profile.HeldWardrobeItem=NAME_None;
         return FText::GetEmpty();
     });
 }
