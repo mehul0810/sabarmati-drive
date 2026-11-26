@@ -308,6 +308,15 @@ void ARiverfrontPlayerController::GreetCompanion(ARiverfrontPedestrian& Person)
         Notice(TEXT("We meet for chai on this bank. Come across with us when the signal changes."));
 }
 
+void ARiverfrontPlayerController::NotifyResidentReaction(const ARiverfrontPedestrian& Person, int32 Count)
+{
+    const TCHAR* Name = Person.IsVisitingPrintmaker() ? TEXT("Amina")
+        : Person.IsInternationalVisitor() ? TEXT("Inês") : TEXT("Resident");
+    Notice(FString::Printf(TEXT("%s · %s"), Name,
+        Count > 1 ? (Person.IsFamilyMember() ? TEXT("Please give us a little space.") : TEXT("Please give me a little space."))
+            : TEXT("Can I help you?")));
+}
+
 void ARiverfrontPlayerController::PointToChai()
 {
     SelectedSite = Sites.IndexOfByPredicate([](const FRiverSite& Site) { return Site.Kind == ERiverSiteKind::Tea; });

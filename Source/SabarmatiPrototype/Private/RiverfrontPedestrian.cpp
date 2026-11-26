@@ -223,6 +223,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
                 Walker->Tags.Add(TEXT("SightseeingVisitor"));
                 Walker->DressCloseResident(FLinearColor(1.04f, .97f, .91f), FLinearColor(.74f, .9f, 1.08f), true);
                 Walker->EquipVisitorCamera();
+                Walker->EnablePlayerAwareness();
             }
             ++Count;
         }
@@ -249,6 +250,7 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
                     Customer->DressCloseResident(FLinearColor(.73f, .67f, .62f), FLinearColor(.82f, 1.f, 1.14f), false);
                     Customer->EquipPrintPortfolio();
                     Customer->SetGarmentColor(TEXT("scarf"), FColor(108, 120, 131));
+                    Customer->EnablePlayerAwareness();
                 }
                 Customer->Errand=Path; Customer->ErrandStep=1;
                 Customer->SetActorLocation(Path[0]); Customer->RestLeft=Tea?1.8:7.2; Customer->SetMoving(false);
@@ -372,6 +374,7 @@ void ARiverfrontPedestrian::Tick(float DeltaSeconds)
     const APawn* Player=PC?PC->GetPawn():nullptr;
     const bool Far=Player && FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(12500.);
     SetActorTickInterval(Far?.22f:.035f);
+    if (Awareness && TickPlayerAwareness(DeltaSeconds)) return;
     if (!Family.IsEmpty()) { TickFamily(DeltaSeconds); return; }
     UpdateGait(DeltaSeconds);
     if (!Errand.IsEmpty()) {TickErrand(DeltaSeconds);return;}

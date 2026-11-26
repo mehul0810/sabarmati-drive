@@ -37,6 +37,7 @@ public:
 
     void InteractWithPlace();
     void Drowned();
+    void NotifyResidentReaction(const ARiverfrontPedestrian& Person, int32 Count);
     FString PlacePrompt() const;
     const TArray<FRiverSite>& GetPlaces() const { return Sites; }
     const FRiverSite* Destination() const;
@@ -139,6 +140,7 @@ private:
     void ApplyGraphicsPreset(int32 Quality, bool bSave);
 #if !UE_BUILD_SHIPPING
     void RunMorningReview();
+    void RunAwarenessReview();
     void RunRenderingBenchmark();
     void RunDistrictReview();
     void RunGaitReview();

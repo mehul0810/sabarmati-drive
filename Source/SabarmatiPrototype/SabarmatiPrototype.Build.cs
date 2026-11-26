@@ -8,7 +8,7 @@ public class SabarmatiPrototype : ModuleRules
         if (Target.bBuildEditor) PrivateDependencyModuleNames.Add("AssetRegistry");
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[] {
-            "Core", "CoreUObject", "Engine", "InputCore"
+            "Core", "CoreUObject", "Engine", "InputCore", "AIModule"
         });
         PrivateDependencyModuleNames.AddRange(new[] { "Slate", "SlateCore", "ProceduralMeshComponent", "RenderCore", "RHI", "Json", "MoviePlayer", "LevelSequence", "MovieScene", "MovieSceneTracks", "ChaosVehicles", "AnimGraphRuntime", "AnimationCore" });
     }

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Perception/AIPerceptionTypes.h"
 #include "RiverfrontResidentAppearance.h"
 #include "RiverfrontPedestrian.generated.h"
 
@@ -13,6 +14,7 @@ class UBlendSpace1D;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class UWorld;
+class UAIPerceptionComponent;
 
 /** A lightweight ambient walker on a checked, pedestrian-only circuit. */
 UCLASS()
@@ -32,6 +34,14 @@ public:
     int32 FamilyKerbWaits() const { return KerbWaits; }
     static int32 SpawnRiverfrontCrowd(UWorld& World);
     static ARiverfrontPedestrian* SpawnStreetWalker(UWorld& World, const FVector& A, const FVector& B, int32 Variant);
+    void GetActorEyesViewPoint(FVector& OutLocation, FRotator& OutRotation) const override;
+#if !UE_BUILD_SHIPPING
+    bool IsReactingToPlayer() const { return ReactionLeft > 0.; }
+    int32 PlayerReactions() const { return ReactionCount; }
+    bool HasPlayerAwareness() const { return Awareness != nullptr; }
+    bool HasSeenPlayer() const { return bPlayerVisible; }
+    double HeardPlayerAt() const { return LastPlayerFootstep; }
+#endif
 
 protected:
     void Tick(float DeltaSeconds) override;
@@ -45,6 +55,14 @@ private:
     void SetGarmentColor(FName SlotName, FColor Color, UMaterialInterface* Parent = nullptr);
     ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     void UpdateRouteTransform();
+    void EnablePlayerAwareness();
+    bool TickPlayerAwareness(float Delta);
+    UFUNCTION() void OnPlayerPerception(AActor* Actor, FAIStimulus Stimulus);
+    UPROPERTY(Transient) TObjectPtr<UAIPerceptionComponent> Awareness;
+    double LastPlayerFootstep = -100.;
+    double AttentionTime = 0., ReactionLeft = 0.;
+    int32 ReactionCount = 0;
+    bool bPlayerVisible = false, bNeedsSpace = false, bResumeMoving = false;
 
     FVector RouteStart = FVector::ZeroVector;
     FVector RouteEnd = FVector::ZeroVector;

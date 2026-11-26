@@ -8,6 +8,7 @@
 #include "RiverfrontLocomotionInstance.h"
 #include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
+#include "Perception/AISense_Hearing.h"
 #include "Kismet/GameplayStatics.h"
 
 #include "Algo/AllOf.h"
@@ -981,6 +982,7 @@ void ARiverfrontCharacter::Tick(float DeltaSeconds)
             ++StepIndex;
             USoundWave* Step = StepIndex % 3 == 0 ? GritStep.Get() : StoneStep.Get();
             if (Step) UGameplayStatics::PlaySoundAtLocation(this,Step,Foot,.18f+FMath::Min(FlatSpeed/1600.f,.3f),.94f+(StepIndex%4)*.042f);
+            if (IsPlayerControlled()) UAISense_Hearing::ReportNoiseEvent(this, Foot, 1.f, this, 400.f, TEXT("PlayerFootstep"));
         }
     }
     else

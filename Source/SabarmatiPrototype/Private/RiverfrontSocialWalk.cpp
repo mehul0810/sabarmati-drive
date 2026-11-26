@@ -155,6 +155,7 @@ bool ARiverfrontPedestrian::SpawnFamilyOuting(ARiverfrontWorld& District, USkele
     auto* Leader = Walkers[0];
     for (auto* Relative : Walkers) Leader->Family.Add(Relative);
     Leader->RestLeft = 1.2;
+    Leader->EnablePlayerAwareness();
     UE_LOG(LogTemp, Display, TEXT("Sabarmati family: 3 relatives on cleared footways to Nadi Chai, first kerb %s."),
         *Routes[0]->GetLocationAtSplinePoint(PromenadeKerb, ESplineCoordinateSpace::World).ToCompactString());
     return true;
