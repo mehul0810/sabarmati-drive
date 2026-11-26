@@ -96,6 +96,8 @@ public:
         const FString Location = bTrial ? TEXT("SUTRA CLOTH HOUSE") : bShop ? TEXT("RIVERFRONT MARKET") : bWardrobe ? TEXT("KESAR APARTMENTS  /  FLAT 2B") : TEXT("PERSONAL ACCOUNT");
 
         TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
+        TSharedRef<SVerticalBox> Actions=SNew(SVerticalBox);
+        TSharedRef<SHorizontalBox> Filters=SNew(SHorizontalBox);
         if (bAvailable && (bShop || bWardrobe))
         {
             if (bWardrobe)
@@ -111,19 +113,31 @@ public:
                     })
                 ];
             }
+            for (const auto Group : {EGroup::All,EGroup::Tops,EGroup::Bottoms,EGroup::Layers,EGroup::Gear})
+                Filters->AddSlot().FillWidth(1.f).Padding(1,0)[FilterButton(Group)];
             for (auto WearSlot : {ERiverfrontWearSlot::Top,ERiverfrontWearSlot::Bottom,ERiverfrontWearSlot::InnerTop,
                 ERiverfrontWearSlot::InnerBottom,ERiverfrontWearSlot::Socks,ERiverfrontWearSlot::Shoes,ERiverfrontWearSlot::Accessory})
             {
-                if (WearSlot==ERiverfrontWearSlot::Top) AddCaption(Body,TEXT("Tops"));
-                if (WearSlot==ERiverfrontWearSlot::Bottom) AddCaption(Body,TEXT("Bottoms"));
-                if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Body,TEXT("Innerwear"));
-                if (WearSlot==ERiverfrontWearSlot::Shoes) AddCaption(Body,TEXT("Footwear"));
-                if (WearSlot==ERiverfrontWearSlot::Accessory) AddCaption(Body,TEXT("Accessories"));
+                const EGroup Group=GroupOf(WearSlot);
+                TSharedRef<SVerticalBox> Section=SNew(SVerticalBox)
+                    .Visibility_Lambda([this,Group]{ return Show(Filter==EGroup::All || Filter==Group); });
+                Body->AddSlot().AutoHeight()[Section];
+                if (WearSlot==ERiverfrontWearSlot::Top) AddCaption(Section,TEXT("Tops"));
+                if (WearSlot==ERiverfrontWearSlot::Bottom) AddCaption(Section,TEXT("Bottoms"));
+                if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Section,TEXT("Innerwear"));
+                if (WearSlot==ERiverfrontWearSlot::Shoes) AddCaption(Section,TEXT("Footwear"));
+                if (WearSlot==ERiverfrontWearSlot::Accessory) AddCaption(Section,TEXT("Accessories"));
                 for (const auto& Entry : RiverfrontLife::Catalog())
                     if (Entry.Slot==WearSlot)
-                        Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
+                        Section->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
             }
-            Body->AddSlot().AutoHeight().Padding(0,6,0,0)
+            Actions->AddSlot().AutoHeight().Padding(0,5,0,1)
+            [
+                SNew(STextBlock).Tag(TEXT("LifeSelected")).AutoWrapText(true).ColorAndOpacity(Paper)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold",15))
+                    .Text_Lambda([this]{ return Copy(ItemLabel(Selected)); })
+            ];
+            Actions->AddSlot().AutoHeight().Padding(0,6,0,0)
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().FillWidth(1.f).Padding(0,0,3,0)
@@ -131,7 +145,7 @@ public:
                 + SHorizontalBox::Slot().FillWidth(1.f).Padding(3,0,0,0)
                 [ PayButton(true) ]
             ];
-            Body->AddSlot().AutoHeight().Padding(0,3)
+            Actions->AddSlot().AutoHeight().Padding(0,3)
             [
                 SNew(SButton).Tag(TEXT("LifeDress")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
                 .ContentPadding(FMargin(8,8)).HAlign(HAlign_Center)
@@ -141,7 +155,7 @@ public:
                 [SNew(STextBlock).Tag(TEXT("LifeDressAction")).ColorAndOpacity(Panel)
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold",13)).Text_Lambda([this]{ return ActionText(); })]
             ];
-            Body->AddSlot().AutoHeight().Padding(0,3)
+            Actions->AddSlot().AutoHeight().Padding(0,3)
             [
                 SNew(SButton).Tag(TEXT("LifePutBack")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
                 .Visibility_Lambda([this]{ return Show(!Held.IsNone()); })
@@ -152,7 +166,7 @@ public:
             ];
             if (bWardrobe || bTrial)
             {
-                Body->AddSlot().AutoHeight().Padding(0,6,0,1)
+                Actions->AddSlot().AutoHeight().Padding(0,6,0,1)
                 [
                     SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1.f).Padding(0,0,3,0)
@@ -197,12 +211,12 @@ public:
             }
         }
         if (bTrial || Page==ERiverfrontLifeMenu::Shop)
-            Body->AddSlot().AutoHeight().Padding(0,4)[Label(Copy(bTrial
+            Actions->AddSlot().AutoHeight().Padding(0,4)[Label(Copy(bTrial
                 ? TEXT("Try any garment. Leaving restores your outfit. Purchases stay in your wardrobe.")
                 : TEXT("Try clothes in the curtained fitting room to the right of the counter.")),12,Muted)];
         if (!bAvailable)
             Body->AddSlot().AutoHeight()[Label(Copy(TEXT("Your local profile could not be opened.")),14,Amber)];
-        Body->AddSlot().AutoHeight().Padding(0,9,0,0)
+        Actions->AddSlot().AutoHeight().Padding(0,3,0,0)
         [
             SNew(STextBlock).Tag(TEXT("LifeReceipt"))
             .Visibility_Lambda([this]{ return Show(!Feedback.IsEmpty()); })
@@ -256,11 +270,13 @@ public:
                                 + SHorizontalBox::Slot().FillWidth(1.f).Padding(0,0,3,0)[Balance(false)]
                                 + SHorizontalBox::Slot().FillWidth(1.f).Padding(3,0,0,0)[Balance(true)]
                             ]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0,4)[Filters]
                             + SVerticalBox::Slot().FillHeight(1.f)
                             [
                                 SNew(SScrollBox).ScrollWhenFocusChanges(EScrollWhenFocusChanges::AnimatedScroll)
                                 + SScrollBox::Slot()[Body]
                             ]
+                            + SVerticalBox::Slot().AutoHeight()[Actions]
                         ]
                     ]
                 ]
@@ -277,6 +293,44 @@ public:
     }
 
 private:
+    enum class EGroup : uint8 { All, Tops, Bottoms, Layers, Gear };
+    EGroup Filter=EGroup::All;
+
+    static EGroup GroupOf(ERiverfrontWearSlot Slot)
+    {
+        switch (Slot)
+        {
+        case ERiverfrontWearSlot::Top: return EGroup::Tops;
+        case ERiverfrontWearSlot::Bottom: return EGroup::Bottoms;
+        case ERiverfrontWearSlot::InnerTop:
+        case ERiverfrontWearSlot::InnerBottom:
+        case ERiverfrontWearSlot::Socks: return EGroup::Layers;
+        default: return EGroup::Gear;
+        }
+    }
+
+    TSharedRef<SWidget> FilterButton(EGroup Group)
+    {
+        const TCHAR* Names[]={TEXT("All"),TEXT("Tops"),TEXT("Bottoms"),TEXT("Layers"),TEXT("Gear")};
+        const FString Name=Names[static_cast<uint8>(Group)];
+        return SNew(SButton).Tag(FName(*(TEXT("LifeFilter.")+Name))).ButtonStyle(&ButtonStyle)
+            .ContentPadding(FMargin(1,6)).HAlign(HAlign_Center)
+            .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid(); })
+            .ButtonColorAndOpacity_Lambda([this,Group]{return FSlateColor(Group==Filter ? Amber : Row);})
+            .OnClicked_Lambda([this,Group]
+            {
+                Filter=Group;
+                const auto* Current=Item(Selected);
+                if (Group!=EGroup::All && (!Current || GroupOf(Current->Slot)!=Group))
+                    for (const auto& Entry:RiverfrontLife::Catalog())
+                        if (GroupOf(Entry.Slot)==Group && (Entry.Id!=RiverfrontLife::SportsBra || Gender==ERiverfrontGender::Female))
+                            return Select(Entry.Id);
+                return FReply::Handled();
+            })
+            [SNew(STextBlock).Text(Copy(Name)).Font(FCoreStyle::GetDefaultFontStyle("Bold",12))
+                .ColorAndOpacity_Lambda([this,Group]{return FSlateColor(Group==Filter ? Panel : Paper);})];
+    }
+
     ERiverfrontLifeMenu Page = ERiverfrontLifeMenu::Wallet;
     FString Slot, LastReceipt;
     FSimpleDelegate OnChanged, OnClose;
