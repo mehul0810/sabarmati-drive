@@ -5,7 +5,7 @@
 class SWidget;
 class UWorld;
 
-enum class ERiverfrontLifeMenu : uint8 { Wallet, Wardrobe, Shop };
+enum class ERiverfrontLifeMenu : uint8 { Wallet, Wardrobe, Shop, FittingRoom };
 
 TSharedRef<SWidget> MakeRiverfrontLifeMenu(UWorld& World, ERiverfrontLifeMenu Page, const FString& ProfileSlot,
     FSimpleDelegate OnChanged, FSimpleDelegate OnClose);

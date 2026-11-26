@@ -14,7 +14,7 @@ enum class EFittingView : uint8 { Full, Face, Tailoring, Trousers, Feet };
 class ARiverfrontWorld;
 class ARiverfrontPedestrian;
 
-enum class ERiverSiteKind : uint8 { Visit, Tea, Print, Service, Wardrobe, ClothesShop };
+enum class ERiverSiteKind : uint8 { Visit, Tea, Print, Service, Wardrobe, ClothesShop, FittingRoom };
 struct FRiverSite
 {
     FName Id;
@@ -96,7 +96,7 @@ private:
     void CloseLifeMenu();
     void RefreshLifeAppearance();
     void PrepareFittingCamera();
-    bool OpenWardrobeMirror();
+    bool OpenWardrobeMirror(bool bAtShop=false);
     TWeakObjectPtr<class USceneCaptureComponent2D> MirrorCapture;
     FVector BeforeMirrorLocation = FVector::ZeroVector;
     EFittingView FittingView = EFittingView::Full;

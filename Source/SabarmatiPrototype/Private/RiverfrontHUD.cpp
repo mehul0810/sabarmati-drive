@@ -173,7 +173,7 @@ void PlaceSymbol(FInstruments& Draw,FVector2D P,ERiverSiteKind Kind)
     {
         return; // Flat 2B has its own persistent marker.
     }
-    else if (Kind==ERiverSiteKind::ClothesShop || Kind==ERiverSiteKind::Tea || Kind==ERiverSiteKind::Print)
+    else if (Kind==ERiverSiteKind::FittingRoom || Kind==ERiverSiteKind::ClothesShop || Kind==ERiverSiteKind::Tea || Kind==ERiverSiteKind::Print)
     {
         Draw.Arc(P+FVector2D(0,-.4),2.5,180,360,1.2f,Ink);
         Draw.Quad(P+FVector2D(-3,-.5),P+FVector2D(3,-.5),P+FVector2D(3.6,3.5),P+FVector2D(-3.6,3.5),Ink);

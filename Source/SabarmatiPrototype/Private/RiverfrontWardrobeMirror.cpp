@@ -10,12 +10,12 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
 
-bool ARiverfrontPlayerController::OpenWardrobeMirror()
+bool ARiverfrontPlayerController::OpenWardrobeMirror(bool bAtShop)
 {
     auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
     auto* Glass=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Opaque.Widget3DPassThrough_Opaque"));
     if (!Walker || !Glass) return false;
-    const FVector Centre=FRiverfrontFirstMorningWorld::MirrorCentre();
+    const FVector Centre=bAtShop ? FRiverfrontFirstMorningWorld::ShopMirrorCentre() : FRiverfrontFirstMorningWorld::MirrorCentre();
     const FVector2D Size=FRiverfrontFirstMorningWorld::MirrorSize();
     const FVector Eye=Centre+FVector(78,-225,32);
     const FRotator Aim=(Centre+FVector(-48,0,-15)-Eye).Rotation();

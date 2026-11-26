@@ -78,7 +78,7 @@ public:
         {
             SelectionTick.Reset(LoadObject<USoundBase>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/Audio/S_Shift.S_Shift")));
-            if (Page == ERiverfrontLifeMenu::Shop)
+            if (Page != ERiverfrontLifeMenu::Wardrobe)
                 CounterBell.Reset(LoadObject<USoundBase>(nullptr,
                     TEXT("/Game/Sabarmati/Riverfront/Audio/S_TeaBell.S_TeaBell")));
         }
@@ -89,10 +89,11 @@ public:
             .SetPressed(FSlateRoundedBoxBrush(FLinearColor::White,1.f,Paper,1.5f))
             .SetNormalPadding(FMargin(0)).SetPressedPadding(FMargin(0));
 
-        const bool bShop = Page == ERiverfrontLifeMenu::Shop;
+        const bool bTrial=Page==ERiverfrontLifeMenu::FittingRoom;
+        const bool bShop=Page==ERiverfrontLifeMenu::Shop || bTrial;
         const bool bWardrobe = Page == ERiverfrontLifeMenu::Wardrobe;
-        const FString Title = bShop ? TEXT("Sutra Cloth House") : bWardrobe ? TEXT("Wardrobe") : TEXT("Wallet");
-        const FString Location = bShop ? TEXT("RIVERFRONT MARKET") : bWardrobe ? TEXT("KESAR APARTMENTS  /  FLAT 2B") : TEXT("PERSONAL ACCOUNT");
+        const FString Title = bTrial ? TEXT("Fitting room") : bShop ? TEXT("Sutra Cloth House") : bWardrobe ? TEXT("Wardrobe") : TEXT("Wallet");
+        const FString Location = bTrial ? TEXT("SUTRA CLOTH HOUSE") : bShop ? TEXT("RIVERFRONT MARKET") : bWardrobe ? TEXT("KESAR APARTMENTS  /  FLAT 2B") : TEXT("PERSONAL ACCOUNT");
 
         TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
         if (bAvailable && (bShop || bWardrobe))
@@ -134,7 +135,7 @@ public:
             [
                 SNew(SButton).Tag(TEXT("LifeDress")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
                 .ContentPadding(FMargin(8,8)).HAlign(HAlign_Center)
-                .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected)); })
+                .Visibility_Lambda([this]{ return Show(Trial.IsValid() || Owned.Contains(Selected)); })
                 .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid() && (Held.IsNone() || Held==Selected) && Cover().IsNone(); })
                 .OnClicked(this,&SRiverfrontLifeMenu::DressSelected)
                 [SNew(STextBlock).Tag(TEXT("LifeDressAction")).ColorAndOpacity(Panel)
@@ -149,7 +150,7 @@ public:
                 .OnClicked_Lambda([this]{ return FinishAction(EAction::PutBack,Held); })
                 [SNew(STextBlock).ColorAndOpacity(Paper).Text_Lambda([this]{return Copy(TEXT("Put back ")+ItemLabel(Held));})]
             ];
-            if (bWardrobe)
+            if (bWardrobe || bTrial)
             {
                 Body->AddSlot().AutoHeight().Padding(0,6,0,1)
                 [
@@ -159,6 +160,9 @@ public:
                     + SHorizontalBox::Slot().FillWidth(1.f).Padding(3,0,0,0)
                     [ ViewButton(EFittingView::Tailoring,TEXT("LifeTailoring"),TEXT("Inspect fit")) ]
                 ];
+            }
+            if (bWardrobe)
+            {
                 AddCaption(Body,TEXT("Skin tone"));
                 Body->AddSlot().AutoHeight()
                 [
@@ -192,6 +196,10 @@ public:
                 Body->AddSlot().AutoHeight()[Label(Copy(Work),15,Paper)];
             }
         }
+        if (bTrial || Page==ERiverfrontLifeMenu::Shop)
+            Body->AddSlot().AutoHeight().Padding(0,4)[Label(Copy(bTrial
+                ? TEXT("Try any garment. Leaving restores your outfit. Purchases stay in your wardrobe.")
+                : TEXT("Try clothes in the curtained fitting room to the right of the counter.")),12,Muted)];
         if (!bAvailable)
             Body->AddSlot().AutoHeight()[Label(Copy(TEXT("Your local profile could not be opened.")),14,Amber)];
         Body->AddSlot().AutoHeight().Padding(0,9,0,0)
@@ -276,6 +284,7 @@ private:
     FButtonStyle ButtonStyle;
     TSharedPtr<SButton> CloseButton;
     TMap<FName,TSharedPtr<SButton>> Rows;
+    TStrongObjectPtr<URiverfrontLocalProfile> Trial;
     TArray<FName> Owned;
     FName Selected, Outfit, Bottom, InnerTop, InnerBottom, Shoes, Socks, Accessory, Held, Tone;
     ERiverfrontGender Gender = ERiverfrontGender::Male;
@@ -325,6 +334,12 @@ private:
         Cash = Saved->CashRupees;
         Bank = Saved->BankRupees;
         Owned = Saved->OwnedItems;
+        LastReceipt = Saved->LastReceipt;
+        if (Page==ERiverfrontLifeMenu::FittingRoom)
+        {
+            if (!Trial.IsValid()) Trial.Reset(DuplicateObject<URiverfrontLocalProfile>(Saved,GetTransientPackage()));
+            Saved=Trial.Get();
+        }
         Outfit = Saved->EquippedOutfit.IsNone() ? FName(TEXT("cotton-sand")) : Saved->EquippedOutfit;
         Bottom = Saved->EquippedBottom;
         InnerTop = Saved->EquippedInnerTop;
@@ -337,7 +352,6 @@ private:
         Gender = Saved->AvatarGender;
         if (Selected==RiverfrontLife::SportsBra && Gender==ERiverfrontGender::Male) Selected=RiverfrontLife::Briefs;
         bCroppedHair = Saved->bCroppedHair;
-        LastReceipt = Saved->LastReceipt;
         bDeliveryActive = Saved->bPrintDeliveryActive;
         Deliveries = Saved->CompletedPrintDeliveries;
     }
@@ -409,7 +423,7 @@ private:
     {
         return SNew(SButton).Tag(bBank ? TEXT("LifeBuyBank") : TEXT("LifeBuyCash")).ButtonStyle(&ButtonStyle)
             .ButtonColorAndOpacity(bBank ? Row : Amber).ContentPadding(FMargin(5,8)).HAlign(HAlign_Center)
-            .Visibility_Lambda([this]{ return Show(Page == ERiverfrontLifeMenu::Shop && !Selected.IsNone() && !Owned.Contains(Selected)); })
+            .Visibility_Lambda([this]{ return Show(Page != ERiverfrontLifeMenu::Wardrobe && !Selected.IsNone() && !Owned.Contains(Selected)); })
             .OnClicked_Lambda([this,bBank]{
                 const FText Error = RiverfrontLife::Buy(Slot,Selected,bBank);
                 return Complete(Error, FString(), true);
@@ -521,7 +535,7 @@ private:
         switch (NextAction())
         {
         case EAction::TakeOff: return Copy(TEXT("Take off ")+ItemLabel(WornInSlot()));
-        case EAction::Take: return Copy(Page==ERiverfrontLifeMenu::Shop ? TEXT("Take from shelf") : TEXT("Take from wardrobe"));
+        case EAction::Take: return Copy(Page!=ERiverfrontLifeMenu::Wardrobe ? TEXT("Take from shelf") : TEXT("Take from wardrobe"));
         default: return Copy(TEXT("Put on ")+ItemLabel(Held));
         }
     }
@@ -529,7 +543,7 @@ private:
     FReply FinishAction(EAction Action,FName Id)
     {
         const FString Name=ItemLabel(Id);
-        const FText Error=RiverfrontLife::Dress(Slot,Action,Id);
+        const FText Error=Trial.IsValid() ? RiverfrontLife::TryOn(*Trial.Get(),Action,Id) : RiverfrontLife::Dress(Slot,Action,Id);
         const FString Message=Action==EAction::Take ? Name+TEXT(" in hand.") :
             Action==EAction::PutOn ? TEXT("Wearing ")+Name+TEXT(".") : Name+TEXT(" returned to the shelf.");
         return Complete(Error,Message);
@@ -575,7 +589,7 @@ private:
 
     FReply DressSelected()
     {
-        if (DressingTimer.IsValid() || !Cover().IsNone() || !Owned.Contains(Selected) || (!Held.IsNone() && Selected!=Held))
+        if (DressingTimer.IsValid() || !Cover().IsNone() || (!Trial.IsValid() && !Owned.Contains(Selected)) || (!Held.IsNone() && Selected!=Held))
             return FReply::Handled();
         const auto Action=NextAction();
         const FName Id=Action==EAction::TakeOff ? WornInSlot() : Selected;
@@ -618,7 +632,16 @@ private:
         Feedback = Error.IsEmpty() ? Copy(bReceipt ? LastReceipt : Success) : Error;
         if (bReceipt && (Cash < CashBefore || Bank < BankBefore))
             PlayFeedback(CounterBell.Get(),.19f,.96f);
-        OnChanged.ExecuteIfBound();
+        if (Trial.IsValid())
+        {
+            if (auto* Walker=Resident())
+            {
+                Walker->ApplyProfileAppearance(*Trial.Get());
+                Walker->PoseHeldWardrobeItem();
+                if (auto* PC=Cast<ARiverfrontPlayerController>(Walker->GetController())) PC->RefreshWardrobeMirror();
+            }
+        }
+        else OnChanged.ExecuteIfBound();
         return ReturnFocus();
     }
 

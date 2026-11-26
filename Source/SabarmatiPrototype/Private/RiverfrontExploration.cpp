@@ -48,6 +48,7 @@ void ARiverfrontPlayerController::LoadSites()
             if (Anchor==TEXT("tea")) Point=District->GetTeaCounter();
             else if (Anchor==TEXT("press")) Point=District->GetPressCounter();
             else if (Anchor==TEXT("wardrobe")) Point=FRiverfrontFirstMorningWorld::WardrobePoint();
+            else if (Anchor==TEXT("fitting-room")) Point=FRiverfrontFirstMorningWorld::FittingRoomPoint();
             else if (Anchor==TEXT("cloth")) Point=FRiverfrontFirstMorningWorld::ShopPoint();
             else continue;
             if (Point.IsNearlyZero()) continue;
@@ -60,6 +61,7 @@ void ARiverfrontPlayerController::LoadSites()
         if (!SabarmatiDistrict::Contains(Point,bCitySites)) continue;
         const auto Kind=Type==TEXT("Tea")?ERiverSiteKind::Tea:Type==TEXT("Print")?ERiverSiteKind::Print:
             Type==TEXT("Service")?ERiverSiteKind::Service:Type==TEXT("Wardrobe")?ERiverSiteKind::Wardrobe:
+            Type==TEXT("FittingRoom")?ERiverSiteKind::FittingRoom:
             Type==TEXT("ClothesShop")?ERiverSiteKind::ClothesShop:ERiverSiteKind::Visit;
         double Heading=0.;
         TOptional<double> Travel;
@@ -123,6 +125,7 @@ void ARiverfrontPlayerController::InteractWithPlace()
     }
     const FRiverSite& Site=Sites[I];
     if (Site.Kind==ERiverSiteKind::Wardrobe) { OpenLifeMenu(ERiverfrontLifeMenu::Wardrobe); return; }
+    if (Site.Kind==ERiverSiteKind::FittingRoom) { OpenLifeMenu(ERiverfrontLifeMenu::FittingRoom); return; }
     if (Site.Kind==ERiverSiteKind::ClothesShop) { OpenLifeMenu(ERiverfrontLifeMenu::Shop); return; }
     auto* Car=Cast<ARiverfrontCar>(GetPawn());
     if (Site.Kind==ERiverSiteKind::Service)

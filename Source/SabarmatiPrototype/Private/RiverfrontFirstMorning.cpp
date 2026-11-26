@@ -238,7 +238,9 @@ void ARiverfrontPlayerController::OpenLifeMenu(ERiverfrontLifeMenu Page)
     if (Screen != EScreen::Playing || !HasLocalProfile() || !GetWorld()->GetGameViewport()) return;
     if (bWaking) FinishWakeup();
     SaveLifeCheckpoint();
-    if (Page == ERiverfrontLifeMenu::Shop || (Page == ERiverfrontLifeMenu::Wardrobe && !OpenWardrobeMirror())) PrepareFittingCamera();
+    const bool bShopRoom=Page==ERiverfrontLifeMenu::FittingRoom;
+    if (Page==ERiverfrontLifeMenu::Shop || ((Page==ERiverfrontLifeMenu::Wardrobe || bShopRoom) && !OpenWardrobeMirror(bShopRoom)))
+        PrepareFittingCamera();
     if (LifeCamera.IsValid())
         if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn())) Walker->PoseHeldWardrobeItem();
     Screen = EScreen::Life;

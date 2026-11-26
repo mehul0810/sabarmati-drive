@@ -16,6 +16,8 @@ struct FRiverfrontFirstMorningWorld
     static FVector MirrorCentre();
     static FVector2D MirrorSize();
     static FVector ShopPoint();
+    static FVector FittingRoomPoint();
+    static FVector ShopMirrorCentre();
     static FVector StreetPoint();
     static FVector FenceApproach();
 #if WITH_EDITOR

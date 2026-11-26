@@ -252,6 +252,14 @@ void FitTextiles(ARiverfrontWorld& World)
         return At(-69.+126.*U,702.-2.9*FMath::Sin(PI*U*8.)-1.4*FMath::Cos(V*U*10.),
             ApartmentGroundZ+112.+148.*V+1.3*FMath::Cos(PI*U*6.)*(1.-V));
     };
+    // A woven privacy curtain leaves a 110 cm entrance beside the partition.
+    const auto Curtain=[](double U,double V)
+    {
+        return At(204.+143.*U,371.+5.3*FMath::Sin(12.*PI*U)*(1.-.18*V),
+            222.-207.*V+1.4*V*FMath::Cos(12.*PI*U));
+    };
+    Panels[Sage].Add(48,12,Curtain);
+    Panels[Ivory].Add(48,1,[&](double U,double V){return Curtain(U,.955+V*.012)-FVector(0,.22,0);});
     Panels[Madder].Add(28,18,WallCloth);
     for (double U0 : {.035,.08,.90,.95})
         Panels[Ivory].Add(1,12,[&](double U,double V)
@@ -321,6 +329,8 @@ FVector FRiverfrontFirstMorningWorld::MirrorCentre() { return At(174,646.8,Upper
 FVector2D FRiverfrontFirstMorningWorld::MirrorSize() { return FVector2D(88,180); }
 FVector FRiverfrontFirstMorningWorld::WardrobePoint() { return At(135,585,Upper+95); }
 FVector FRiverfrontFirstMorningWorld::ShopPoint() { return At(-100,467,ApartmentGroundZ+95); }
+FVector FRiverfrontFirstMorningWorld::FittingRoomPoint() { return At(164,479,ApartmentGroundZ+95); }
+FVector FRiverfrontFirstMorningWorld::ShopMirrorCentre() { return At(211,633.8,ApartmentGroundZ+115); }
 FVector FRiverfrontFirstMorningWorld::StreetPoint() { return At(-83,-179,ApartmentGroundZ+95); }
 FVector FRiverfrontFirstMorningWorld::FenceApproach() { return At(FenceX,FenceY-97.,99.); }
 FVector FRiverfrontFirstMorningWorld::WallApproach() { return At(WallX,WallY-205.,99.); }
@@ -764,7 +774,20 @@ void FRiverfrontFirstMorningWorld::Build(ARiverfrontWorld& World)
     for (int32 Roll=0; Roll<5; ++Roll)
         World.Shape(EShape::Cylinder,Weave[Roll],At(-329,147+24*Roll,ApartmentGroundZ+80),
             FVector(20,20,58),false,FRotator(0,0,90));
-    Mirror(284,718,ApartmentGroundZ+146,76,173);
+    // Enter beside the gathered curtain. The sales counter and stair lobby have separate aisles.
+    Part(ETint::Plaster,91,508,117,6,268,226,true);
+    Part(ETint::Plaster,220,644,117,264,6,226,true);
+    Part(ETint::Timber,91,508,231,9,273,5);
+    Part(ETint::Timber,219,644,231,264,9,5);
+    Part(ETint::Brass,221,370,226,261,4,4);
+    Part(ETint::Timber,334,540,48,32,105,7,true);
+    for (const double Y : {503.,577.})
+        Part(ETint::WoodDark,334,Y,25,24,7,46);
+    for (const double Y : {468.,494.,520.})
+        Part(ETint::Brass,345,Y,169,10,3,5);
+    Lettering(World,TEXT("FITTING ROOM"),At(159,366,237),-90,13,FColor(246,218,158));
+    Mirror(211,638,ApartmentGroundZ+115,MirrorSize().X,MirrorSize().Y);
+    InteriorLight(World,At(200,604,211),45,310,4500);
     InteriorLight(World,At(-93,500,222),67,545,3800);
     World.AddPractical(At(-100,579,282),-90);
 
