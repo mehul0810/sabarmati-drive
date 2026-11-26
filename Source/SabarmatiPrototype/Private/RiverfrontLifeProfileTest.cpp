@@ -170,7 +170,12 @@ bool FSabarmatiFinderProfile::RunTest(const FString& Parameters)
     TestTrue(TEXT("source still present"), UGameplayStatics::LoadDataFromSlot(Original, Slot, 0));
     TestTrue(TEXT("original V1 bytes unmodified"), OldBytes == Original);
 
-    // A pre-existing V2 Finder save must be promoted even though no schema upgrade is needed.
+    // A player may have left the previous wardrobe holding a shirt. Only the jeans slot is new.
+    Migrated->Schema=2;
+    Migrated->EquippedBottom=NAME_None;
+    Migrated->OwnedItems.Remove(RiverfrontLife::StarterBottom);
+    Migrated->EquippedOutfit=RiverfrontLife::BaseLayer;
+    Migrated->HeldWardrobeItem=TEXT("cotton-sand");
     Migrated->CashRupees = 9100;
     Migrated->BankRupees = 7600;
     Migrated->bCroppedHair = true;
@@ -182,6 +187,10 @@ bool FSabarmatiFinderProfile::RunTest(const FString& Parameters)
     TestEqual(TEXT("V2 cash preserved"), Current->CashRupees, int64(9100));
     TestEqual(TEXT("V2 bank preserved"), Current->BankRupees, int64(7600));
     TestTrue(TEXT("V2 equipped style preserved"), Current->bCroppedHair);
+    TestEqual(TEXT("V2 worn top retained"),Current->EquippedOutfit,RiverfrontLife::BaseLayer);
+    TestEqual(TEXT("V2 held garment retained"),Current->HeldWardrobeItem,FName(TEXT("cotton-sand")));
+    TestEqual(TEXT("V2 denim restored"),Current->EquippedBottom,RiverfrontLife::StarterBottom);
+    TestTrue(TEXT("V2 can remove original jeans"),Current->OwnedItems.Contains(RiverfrontLife::StarterBottom));
 
     Current->CashRupees = 350;
     if (!TestTrue(TEXT("write new canonical progress"), Finder.Write(*Current))) return false;

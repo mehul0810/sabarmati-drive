@@ -43,7 +43,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
 };
 
 struct FMorningEvidence
@@ -82,6 +82,9 @@ struct FMorningEvidence
     double LastMirrorRequest=0.;
     TArray<double> MirrorFrameTimes;
     FLinearColor DenimDye;
+    double JeansFootLift[2]{};
+    double JeansPeakTime[2]{};
+    int32 JeansPoseSamples=0;
     bool bFamilyPhoto = false;
     bool bOldHUD = true;
     bool bCrosswalkSample = false;
@@ -696,14 +699,103 @@ void ARiverfrontPlayerController::RunMorningReview()
                     bActive?TEXT("refresh"):TEXT("idle"),Frames.Num(),Frames[Frames.Num()/2],Frames[FMath::CeilToInt(Frames.Num()*.95)-1]);
                 Frames.Reset();
                 if (!bActive) { Next(EMorningStep::MirrorActivePerf); break; }
-                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave mirror"));
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.denim-dark")) ||
+                    !PressMorningButton(Overlay,TEXT("LifeTailoring")) || FittingView!=EFittingView::Trousers ||
+                    !PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("start jeans removal in fitting view"));
+                Next(EMorningStep::CancelBottom); break;
+            }
+            case EMorningStep::CancelBottom:
+            {
+                if (Age<.85) return true;
+                if (Walker->GetComponentsByTag(UPoseableMeshComponent::StaticClass(),TEXT("WardrobeMovingJeans")).IsEmpty() ||
+                    !PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close during jeans removal"));
+                auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                auto* Body=Walker->GetMesh();
+                if (!Saved || Saved->EquippedBottom!=RiverfrontLife::StarterBottom || !Saved->HeldWardrobeItem.IsNone() ||
+                    !Body->IsMaterialSectionShown(Body->GetMaterialIndex(TEXT("bottom_denim")),0) ||
+                    !Walker->GetComponentsByTag(UPoseableMeshComponent::StaticClass(),TEXT("WardrobeMovingJeans")).IsEmpty())
+                    return Fail(TEXT("cancel restores worn denim and removes temporary garment"));
                 InteractWithPlace();
-                if (!PressMorningButton(Overlay,TEXT("LifeGenderMale")) || !PressMorningButton(Overlay,TEXT("LifeClose"))
-                    || !WearingResidentBody(*Walker,ERiverfrontGender::Male)) return Fail(TEXT("male outfit before sleeping"));
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.denim-dark")) || !PressMorningButton(Overlay,TEXT("LifeTailoring")) ||
+                    !PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("retry jeans removal"));
+                Next(EMorningStep::RemoveBottom); break;
+            }
+            case EMorningStep::RemoveBottom:
+            {
+                for (auto* Garment : Walker->GetComponentsByTag(UPoseableMeshComponent::StaticClass(),TEXT("WardrobeMovingJeans")))
+                {
+                    const auto* Mesh=CastChecked<UPoseableMeshComponent>(Garment);
+                    if (auto* Pose=Walker->FindComponentByClass<UPoseableMeshComponent>(); Pose && Pose!=Mesh)
+                    {
+                        ++State->JeansPoseSamples;
+                        for (int32 Side=0;Side<2;++Side)
+                        {
+                            const FName Foot=Side ? TEXT("Footr") : TEXT("Footl");
+                            const double Lift=Pose->GetSocketLocation(Foot).Z-Walker->GetMesh()->GetSocketLocation(Foot).Z;
+                            if (Lift>State->JeansFootLift[Side])
+                            {
+                                State->JeansFootLift[Side]=Lift;
+                                State->JeansPeakTime[Side]=Age;
+                            }
+                        }
+                    }
+                    if (Mesh->GetRelativeScale3D().Z<.68 && Mesh->GetRelativeScale3D().Z>.24 &&
+                        !State->Pictures.Contains(TEXT("05-lower-waistband.png"))) Shot(TEXT("05-lower-waistband"),true);
+                }
+                if (Walker->GetWardrobeBottom()!=RiverfrontLife::Underwear) return true;
+                if (!State->Pictures.Contains(TEXT("05-lower-waistband.png")) || Walker->GetMesh()->IsMaterialSectionShown(
+                    Walker->GetMesh()->GetMaterialIndex(TEXT("bottom_denim")),0)) return Fail(TEXT("continuous denim travel and empty bottom"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati denim steps samples=%d left=%.1f cm at %.2f s right=%.1f cm at %.2f s"),
+                    State->JeansPoseSamples,State->JeansFootLift[0],State->JeansPeakTime[0],State->JeansFootLift[1],State->JeansPeakTime[1]);
+                if (State->JeansFootLift[0]<10. || State->JeansFootLift[1]<10. || State->JeansPeakTime[1]-State->JeansPeakTime[0]<.2)
+                    return Fail(TEXT("step out one foot at a time"));
+                if (Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo") || !Walker->HasWristwatchVisible()) return Fail(TEXT("separate waist slot"));
+                Next(EMorningStep::CheckBottom); break;
+            }
+            case EMorningStep::CheckBottom:
+            {
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!State->Pictures.Contains(TEXT("05-female-lower.png"))) { Shot(TEXT("05-female-lower"),true); return true; }
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave in boxer briefs"));
+                InteractWithPlace();
+                if (!PressMorningButton(Overlay,TEXT("LifeGenderMale")) || Walker->GetWardrobeBottom()!=RiverfrontLife::Underwear)
+                    return Fail(TEXT("male lower foundation after reload"));
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.denim-dark")) || !PressMorningButton(Overlay,TEXT("LifeDress")) ||
+                    !Walker->HasHeldWardrobeProp(TEXT("denim-dark")) || !PressMorningButton(Overlay,TEXT("LifePutBack")) ||
+                    !PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("take and return jeans"));
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::ShopPoint(),FRotator::ZeroRotator)) return Fail(TEXT("return to Sutra"));
                 InteractWithPlace();
-                const FName ShopButtons[]={TEXT("LifeItem.kurta"),TEXT("LifeBuyCash"),TEXT("LifeClose")};
-                for (FName Button:ShopButtons) if (!PressMorningButton(Overlay,Button)) return Fail(TEXT("buy kurta, wear indigo"));
+                for (FName Button : {FName(TEXT("LifeItem.kurta")),FName(TEXT("LifeBuyCash")),FName(TEXT("LifeItem.denim-washed")),FName(TEXT("LifeBuyCash")),FName(TEXT("LifeDress"))})
+                    if (!PressMorningButton(Overlay,Button)) return Fail(TEXT("buy and take stonewashed denim at Sutra"));
+                if (!Walker->HasHeldWardrobeProp(TEXT("denim-washed")) || !PressMorningButton(Overlay,TEXT("LifeClose")))
+                    return Fail(TEXT("carry purchased jeans"));
+                if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("return home with jeans"));
+                InteractWithPlace();
+                if (!DressButtonLabel().StartsWith(TEXT("Put on")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("step into held jeans"));
+                Next(EMorningStep::WearBottom); break;
+            }
+            case EMorningStep::WearBottom:
+            {
+                if (!State->Pictures.Contains(TEXT("05-step-into-jeans.png")))
+                {
+                    auto* Pose=Walker->FindComponentByClass<UPoseableMeshComponent>();
+                    if (Pose && Pose->GetSocketLocation(TEXT("Footr")).Z-Walker->GetMesh()->GetSocketLocation(TEXT("Footr")).Z>15.)
+                        Shot(TEXT("05-step-into-jeans"),true);
+                }
+                if (Walker->GetWardrobeBottom()!=TEXT("denim-washed")) return true;
+                auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                auto* Body=Walker->GetMesh();
+                const auto Denim=Body->GetMaterialIndex(TEXT("bottom_denim"));
+                FLinearColor Dye;
+                if (!State->Pictures.Contains(TEXT("05-step-into-jeans.png")) || !Saved || Saved->EquippedBottom!=TEXT("denim-washed") || !Saved->HeldWardrobeItem.IsNone() ||
+                    Saved->EquippedOutfit!=TEXT("shirt-indigo") || !Walker->HasWristwatchVisible() ||
+                    Denim==INDEX_NONE || !Body->IsMaterialSectionShown(Denim,0) ||
+                    !Body->GetMaterial(Denim)->GetVectorParameterValue(TEXT("BaseColorFactor"),Dye) || Dye.Equals(State->DenimDye,.01))
+                    return Fail(TEXT("stonewashed denim persists with original top and watch"));
+                if (!State->Pictures.Contains(TEXT("05-washed-jeans.png"))) { Shot(TEXT("05-washed-jeans"),true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave wearing denim"));
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("return to mirror"));
                 InteractWithPlace();
                 if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || LifeCamera->GetCameraComponent()->FieldOfView>50.
@@ -771,7 +863,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (bWaking || (GetViewTarget()!=Walker && Age<7.)) return true;
                 if (Walker->IsLyingOnBed() || GetViewTarget()!=Walker || !Walker->GetCharacterMovement()->IsMovingOnGround())
                     return Fail(TEXT("bedside control after second wake"));
-                UE_LOG(LogTemp,Display,TEXT("Sabarmati wardrobe review passed: browse and buy without equipping, remove, cancel, persist base layer, hold, put back, reopen, wear, retain denim and watch, pullover and bedside rest."));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati wardrobe review passed: browse and buy without equipping, remove, cancel, persist base layer, hold, put back, reopen, wear, retain top and watch, remove jeans one foot at a time, carry and wear purchased denim, pullover and bedside rest."));
                 FPlatformMisc::RequestExitWithStatus(false,0); return false;
             case EMorningStep::HairChoice:
             {
