@@ -86,6 +86,11 @@ public:
         if (!Walker.IsValid() || !Car.IsValid() || !Traffic.IsValid() || !District.IsValid()) return Fail(TEXT("lost scene actor"));
         if (Pending.IsValid()) { Key(Pending,IE_Released); Pending=FKey(); }
         const double Now=FPlatformTime::Seconds(), Age=Now-StageTime;
+        if (!PendingTrialFailure.IsEmpty())
+        {
+            if (Now-FailureCaptureAt<.5 || (Now-FailureCaptureAt<3. && FScreenshotRequest::IsScreenshotRequested())) return true;
+            return Fail(*PendingTrialFailure);
+        }
         if (Stage==99) return Endurance(Now);
         if (Age>90.) return Fail(*FString::Printf(TEXT("timeout in stage %d"),Stage));
         if (Age<.57) return true;
@@ -219,9 +224,11 @@ public:
                         if (FVector::DistSquared2D(It->GetActorLocation(),Here)<FMath::Square(1000.))
                             UE_LOG(LogTemp,Display,TEXT("Trial traffic nearby: %s heading %.0f"),
                                 *It->GetActorLocation().ToCompactString(),It->GetActorRotation().Yaw);
-                    Shot(TEXT("trial-blocked"));
-                    return Fail(*FString::Printf(TEXT("trial drive stalled at %.0f, %.0f, yaw %.1f; %s"),
-                        Here.X,Here.Y,Car->GetActorRotation().Yaw,*PC.NavigationText()));
+                    PendingTrialFailure=FString::Printf(TEXT("trial drive stalled at %.0f, %.0f, yaw %.1f; %s"),
+                        Here.X,Here.Y,Car->GetActorRotation().Yaw,*PC.NavigationText());
+                    TrialSteer(0);Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);
+                    Shot(TEXT("trial-blocked"));FailureCaptureAt=Now;
+                    return true;
                 }
                 // Follow the northbound left-hand lane, including its signal and
                 // traffic queue. Oncoming vehicles use the other side of the bank road.
@@ -232,6 +239,8 @@ public:
                 const double Limit=FMath::Abs(Here.X-3150.)<1000.?590.:1280.;
                 double SafeSpeed=FMath::Clamp(FMath::Sqrt(700.*(Remaining-165.)),190.,Limit);
                 bool bHold=false;
+                double NearestGap=1.e7;
+                FString NearestAgent=TEXT("none");
                 const double ToStopLine=3150.-845.-Here.X;
                 bool bYieldAtBridge=!Traffic->BankTrafficHasGreen();
                 for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
@@ -255,6 +264,7 @@ public:
                     }
                     if (Other.X>Here.X && Gap<2300. && FMath::Abs(Other.Y-FutureY)<ProjectedHalfWidth+97.)
                     {
+                        if (Gap<NearestGap) { NearestGap=Gap;NearestAgent=It->GetName(); }
                         SafeSpeed=FMath::Min(SafeSpeed,FMath::Sqrt(710.*FMath::Max(0.,Gap-145.)));
                         bHold|=Gap<170.;
                     }
@@ -270,6 +280,13 @@ public:
                     Key(bBrake?EKeys::W:EKeys::SpaceBar,IE_Released);
                     Key(bBrake?EKeys::SpaceBar:EKeys::W,IE_Pressed);
                     bTrialBraking=bBrake;
+                }
+                if (Now-LastTrialSampleAt>=.5)
+                {
+                    TrialTrace.Appendf(TEXT("%.2f,%.1f,%.1f,%.1f,%.1f,%.2f,%.2f,%.1f,%d,%d,%d,%.1f,%d,%.1f,%s\n"),
+                        Age,Here.X,Here.Y,Here.Z,Car->GetActorRotation().Yaw,Car->GetSpeedKph(),Car->GetCondition(),
+                        Error,TrialDirection,bHold?1:0,bTrialBraking?1:0,SafeSpeed*.036,Traffic->BankTrafficHasGreen()?1:0,NearestGap,*NearestAgent);
+                    LastTrialSampleAt=Now;
                 }
                 return true;
             }
@@ -327,11 +344,13 @@ private:
     {return FFileHelper::SaveStringToFile(Data,*FPaths::Combine(Folder,Name),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);}
     bool Fail(const TCHAR* Why)
     {
+        if (!TrialTrace.IsEmpty()) Write(TEXT("trial-trace.csv"),TEXT("seconds,x_cm,y_cm,z_cm,yaw_deg,speed_kmh,condition,steer_error_deg,steer,hold,braking,safe_speed_kmh,bank_green,gap_cm,nearest_agent\n")+TrialTrace);
         UE_LOG(LogTemp,Error,TEXT("Sabarmati systems review failed in stage %d: %s"),Stage,Why);
         FPlatformMisc::RequestExitWithStatus(false,1);return false;
     }
     bool Finish()
     {
+        if (!TrialTrace.IsEmpty()) Write(TEXT("trial-trace.csv"),TEXT("seconds,x_cm,y_cm,z_cm,yaw_deg,speed_kmh,condition,steer_error_deg,steer,hold,braking,safe_speed_kmh,bank_green,gap_cm,nearest_agent\n")+TrialTrace);
         UE_LOG(LogTemp,Display,TEXT("Sabarmati systems review complete: %s"),*Folder);FPlatformMisc::RequestExit(false);return false;
     }
     bool Endurance(double Now)
@@ -406,8 +425,9 @@ private:
     ARiverfrontPlayerController& PC;
     TWeakObjectPtr<ARiverfrontWorld> District;TWeakObjectPtr<ARiverfrontCar> Car;
     TWeakObjectPtr<ARiverfrontCharacter> Walker;TWeakObjectPtr<ARiverfrontTraffic> Traffic;
-    FString Folder,Buffer;FVector Origin,Previous;FKey Pending;
+    FString Folder,Buffer,TrialTrace,PendingTrialFailure;FVector Origin,Previous;FKey Pending;
     double StartTime=0,StageTime=0,EnduranceStart=0,LastFrame=0,LapStart=0,WalkCm=0,DriveCm=0;
+    double LastTrialSampleAt=0,FailureCaptureAt=0;
     bool bTrialBraking=false;
     int32 Minutes=0,Stage=-1,Leg=0,Laps=0,Count=0,TrialDirection=0;
 };

@@ -752,8 +752,9 @@ bool ARiverfrontCar::HandleImpact(const FHitResult& Hit,float ImpactSpeed)
             if (ImpactSound)
                 UGameplayStatics::PlaySoundAtLocation(this,ImpactSound,Hit.ImpactPoint,FMath::Clamp(ImpactSpeed/1700.f,.17f,.8f));
             SetHint(TEXT("Vehicle damaged. Repair it at River Motor Works."));
-            UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s damaged at %.1f km/h; condition %.0f%%."),
-                GetVehicleLabel(),ImpactSpeed*.036f,Condition*100.f);
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s damaged at %.1f km/h against %s at %s; condition %.0f%%."),
+                GetVehicleLabel(),ImpactSpeed*.036f,*GetNameSafe(Hit.GetComponent()->GetOwner()),
+                *Hit.ImpactPoint.ToCompactString(),Condition*100.f);
         }
         if (Condition>0.f) return false;
     }
