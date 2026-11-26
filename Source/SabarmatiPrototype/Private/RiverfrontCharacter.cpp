@@ -593,7 +593,7 @@ bool ARiverfrontCharacter::PreparePosedMesh()
     return true;
 }
 
-void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight)
+void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight,float SleevePass)
 {
     if (!PreparePosedMesh()) return;
     auto* Source=GetMesh();
@@ -613,8 +613,12 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight)
             Transform.SetRotation(Delta*Transform.GetRotation());
             ChangingMesh->SetBoneTransformByName(Bone,Transform,EBoneSpaces::ComponentSpace);
         };
-        const FVector ShirtUpper=Index?FVector(.39,.31,-.78):FVector(.56,-.24,-.67);
-        const FVector ShirtForearm=Index?FVector(.37,-.52,.68):FVector(.78,.22,-.15);
+        // Lead with one elbow, then reach across the placket to free the other sleeve.
+        const float FreeSleeve=FMath::Clamp((Index ? SleevePass : -SleevePass),0.f,1.f);
+        const FVector ShirtUpper=FMath::Lerp(Index?FVector(.39,.31,-.78):FVector(.56,-.24,-.67),
+            FVector(.24,.78*Sign,-.52),FreeSleeve);
+        const FVector ShirtForearm=FMath::Lerp(Index?FVector(.37,-.52,.68):FVector(.78,.22,-.15),
+            FVector(.38,-.72*Sign,.35),FreeSleeve);
         Aim(TEXT("Shoulder"),TEXT("Elbow"),FMath::Lerp(ShirtUpper,FVector(.52,.59*Sign,.61),PulloverWeight));
         Aim(TEXT("Elbow"),TEXT("Hand"),FMath::Lerp(ShirtForearm,FVector(-.10,-.69*Sign,.78),PulloverWeight));
     }

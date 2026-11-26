@@ -50,7 +50,7 @@ public:
     void LeaveBed();
     float GetBedTime() const { return BedTime; }
     bool SupportsClothingChange() const;
-    void PoseChangingSleeves(float Lift,float PulloverWeight);
+    void PoseChangingSleeves(float Lift,float PulloverWeight,float SleevePass=0.f);
     void EndChangingPose();
     bool IsLyingOnBed() const { return bLyingOnBed; }
     bool SupportsPublicHaircut() const;

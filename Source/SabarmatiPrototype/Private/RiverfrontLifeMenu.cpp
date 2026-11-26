@@ -511,7 +511,7 @@ private:
     EActiveTimerReturnType AdvanceDressing(double Now,float)
     {
         auto* Walker=Resident();
-        const float Time=FMath::Clamp(float((Now-DressStageStart)/1.1),0.f,1.f);
+        const float Time=FMath::Clamp(float((Now-DressStageStart)/(PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
             if (!bTransferred && Time>=.5f)
@@ -522,7 +522,9 @@ private:
                 bTransferred=true;
             }
             const float Lift=FMath::SmoothStep(0.f,.42f,Time)*(1.f-FMath::SmoothStep(.58f,1.f,Time));
-            Walker->PoseChangingSleeves(Lift,PendingItem==TEXT("kurta") ? 1.f : 0.f);
+            const float SleeveTime=PendingAction==EAction::TakeOff ? Time : 1.f-Time;
+            const float SleevePass=FMath::Sin(2.f*PI*SleeveTime);
+            Walker->PoseChangingSleeves(Lift,PendingItem==TEXT("kurta") ? 1.f : 0.f,SleevePass);
             if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
             return EActiveTimerReturnType::Continue;
         }
