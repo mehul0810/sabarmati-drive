@@ -71,7 +71,18 @@ class SourceTests(unittest.TestCase):
             return center - width / 2, center + width / 2
 
         near, far = get_y_extent(r"FVector\(0, BankY\(Bank, (\d+)\), -23\), FVector\(15500, (\d+), 50\)")
-        road_near, road_far = get_y_extent(r"FVector\(0, BankY\(Bank, (\d+)\), -28\), FVector\(15500, (\d+), 56\)")
+        road_near = float(re.search(r"BankRoadInnerEdge = ([0-9.]+)", source).group(1))
+        road_far = float(re.search(r"BankRoadOuterEdge = ([0-9.]+)", source).group(1))
+        ramp_end = float(re.search(r"BridgeRampStart = ([0-9.]+)", source).group(1))
+        self.assertLess(road_near, ramp_end)
+        self.assertLess(ramp_end, road_far)
+        for section in (
+            "RoadSection(-7750.,BridgeX-BridgeRoadHalfWidth,BankRoadInnerEdge,BankRoadOuterEdge)",
+            "RoadSection(BridgeX+BridgeRoadHalfWidth,7750.,BankRoadInnerEdge,BankRoadOuterEdge)",
+            "RoadSection(BridgeX-BridgeRoadHalfWidth,BridgeX+BridgeRoadHalfWidth,BridgeRampStart,BankRoadOuterEdge)",
+        ):
+            self.assertIn(section, source)
+        self.assertIn("FVector(2.*BridgeRoadHalfWidth,BridgeRampStart-BankRoadInnerEdge,40)", source)
         channel = float(re.search(r"ChannelWidth = ([0-9.]+)", source).group(1))
         water_edge = float(re.search(r"NearWaterEdge = ([0-9.]+)", source).group(1))
         west_abutment = float(re.search(r"BridgeHalfLength = ([0-9.]+) - ChannelCenter", source).group(1))
