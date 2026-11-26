@@ -68,7 +68,11 @@ bool ARiverfrontRoadAgent::Assemble(int32 Style,int32 Variant)
     HalfLength=S.Length*.5; HalfWidth=S.Width*.5; TyreRadius=S.Wheel; IsEmergency=BodyStyle==10;
     Wheelbase=2.*S.Axle; Track=S.Track; WheelCount=S.WheelCount;
     FrontWheels=S.WheelCount==4?2:1;
-    Bounds->SetBoxExtent(FVector(HalfLength,HalfWidth,S.Wheel*.85));
+    // Long bodies can straddle the change in bridge grade while their wheels
+    // remain supported. Keep the traffic collision above the deck, but large
+    // enough to block pedestrians and other vehicles.
+    const double CollisionHalfHeight=S.Length>=600.f?S.Wheel*.50:S.Wheel*.85;
+    Bounds->SetBoxExtent(FVector(HalfLength,HalfWidth,CollisionHalfHeight));
     const FString Base=TEXT("/Game/Sabarmati/Riverfront/Vehicles/");
     auto* Model=MeshAt(Base+TEXT("Fleet/SM_Traffic")+S.Name);
     UStaticMesh* UtilityWheel = S.WheelCount == 3 ? MeshAt(Base+TEXT("Fleet/SM_TrafficRickshawWheel")) : nullptr;

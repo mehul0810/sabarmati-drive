@@ -592,7 +592,7 @@ void ARiverfrontPlayerController::BeginPlay()
     {
 #if !UE_BUILD_SHIPPING
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiImpactReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiRiverReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
-            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAwarenessReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiErrandReview"))
+            || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAwarenessReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiErrandReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiTrafficFlowReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGaitReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
         {
@@ -725,6 +725,12 @@ void ARiverfrontPlayerController::ShowTitle()
         SetViewTarget(TitleCamera.Get());
     }
 #if !UE_BUILD_SHIPPING
+    if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiTrafficFlowReview")))
+    {
+        if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Traffic flow review")).IsEmpty())
+        { FPlatformMisc::RequestExitWithStatus(false,1); return; }
+        ResumeDrive(); RunTrafficFlowReview(); return;
+    }
     if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiErrandReview")))
     {
         if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Errand review")).IsEmpty())
