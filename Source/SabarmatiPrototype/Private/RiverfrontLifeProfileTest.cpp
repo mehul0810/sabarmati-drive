@@ -50,6 +50,16 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestTrue(TEXT("reference catalogue"), RiverfrontLife::Catalog().Num() >= 4);
     TestTrue(TEXT("unowned watch cannot be equipped"), !Dress(Slot, EAction::Take, TEXT("watch")).IsEmpty());
 
+    TestTrue(TEXT("original denim is owned"), Profile->OwnedItems.Contains(RiverfrontLife::StarterBottom));
+    TestEqual(TEXT("legacy player starts in their jeans"), Profile->EquippedBottom, RiverfrontLife::StarterBottom);
+    TestTrue(TEXT("remove jeans independently"), Dress(Slot,EAction::TakeOff,RiverfrontLife::StarterBottom).IsEmpty());
+    TestEqual(TEXT("shirt survives jeans removal"), RiverfrontLife::Load(Slot)->EquippedOutfit,FName(TEXT("cotton-sand")));
+    TestEqual(TEXT("underwear saved across reload"), RiverfrontLife::Load(Slot)->EquippedBottom,RiverfrontLife::Underwear);
+    TestFalse(TEXT("cannot equip jeans directly"), Dress(Slot,EAction::PutOn,RiverfrontLife::StarterBottom).IsEmpty());
+    TestTrue(TEXT("pick up jeans"), Dress(Slot,EAction::Take,RiverfrontLife::StarterBottom).IsEmpty());
+    TestFalse(TEXT("one item in hand across slots"), Dress(Slot,EAction::TakeOff,TEXT("cotton-sand")).IsEmpty());
+    TestTrue(TEXT("put jeans back on"), Dress(Slot,EAction::PutOn,RiverfrontLife::StarterBottom).IsEmpty());
+
     TestTrue(TEXT("buy indigo shirt for cash"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
     TestTrue(TEXT("repeat request"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
     Profile = RiverfrontLife::Load(Slot);

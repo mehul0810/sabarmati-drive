@@ -5,6 +5,9 @@
 #include "RiverfrontLocalProfile.h"
 #include "RiverfrontLifeProfile.generated.h"
 
+UENUM()
+enum class ERiverfrontWearSlot : uint8 { Top, Bottom, Accessory };
+
 USTRUCT()
 struct FRiverfrontWearable
 {
@@ -13,7 +16,7 @@ struct FRiverfrontWearable
     UPROPERTY(EditAnywhere) FName Id;
     UPROPERTY(EditAnywhere) FString Label;
     UPROPERTY(EditAnywhere) int32 PriceRupees = 0;
-    UPROPERTY(EditAnywhere) bool bAccessory = false;
+    UPROPERTY(EditAnywhere) ERiverfrontWearSlot Slot = ERiverfrontWearSlot::Top;
     UPROPERTY(EditAnywhere) FLinearColor Tint = FLinearColor::White;
 };
 
@@ -34,6 +37,8 @@ namespace RiverfrontLife
     URiverfrontLocalProfile* Load(const FString& Slot);
     bool Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender = ERiverfrontGender::Male);
     bool MergeExploration(const FString& Slot, const FString& DisplayName, const TArray<FName>& Visits, float BestTime);
+    inline const FName StarterBottom(TEXT("denim-dark"));
+    inline const FName Underwear(TEXT("underwear"));
     inline const FName BaseLayer(TEXT("fitting-base"));
     enum class EDressingAction : uint8 { TakeOff, Take, PutOn, PutBack };
     FText Buy(const FString& Slot, FName Item, bool bPayFromBank);

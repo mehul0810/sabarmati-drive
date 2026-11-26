@@ -35,16 +35,28 @@ URiverfrontLocalProfile* Supported(URiverfrontLocalProfile* Profile)
     {
         return nullptr;
     }
-    return (Profile->Schema == 1 || Profile->Schema == URiverfrontLocalProfile::CurrentSchema) ? Profile : nullptr;
+    return (Profile->Schema >= 1 && Profile->Schema <= URiverfrontLocalProfile::CurrentSchema) ? Profile : nullptr;
 }
 
 void StartLife(URiverfrontLocalProfile& Profile)
 {
     Profile.CashRupees = 100000;
     Profile.BankRupees = 500000;
-    Profile.OwnedItems = { StarterOutfit };
+    Profile.OwnedItems = { StarterOutfit, RiverfrontLife::StarterBottom };
+    Profile.EquippedBottom = RiverfrontLife::StarterBottom;
     Profile.EquippedOutfit = StarterOutfit;
     Profile.Schema = URiverfrontLocalProfile::CurrentSchema;
+}
+
+void UpgradeWardrobe(URiverfrontLocalProfile& Profile)
+{
+    if (Profile.Schema == 1) StartLife(Profile);
+    else if (Profile.Schema == 2)
+    {
+        Profile.OwnedItems.AddUnique(RiverfrontLife::StarterBottom);
+        Profile.EquippedBottom = RiverfrontLife::StarterBottom;
+        Profile.Schema = URiverfrontLocalProfile::CurrentSchema;
+    }
 }
 
 FText Update(const FString& Slot, TFunctionRef<FText(URiverfrontLocalProfile&)> Change)
@@ -60,10 +72,7 @@ FText Update(const FString& Slot, TFunctionRef<FText(URiverfrontLocalProfile&)> 
     {
         return LOCTEXT("CouldNotRead", "Could not open your local profile.");
     }
-    if (Profile->Schema == 1)
-    {
-        StartLife(*Profile);
-    }
+    UpgradeWardrobe(*Profile);
     FText Problem = Change(*Profile);
     if (!Problem.IsEmpty())
     {
@@ -176,9 +185,9 @@ URiverfrontLocalProfile* FRiverfrontProfileSlot::Load() const
     const auto Lock = LockWriter();
     if (!Lock.IsValid()) return nullptr;
     Profile = Read(&bFromLegacy);
-    if (Profile && (bFromLegacy || Profile->Schema == 1))
+    if (Profile && (bFromLegacy || Profile->Schema < URiverfrontLocalProfile::CurrentSchema))
     {
-        if (Profile->Schema == 1) StartLife(*Profile);
+        UpgradeWardrobe(*Profile);
         if (!Write(*Profile)) return nullptr;
     }
     return Profile;
@@ -255,10 +264,13 @@ FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName I
     return Update(Slot, [&](URiverfrontLocalProfile& Profile)
     {
         if (!Profile.OwnedItems.Contains(Id)) return LOCTEXT("NotOwned", "Purchase this item first.");
-        FName& Worn = Item->bAccessory ? Profile.EquippedAccessory : Profile.EquippedOutfit;
-        // A missing outfit in an older save was displayed as the starter shirt.
-        if (!Item->bAccessory && Worn.IsNone()) Worn=StarterOutfit;
-        const FName Empty = Item->bAccessory ? NAME_None : BaseLayer;
+        const bool bTop=Item->Slot==ERiverfrontWearSlot::Top;
+        const bool bBottom=Item->Slot==ERiverfrontWearSlot::Bottom;
+        FName& Worn=bTop ? Profile.EquippedOutfit : bBottom ? Profile.EquippedBottom : Profile.EquippedAccessory;
+        if (bTop && Worn.IsNone()) Worn=StarterOutfit;
+        const FName Empty=bTop ? BaseLayer : bBottom ? Underwear : NAME_None;
+        if (Action==EDressingAction::TakeOff && !Profile.HeldWardrobeItem.IsNone())
+            return LOCTEXT("HandsFull", "Put the item in your hand back first.");
         switch (Action)
         {
         case EDressingAction::TakeOff:

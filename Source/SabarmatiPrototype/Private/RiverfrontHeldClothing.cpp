@@ -121,7 +121,7 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
     if (!Body->DoesSocketExist(Hand)) return;
     const auto* Item=RiverfrontLife::Catalog().FindByPredicate([Id](const auto& Entry){return Entry.Id==Id;});
     if (!Item) return;
-    if (Item->bAccessory)
+    if (Item->Slot==ERiverfrontWearSlot::Accessory)
     {
         if (!Wristwatch->GetStaticMesh()) return;
         auto* Watch=NewObject<UStaticMeshComponent>(this);

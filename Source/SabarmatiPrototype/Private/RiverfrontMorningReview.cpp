@@ -511,7 +511,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto* Saved = RiverfrontLife::Load(ProfileSlot);
                 if (!Saved || Saved->AvatarGender != Gender || !WearingResidentBody(*Walker,Gender)
                     || Saved->CashRupees != 100000 || Saved->BankRupees != 500000
-                    || Saved->EquippedOutfit != TEXT("cotton-sand") || Saved->OwnedItems.Num() != 1)
+                    || Saved->EquippedOutfit != TEXT("cotton-sand") || (Saved->OwnedItems.Num()!=2 || !Saved->OwnedItems.Contains(RiverfrontLife::StarterBottom)))
                     return Fail(TEXT("wardrobe body, wallet or ownership after avatar change"));
                 if (Age < .6) return true;
                 const TCHAR* Picture = bMale ? TEXT("02-gender-male") : TEXT("02-gender-female");
