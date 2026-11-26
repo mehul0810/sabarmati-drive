@@ -92,6 +92,24 @@ def lower_foundation(body, uv, faces):
     skin[:,0] -= .055*(skin[:,0]-side*.98)*tuck
     skin[:,2] -= .085*(skin[:,2]-.22)*tuck
     yield "leg_skin",skin,uv,legs
+    # Continue the torso's real skin and UVs across the waist when the briefs are removed.
+    # The upper foundation ends on the original .42 face ring; use its precise waist fit there.
+    bare = body.copy()
+    def ease(low, high, y):
+        t = np.clip((y-low)/(high-low),0.,1.)
+        return t*t*(3.-2.*t)
+    y = bare[:,1]
+    waist = (1.-ease(.45,1.72,y))*ease(-1.5,-.18,y)
+    bare[:,0] *= 1.-.105*waist
+    bare[:,2] = .13+(bare[:,2]-.13)*(1.-.19*waist)
+    for name,low,high in (("bare_lower_skin",-7.18,.42),("midriff_skin",.42,3.25)):
+        region = []
+        for group,face in faces:
+            if group!="body": continue
+            centre = body[[i for i,_ in face]].mean(axis=0)
+            if low<=centre[1]<high and abs(centre[0])<2.4:
+                region.append(face)
+        yield name,bare,uv,region
     shell = body.copy()
     shell[:,0] *= 1.030
     shell[:,2] = .18+(shell[:,2]-.18)*1.065

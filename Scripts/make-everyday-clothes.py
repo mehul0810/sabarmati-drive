@@ -238,6 +238,18 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         tex = uv[uis].copy()
         tex[:,1] = 1-tex[:,1]
         ids,weights = skinning(verts[vis],"bottom_denim" if lower_only else slot)
+        if slot in ("bare_lower_skin","midriff_skin"):
+            # Use torso skin weights at its shared ring, transitioning into the denim leg rig.
+            coords = verts[vis]
+            torso_ids,torso_weights = skinning(coords,"skin")
+            blend = smooth(-1.5,-.18,source_vertices[vis,1])[:,None]
+            all_weights = np.zeros((len(vis),len(bones)))
+            rows = np.arange(len(vis))[:,None]
+            np.add.at(all_weights,(rows,ids),weights*(1-blend))
+            np.add.at(all_weights,(rows,torso_ids),torso_weights*blend)
+            ids = np.argsort(-all_weights,axis=1,kind="stable")[:,:4]
+            weights = np.take_along_axis(all_weights,ids,axis=1)
+            weights /= weights.sum(axis=1)[:,None]
         assert np.allclose(weights.sum(axis=1),1) and np.isfinite(weights).all()
         attrs = dict(POSITION=accessor(verts[vis],"VEC3","f",True),NORMAL=accessor(normals[vis],"VEC3","f"),
                      TEXCOORD_0=accessor(tex,"VEC2","f"),JOINTS_0=accessor(ids,"VEC4","H"),
@@ -262,7 +274,8 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         for name, vertices, texcoords, polygons in lower_foundation(body, body_uv, body_faces):
             mats[name] = len(scene["materials"])
             scene["materials"].append({"name":name,"doubleSided":True})
-            add_panel(name,vertices,texcoords,polygons)
+            body_normals = [f for g,f in body_faces if g=="body"] if name in ("bare_lower_skin","midriff_skin") else None
+            add_panel(name,vertices,texcoords,polygons,normal_faces=body_normals)
         write_mesh("SK_"+foundation.title()+"LowerBody")
         return
 
