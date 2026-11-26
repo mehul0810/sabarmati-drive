@@ -39,3 +39,7 @@ python3 Scripts/make-foundation-bodies.py /path/to/base.obj /path/to/system-asse
 ```
 
 In a scratch Unreal project containing the shipped People assets, set `SABARMATI_FOUNDATION_SOURCE` to the GLB output directory and run `Scripts/import-female-residents.py`. Promote the two verified skeletal meshes from `Wardrobe/Foundation`.
+
+## Short-sleeved jersey
+
+Both jersey presets fit the CC0 MakeHuman `male_casualsuit06` sewn shirt to the resident skeleton and body targets. The unprinted knit uses its normal and occlusion atlases. The ordinary jeans and shoes remain separate wardrobe slots. To regenerate, run `Scripts/make-foundation-bodies.py BASE_OBJ SYSTEM_ASSETS OUTPUT --tee` and set `SABARMATI_TEE_SOURCE` to that output for `Scripts/import-female-residents.py` in a scratch project. [MakeHuman CC0 system asset pack](https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip)

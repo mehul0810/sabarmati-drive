@@ -4,7 +4,7 @@ Inputs: original hm08 base.obj, SK_RiverResident.glb, and the official system pa
 Install numpy and Pillow for this offline authoring step. The game uses cooked assets.
 """
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import re
@@ -172,7 +172,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
                     if n not in ("Neck","Head"):
                         weights[(y>1.48)&(np.abs(positions[:,0])<.18)] = 0
                     influences[selected,i] = weights[selected]
-        if slot == "top_teal_woven":
+        if slot in ("top_teal_woven","jersey_knit","jersey_binding"):
             # The rig has no clavicles. The shirt yoke follows the chest until it
             # crosses the shoulder; sleeves progressively pick up the arm joints.
             sleeve = smooth(.124,.240,np.abs(positions[:,0]))
@@ -333,6 +333,40 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             write_textures(asset,name,uv,panels,output)
 
     body_polygons = [f for group,f in body_faces if group=="body"]
+    tee_mask = set()
+    if tee:
+        name = "male_casualsuit06"
+        asset = system/"clothes"/name
+        garment, tex, pattern = read_obj(asset/(name+".obj"))
+        fitted, tee_mask = fit(asset/(name+".mhclo"),body)
+        if len(garment) != len(fitted):
+            raise ValueError("Crew tee fit does not match its pattern")
+        seams = components(len(garment),pattern)
+        pieces = {i for i in set(seams) if fitted[seams==i,1].min()>=0}
+        jersey = [f for _,f in pattern if seams[f[0][0]] in pieces]
+        edges = Counter(tuple(sorted((a[0],b[0]))) for face in jersey for a,b in zip(face,face[1:]+face[:1]))
+        collar = {v for edge,n in edges.items() if n==1 and all(fitted[i,1]>5 and abs(fitted[i,0])<1.2 for i in edge) for v in edge}
+        binding = [face for face in jersey if any(i in collar for i,t in face)]
+        main = [face for face in jersey if not any(i in collar for i,t in face)]
+        if not main or not binding:
+            raise ValueError("Missing short-sleeved panel or bound neckline")
+        # Allow the shirt to hang over the waistband of the separate everyday jeans.
+        hem = 1-smooth(.7,2.6,fitted[:,1])
+        fitted[:,0] *= 1+.09*hem
+        fitted[:,2] += .15*hem*(fitted[:,2]-.12)
+        for slot,faces in (("jersey_knit",main),("jersey_binding",binding)):
+            mats[slot]=len(scene["materials"])
+            scene["materials"].append({"name":slot,"doubleSided":True})
+            add_panel(slot,fitted,tex,faces,normal_faces=jersey)
+        if foundation=="male":
+            ao=Image.open(asset/(name+"_ao.png")).convert("L")
+            ao.thumbnail((1024,1024),Image.Resampling.LANCZOS)
+            # An unprinted neutral knit retains the folds from the CC0 garment's occlusion atlas.
+            ao.point(lambda value: round(128+.43*value)).convert("RGB").save(output/"T_JerseyKnit.png")
+            normal=Image.open(asset/(name+"_normal.png")).convert("RGB")
+            normal.thumbnail((1024,1024),Image.Resampling.LANCZOS)
+            r,g,b=normal.split()
+            Image.merge("RGB",(r,g.point(lambda value:255-value),b)).save(output/"T_JerseyKnit_N.png")
     if foundation:
         # Overlap the inside of the original waistband. The cut stays inside the jeans
         # when the hips flex and does not change the visible abdomen above the belt.
@@ -353,7 +387,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
         # Keep the full neck above the collar and only its inner faces beneath it.
         collar = y>5.84 or (y>4.20 and max(abs(body[i,0]) for i in indices)<.65)
         cuff = abs(x)>3.05 and y<3.90
-        if tee and min(body[i,1] for i in indices)>.66 and max(abs(body[i,0]) for i in indices)<2.48 and max(body[i,1] for i in indices)<5.16:
+        if tee and all(i in tee_mask for i in indices):
             continue
         if foundation and y < .42:
             continue
@@ -375,12 +409,6 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             add_panel(name,body,body_uv,polygons,normals=normals)
     else:
         add_panel("skin",body,body_uv,exposed,body_polygons)
-    if tee:
-        from resident_foundation import jersey_panels
-        for slot,points,coords,polys in jersey_panels(read_obj(base)[0],body_uv,body_faces):
-            mats[slot]=len(scene["materials"])
-            scene["materials"].append({"name":slot,"doubleSided":True})
-            add_panel(slot,points,coords,polys)
     write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+("CrewTee" if tee else "Foundation"))
 
 

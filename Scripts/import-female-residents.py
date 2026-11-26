@@ -13,6 +13,52 @@ library = ue.EditorAssetLibrary
 manager = ue.InterchangeManager.get_interchange_manager_scripted()
 
 
+def make_jersey_material():
+    tools=ue.AssetToolsHelpers.get_asset_tools()
+    edit=ue.MaterialEditingLibrary
+    path=TARGET+"/M_Jersey"
+    material=tools.create_asset("M_Jersey",TARGET,ue.Material,ue.MaterialFactoryNew())
+    if not material:
+        raise RuntimeError("Expected a clean staging folder for "+path)
+    material.set_editor_property("used_with_skeletal_mesh",True)
+    material.set_editor_property("two_sided",True)
+    def connect(a,output,b,pin):
+        if not edit.connect_material_expressions(a,output,b,pin): raise RuntimeError(pin)
+    def bind(expr,pin,prop):
+        if not edit.connect_material_property(expr,pin,prop): raise RuntimeError(str(prop))
+    for name,is_normal in (("T_JerseyKnit",False),("T_JerseyKnit_N",True)):
+        task=ue.AssetImportTask()
+        task.filename=str(SOURCE/(name+".png"))
+        task.destination_path=TARGET
+        task.automated=True
+        tools.import_asset_tasks([task])
+        tex=library.load_asset(TARGET+"/"+name)
+        if is_normal:
+            tex.set_editor_property("compression_settings",ue.TextureCompressionSettings.TC_NORMALMAP)
+        tex.set_editor_property("srgb",not is_normal)
+        if not library.save_loaded_asset(tex,False): raise RuntimeError(name)
+        sample=edit.create_material_expression(material,ue.MaterialExpressionTextureSample)
+        sample.set_editor_property("texture",tex)
+        if is_normal:
+            sample.set_editor_property("sampler_type",ue.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+            bind(sample,"RGB",ue.MaterialProperty.MP_NORMAL)
+        else:
+            dye=edit.create_material_expression(material,ue.MaterialExpressionVectorParameter)
+            dye.set_editor_property("parameter_name","BaseColorFactor")
+            dye.set_editor_property("default_value",ue.LinearColor(1,1,1,1))
+            product=edit.create_material_expression(material,ue.MaterialExpressionMultiply)
+            connect(sample,"RGB",product,"A")
+            connect(dye,"",product,"B")
+            bind(product,"",ue.MaterialProperty.MP_BASE_COLOR)
+    rough=edit.create_material_expression(material,ue.MaterialExpressionConstant)
+    rough.set_editor_property("r",.82)
+    bind(rough,"",ue.MaterialProperty.MP_ROUGHNESS)
+    edit.layout_material_expressions(material)
+    edit.recompile_material(material)
+    if not library.save_loaded_asset(material,False): raise RuntimeError(path)
+    return material
+
+
 def import_outfit(name, reference_path):
     path = TARGET + "/" + name
     if library.does_asset_exist(path):
@@ -51,8 +97,7 @@ def import_outfit(name, reference_path):
         source_materials.update(underwear_knit=cotton,underwear_band=cotton)
     elif TEE:
         source_materials.pop("top_teal_woven")
-        cotton=library.load_asset(ROOT+"/Wardrobe/M_ResidentCotton")
-        source_materials.update(jersey_knit=cotton,jersey_binding=cotton)
+        source_materials.update(jersey_knit=jersey_material,jersey_binding=jersey_material)
     elif FOUNDATION:
         source_materials = {k:v for k,v in source_materials.items() if k in ("skin","lips","hair","iris","sclera","bottom_denim","shoe")}
         if name == "SK_FemaleFoundation":
@@ -81,6 +126,7 @@ def import_outfit(name, reference_path):
 
 
 if TEE:
+    jersey_material=make_jersey_material()
     import_outfit("SK_MaleCrewTee","Everyday/SK_RiverEveryday")
     import_outfit("SK_FemaleCrewTee","Female/SK_FemaleEveryday")
 elif LOWER:

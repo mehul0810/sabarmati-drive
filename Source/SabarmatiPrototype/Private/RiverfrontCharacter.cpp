@@ -527,8 +527,8 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     SetSurface(TEXT("bottom_denim"), bChino ? CottonMaterial.Get() : Cloth, Trousers);
     if (bTee)
     {
-        SetSurface(TEXT("jersey_knit"),CottonMaterial,Shirt);
-        SetSurface(TEXT("jersey_binding"),CottonMaterial,Trim);
+        SetSurface(TEXT("jersey_knit"),nullptr,Shirt);
+        SetSurface(TEXT("jersey_binding"),nullptr,Trim);
     }
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)

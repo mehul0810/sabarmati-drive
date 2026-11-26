@@ -1,6 +1,7 @@
 """Bake the two playable upper-body foundations using the shipped face and physique fits."""
 import argparse
 from pathlib import Path
+from shutil import copyfile
 import runpy
 from tempfile import TemporaryDirectory
 
@@ -31,6 +32,9 @@ def bake(base, system, output, lower=False, tee=False):
                 tools("sculpt-resident-face.py")["apply"](base, ASSETS/"river-resident-adult.target", work/name, sculpt)
             fixed=("hair","iris","sclera","shoe","street_shoe_l","street_shoe_r")
             physique["fit"](sculpt, output/name, athlete, fixed_materials=fixed+("lips",))
+            if tee and preset=="male":
+                for texture in ("T_JerseyKnit.png","T_JerseyKnit_N.png"):
+                    copyfile(work/texture,output/texture)
             if preset == "female":
                 physique["fit"](output/name, output/name, female, fixed_materials=fixed)
 

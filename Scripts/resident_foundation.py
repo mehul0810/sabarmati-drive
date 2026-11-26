@@ -147,38 +147,3 @@ def lower_foundation(body, uv, faces):
                 corners.append((keys[key],keys[key]))
             if len(set(corners))>=3: polygons.append(corners)
         yield name,np.asarray(positions),np.asarray(texcoords),polygons
-
-def jersey_panels(body, uv, faces):
-    """Cut a short-sleeve crew neck from the continuous fitted clothing shell."""
-    sections={name:([],[],[]) for name in ("jersey_knit","jersey_binding")}
-    for g,face in faces:
-        if g!="helper-tights": continue
-        poly=[]
-        for i,t in face:
-            x,y,z=body[i]
-            # Lower the neckline at the front, lift it behind the nape.
-            neck=5.68-.39*np.clip((z+.10)/1.0,0,1)+.23*np.minimum(abs(x),1.)
-            # Sleeves finish above the elbow. The hem hangs away from the waist.
-            edge=min(y-.46,neck-y,2.62-abs(x))
-            ease=np.clip((3.7-y)/2.9,0,1)
-            garment=[x*(1.045+.07*ease),y,z+.065*np.sign(z-.12)+.07*ease*np.cos(4.*x)]
-            poly.append(np.r_[garment,uv[t],edge])
-        def clip(rows,level,above):
-            out=[]
-            for a,b in zip(rows,rows[1:]+rows[:1]):
-                av,bv=a[-1]-level,b[-1]-level
-                if av*(1 if above else -1)>=0: out.append(a)
-                if av*bv<0: out.append(a+(b-a)*(av/(av-bv)))
-            return out
-        for j in range(1,len(poly)-1):
-            tri=clip([poly[0],poly[j],poly[j+1]],0,True)
-            for slot,rows in (("jersey_knit",clip(tri,.09,True)),("jersey_binding",clip(tri,.09,False))):
-                if len(rows)<3: continue
-                v,tex,f=sections[slot]; indices=[]
-                for row in rows:
-                    indices.append((len(v),len(tex)));v.append(row[:3]);tex.append(row[3:5])
-                f.append(indices)
-    for name,(v,tex,f) in sections.items():
-        # Weld across the source triangles before generating smooth normals.
-        points,inverse=np.unique(np.round(v,7),axis=0,return_inverse=True)
-        yield name,points,np.asarray(tex),[[(inverse[i],t) for i,t in face] for face in f]
