@@ -43,7 +43,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, CheckCover, InnerLayers, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
 };
 
 struct FMorningEvidence
@@ -85,6 +85,9 @@ struct FMorningEvidence
     double JeansFootLift[2]{};
     double JeansPeakTime[2]{};
     int32 JeansPoseSamples=0;
+    int32 InnerAction=0;
+    bool bInnerActionStarted=false;
+    bool bInnerSelected=false;
     bool bFamilyPhoto = false;
     bool bOldHUD = true;
     bool bCrosswalkSample = false;
@@ -514,7 +517,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto* Saved = RiverfrontLife::Load(ProfileSlot);
                 if (!Saved || Saved->AvatarGender != Gender || !WearingResidentBody(*Walker,Gender)
                     || Saved->CashRupees != 100000 || Saved->BankRupees != 500000
-                    || Saved->EquippedOutfit != TEXT("cotton-sand") || (Saved->OwnedItems.Num()!=2 || !Saved->OwnedItems.Contains(RiverfrontLife::StarterBottom)))
+                    || Saved->EquippedOutfit != TEXT("cotton-sand") || (Saved->OwnedItems.Num()!=4 || !Saved->OwnedItems.Contains(RiverfrontLife::StarterBottom)))
                     return Fail(TEXT("wardrobe body, wallet or ownership after avatar change"));
                 if (Age < .6) return true;
                 const TCHAR* Picture = bMale ? TEXT("02-gender-male") : TEXT("02-gender-female");
@@ -756,6 +759,108 @@ void ARiverfrontPlayerController::RunMorningReview()
             {
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 if (!State->Pictures.Contains(TEXT("05-female-lower.png"))) { Shot(TEXT("05-female-lower"),true); return true; }
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.sports-bra"))) return Fail(TEXT("select sports bra in wardrobe"));
+                Next(EMorningStep::CheckCover); break;
+            }
+            case EMorningStep::CheckCover:
+            {
+                const auto Button=FindMorningControl(Overlay,TEXT("LifeDress"));
+                if (!Button || Button->IsEnabled() || !DressButtonLabel().Contains(TEXT("Indigo")))
+                    return Fail(TEXT("sports bra covered by shirt: ")+DressButtonLabel());
+                Next(EMorningStep::InnerLayers); break;
+            }
+            case EMorningStep::InnerLayers:
+            {
+                using EAction=RiverfrontLife::EDressingAction;
+                struct FLayerAction { FName Item; EAction Action; FName URiverfrontLocalProfile::*Worn; };
+                using P=URiverfrontLocalProfile;
+                const FLayerAction Actions[]={
+                    {TEXT("shirt-indigo"),EAction::TakeOff,&P::EquippedOutfit},
+                    {RiverfrontLife::SportsBra,EAction::TakeOff,&P::EquippedInnerTop},
+                    {RiverfrontLife::Briefs,EAction::TakeOff,&P::EquippedInnerBottom},
+                    {RiverfrontLife::Briefs,EAction::Take,&P::EquippedInnerBottom},
+                    {RiverfrontLife::Briefs,EAction::PutOn,&P::EquippedInnerBottom},
+                    {TEXT("shirt-indigo"),EAction::Take,&P::EquippedOutfit},
+                    {TEXT("shirt-indigo"),EAction::PutOn,&P::EquippedOutfit},
+                    {TEXT("shirt-indigo"),EAction::TakeOff,&P::EquippedOutfit},
+                    {RiverfrontLife::SportsBra,EAction::Take,&P::EquippedInnerTop},
+                    {RiverfrontLife::SportsBra,EAction::PutOn,&P::EquippedInnerTop},
+                    {TEXT("shirt-indigo"),EAction::Take,&P::EquippedOutfit},
+                    {TEXT("shirt-indigo"),EAction::PutOn,&P::EquippedOutfit}
+                };
+                if (State->InnerAction<UE_ARRAY_COUNT(Actions))
+                {
+                    const auto& Action=Actions[State->InnerAction];
+                    if (!State->bInnerSelected)
+                    {
+                        if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                        if (State->InnerAction==3)
+                        {
+                            if (!PressMorningButton(Overlay,TEXT("LifeGenderMale"))) return Fail(TEXT("change uncovered preset"));
+                            bool bMaleSkin=false;
+                            TInlineComponentArray<USkeletalMeshComponent*> Meshes(Walker);
+                            for (auto* Part : Meshes)
+                            {
+                                const int32 Slot=Part->GetMaterialIndex(TEXT("bare_lower_skin"));
+                                if (Slot!=INDEX_NONE && Part->IsVisible() && Part->GetSkeletalMeshAsset()->GetFName()==TEXT("SK_MaleLowerBody"))
+                                    bMaleSkin=Part->IsMaterialSectionShown(Slot,0);
+                            }
+                            if (!bMaleSkin || !PressMorningButton(Overlay,TEXT("LifeGenderFemale")))
+                                return Fail(TEXT("uncovered geometry on both presets"));
+                        }
+                        if (!PressMorningButton(Overlay,FName(*(TEXT("LifeItem.")+Action.Item.ToString()))))
+                            return Fail(TEXT("select dressing item ")+Action.Item.ToString());
+                        State->bInnerSelected=true;
+                        return true;
+                    }
+                    if (!State->bInnerActionStarted)
+                    {
+                        if (!PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("start innerwear dressing action ")+DressButtonLabel());
+                        State->bInnerActionStarted=true;
+                        return true;
+                    }
+                    auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                    if (!Saved) return Fail(TEXT("layered fitting save"));
+                    if (Action.Action==EAction::Take)
+                    {
+                        if (Saved->HeldWardrobeItem!=Action.Item || !Walker->HasHeldWardrobeProp(Action.Item))
+                            return Fail(TEXT("held layer missing ")+Action.Item.ToString());
+                    }
+                    else if (((Saved->*Action.Worn)==Action.Item)!=(Action.Action==EAction::PutOn)) return true;
+                    auto* Body=Walker->GetMesh();
+                    if (Saved->EquippedOutfit==RiverfrontLife::BaseLayer)
+                    {
+                        const int32 Knit=Body->GetMaterialIndex(TEXT("foundation_knit")),Skin=Body->GetMaterialIndex(TEXT("skin"));
+                        if (Knit==INDEX_NONE || Skin==INDEX_NONE || (Body->GetMaterial(Knit)==Body->GetMaterial(Skin))!=Saved->EquippedInnerTop.IsNone())
+                            return Fail(TEXT("torso skin and bra disagree with wardrobe"));
+                    }
+                    if (Action.Item==RiverfrontLife::Briefs && Action.Action!=EAction::Take)
+                    {
+                        bool bFound=false;
+                        TInlineComponentArray<USkeletalMeshComponent*> Meshes(Walker);
+                        for (auto* Part : Meshes)
+                        {
+                            const int32 Skin=Part->GetMaterialIndex(TEXT("bare_lower_skin")),Brief=Part->GetMaterialIndex(TEXT("underwear_knit"));
+                            if (Skin==INDEX_NONE || Brief==INDEX_NONE || !Part->IsVisible()) continue;
+                            bFound=Part->IsMaterialSectionShown(Skin,0)==Saved->EquippedInnerBottom.IsNone() &&
+                                Part->IsMaterialSectionShown(Brief,0)!=Saved->EquippedInnerBottom.IsNone();
+                        }
+                        if (!bFound) return Fail(TEXT("lower skin or briefs disagree with wardrobe"));
+                        if (Action.Action==EAction::TakeOff)
+                        {
+                            if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave fitting on skin layer"));
+                            InteractWithPlace();
+                            if (Saved->EquippedInnerTop.IsNone() && Saved->EquippedInnerBottom.IsNone()) Shot(TEXT("06-skin-layer"),true);
+                            else return Fail(TEXT("both layers removed"));
+                        }
+                    }
+                    if (State->InnerAction==7 && !Saved->EquippedInnerTop.IsNone()) return Fail(TEXT("shirt silently restored a bra"));
+                    ++State->InnerAction;
+                    State->bInnerSelected=false;
+                    State->bInnerActionStarted=false;
+                    return true;
+                }
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati innerwear review: 12 wardrobe actions, both inner layers removed and re-equipped, skin verified, covered action blocked, shirt worn over skin."));
                 if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave in boxer briefs"));
                 InteractWithPlace();
                 if (!PressMorningButton(Overlay,TEXT("LifeGenderMale")) || Walker->GetWardrobeBottom()!=RiverfrontLife::Underwear)
