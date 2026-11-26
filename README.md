@@ -70,7 +70,7 @@ For a local rig comparison, the editor supports a separately supplied and approp
 
 ## Run a native smoke test
 
-For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiJumpReview -SabarmatiTraversalReview` to test the open jump, fence and stone platform. Use `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` exercises both shop previews and restores the saved outfit and balances. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
+For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiJumpReview -SabarmatiTraversalReview` to test the open jump, fence and stone platform. Use `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` photographs both fitted tops using a disposable shop profile. The wardrobe review adds the remove, take, put-back and put-on checks at the apartment mirror. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
 
 The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual Shadow Maps, hardware ray tracing and Lumen disabled. This configuration aims to run on an M1 Max while leaving room to tune the M2 Air. It is not a measured performance claim.
 

@@ -43,7 +43,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, WearPullover, FinishPullover, BedsideInput, RestAgain
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
 };
 
 struct FMorningEvidence
@@ -72,11 +72,12 @@ struct FMorningEvidence
     bool bSawWake = false;
     bool bWakePhoto = false;
     bool bTestedCancel = false;
+    bool bTestedPutBack=false;
     uint32 IdleMirrorUpdates = 0;
     FVector PlantedFeet[2]{};
     double FootDrift = 0.;
     int32 PlantedSamples = 0;
-    TArray<double> IdleFrames, DressingFrames;
+    FString BodyReviewSlot;
     double PhaseFrameAt=0.;
     double LastMirrorRequest=0.;
     TArray<double> MirrorFrameTimes;
@@ -282,6 +283,20 @@ void ARiverfrontPlayerController::RunMorningReview()
                 auto* View = GetWorld()->GetGameViewport()->Viewport;
                 for (const auto Event : { IE_Pressed, IE_Released })
                     InputKey(FInputKeyEventArgs(View,FInputDeviceId::CreateFromInternalId(0),Key,Event,FPlatformTime::Cycles64()));
+            };
+            const auto DressButtonLabel=[&]()
+            {
+                auto Label=FindMorningControl(Overlay,TEXT("LifeDressAction"));
+                return Label ? StaticCastSharedPtr<STextBlock>(Label)->GetText().ToString() : FString();
+            };
+            // Use the same separate actions a player presses. Timers keep each button disabled during motion.
+            const auto FinishWearing=[&](FName Id)
+            {
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || !Saved->OwnedItems.Contains(Id)) return false;
+                if (Saved->EquippedOutfit==Id || Saved->EquippedAccessory==Id) return true;
+                PressMorningButton(Overlay,TEXT("LifeDress"));
+                return false;
             };
             const auto VerifyFittingView = [&](const TCHAR* Site) -> FString
             {
@@ -527,100 +542,111 @@ void ARiverfrontPlayerController::RunMorningReview()
                 break;
             }
             case EMorningStep::CancelWhileDressing:
-                if (Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo") || Walker->FindComponentByClass<UPoseableMeshComponent>()
+                if (Walker->GetWardrobeOutfit()!=TEXT("cotton-sand") || Walker->FindComponentByClass<UPoseableMeshComponent>()
                     || !PressMorningButton(Overlay,TEXT("LifeClose")) || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand"))
-                    return Fail(TEXT("instant male preview and cancel"));
+                    return Fail(TEXT("browsing did not undress the resident"));
                 InteractWithPlace();
                 if (!PressMorningButton(Overlay,TEXT("LifeGenderFemale"))) return Fail(TEXT("female wardrobe selector"));
                 Next(EMorningStep::WardrobeFemale); break;
             case EMorningStep::ChangingBase:
             {
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
-                if (Walker->GetWardrobeOutfit()!=TEXT("kurta") || !Saved || Saved->OwnedItems.Contains(TEXT("kurta")) ||
+                if (Walker->GetWardrobeOutfit()!=TEXT("cotton-sand") || !Saved || Saved->OwnedItems.Contains(TEXT("kurta")) ||
                     Saved->EquippedOutfit!=TEXT("cotton-sand") || !PressMorningButton(Overlay,TEXT("LifeClose")))
                     return Fail(TEXT("unowned kurta preview"));
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::ShopPoint(),FRotator::ZeroRotator)) return Fail(TEXT("shop placement"));
                 InteractWithPlace();
-                const FName Buttons[]={TEXT("LifeItem.shirt-indigo"),TEXT("LifeBuyCash"),TEXT("LifeItem.watch"),TEXT("LifeBuyCash"),
-                    TEXT("LifeItem.cotton-sand"),TEXT("LifeEquip"),TEXT("LifeClose")};
-                for (FName Button:Buttons) if (!PressMorningButton(Overlay,Button)) return Fail(TEXT("Sutra purchase or starter top"));
-                if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("wardrobe placement"));
+                const FName Buttons[]={TEXT("LifeItem.shirt-indigo"),TEXT("LifeBuyCash"),TEXT("LifeItem.watch"),TEXT("LifeBuyCash")};
+                for (FName Button:Buttons) if (!PressMorningButton(Overlay,Button)) return Fail(TEXT("Sutra purchase"));
+                if (Walker->GetWardrobeOutfit()!=TEXT("cotton-sand") || Walker->HasWristwatchVisible()) return Fail(TEXT("purchase auto-equipped an item"));
+                Next(EMorningStep::EquipShopWatch); break;
+            }
+            case EMorningStep::EquipShopWatch:
+                if (!FinishWearing(TEXT("watch"))) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeClose")) ||
+                    !Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("wardrobe placement"));
                 InteractWithPlace();
-                const auto* Body=Walker->GetMesh();
-                auto* Denim=Body->GetMaterial(Body->GetMaterialIndex(TEXT("bottom_denim")));
-                if (!MirrorCapture.IsValid() || !Denim || !Denim->GetVectorParameterValue(TEXT("BaseColorFactor"),State->DenimDye)
-                    || !Walker->HasWristwatchVisible()) return Fail(TEXT("starting mirror, denim or watch"));
-                State->PhaseFrameAt=Now;
+                if (!MirrorCapture.IsValid() || !Walker->HasWristwatchVisible()) return Fail(TEXT("mirror or worn watch"));
+                {
+                    const auto* Mesh=Walker->GetMesh();
+                    auto* Denim=Mesh->GetMaterial(Mesh->GetMaterialIndex(TEXT("bottom_denim")));
+                    if (!Denim || !Denim->GetVectorParameterValue(TEXT("BaseColorFactor"),State->DenimDye)) return Fail(TEXT("starting denim"));
+                }
                 State->IdleMirrorUpdates=MirrorUpdates;
                 Next(EMorningStep::ChangingPreview); break;
-            }
             case EMorningStep::ChangingPreview:
-                if (Age<.7)
-                {
-                    if (Age>.22 && State->PhaseFrameAt>0.) State->IdleFrames.Add((Now-State->PhaseFrameAt)*1000.);
-                    State->PhaseFrameAt=Now;
-                    return true;
-                }
-                if (MirrorUpdates!=State->IdleMirrorUpdates) return Fail(TEXT("mirror kept rendering when idle"));
-                if (!PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo")) || Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo"))
-                    return Fail(TEXT("instant indigo preview"));
-                Next(EMorningStep::PressWear);
-                break;
+                if (Age<.7) return true;
+                if (MirrorUpdates!=State->IdleMirrorUpdates || !PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo"))
+                    || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand")) return Fail(TEXT("selection changed mirror or garment"));
+                Next(EMorningStep::PressWear); break;
             case EMorningStep::PressWear:
-                if (!PressMorningButton(Overlay,TEXT("LifeEquip")))
-                    return Fail(FString::Printf(TEXT("Wear now button for indigo, saved top=%s"),*RiverfrontLife::Load(ProfileSlot)->EquippedOutfit.ToString()));
-                if (Walker->GetWardrobeOutfit()!=TEXT("cotton-sand"))
-                    return Fail(FString::Printf(TEXT("shirt removal started with %s, supports motion=%d saved=%s"),*Walker->GetWardrobeOutfit().ToString(),
-                        Walker->SupportsClothingChange(),*RiverfrontLife::Load(ProfileSlot)->EquippedOutfit.ToString()));
-                State->PhaseFrameAt=Now;
+                if (!DressButtonLabel().StartsWith(TEXT("Take off")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("missing separate removal action"));
+                Next(EMorningStep::Removed); break;
+            case EMorningStep::Removed:
+            {
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved) return Fail(TEXT("missing removal save"));
+                if (!State->bTestedCancel && Age>.25)
+                {
+                    const FKeyEvent Escape(EKeys::Escape,FModifierKeysState(),uint32(0),false,27,27);
+                    if (!FSlateApplication::Get().ProcessKeyDownEvent(Escape) || IsShowingMenu()
+                        || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand")) return Fail(TEXT("cancel during removal"));
+                    FSlateApplication::Get().ProcessKeyUpEvent(Escape);
+                    State->bTestedCancel=true;
+                    InteractWithPlace();
+                    PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo"));
+                    Next(EMorningStep::PressWear); break;
+                }
+                if (Saved->EquippedOutfit!=RiverfrontLife::BaseLayer) return true;
+                if (!Saved->HeldWardrobeItem.IsNone() || Walker->GetWardrobeOutfit()!=RiverfrontLife::BaseLayer)
+                    return Fail(TEXT("removed shirt was replaced"));
+                if (!State->Pictures.Contains(TEXT("02-base-layer.png"))) { Shot(TEXT("02-base-layer"),true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close while in base layer"));
+                InteractWithPlace();
+                if (Walker->GetWardrobeOutfit()!=RiverfrontLife::BaseLayer || !PressMorningButton(Overlay,TEXT("LifeItem.shirt-indigo")))
+                    return Fail(TEXT("base layer lost across reopen"));
+                Next(EMorningStep::HeldItem); break;
+            }
+            case EMorningStep::HeldItem:
+                if (DressButtonLabel()!=TEXT("Take from wardrobe") || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("pick up from wardrobe"));
+                Next(EMorningStep::PutOnItem); break;
+            case EMorningStep::PutOnItem:
+            {
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->HeldWardrobeItem!=TEXT("shirt-indigo") || Saved->EquippedOutfit!=RiverfrontLife::BaseLayer
+                    || !Walker->HasHeldWardrobeProp(TEXT("shirt-indigo"))) return Fail(TEXT("item in hand before dressing"));
+                if (!State->Pictures.Contains(TEXT("02-in-hand.png"))) { Shot(TEXT("02-in-hand"),true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!State->bTestedPutBack)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifePutBack")) || Walker->HasHeldWardrobeProp(TEXT("shirt-indigo")))
+                        return Fail(TEXT("return held item to shelf"));
+                    State->bTestedPutBack=true;
+                    Next(EMorningStep::HeldItem); break;
+                }
+                if (!PressMorningButton(Overlay,TEXT("LifeClose")) || !Walker->HasHeldWardrobeProp(TEXT("shirt-indigo")))
+                    return Fail(TEXT("held item lost on exit"));
+                InteractWithPlace();
+                if (!DressButtonLabel().StartsWith(TEXT("Put on")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("put on held top after reopening"));
                 Next(EMorningStep::ConfirmOwned); break;
+            }
             case EMorningStep::ConfirmOwned:
             {
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->EquippedOutfit!=TEXT("shirt-indigo")) return true;
                 const auto* Body=Walker->GetMesh();
                 auto* Denim=Body->GetMaterial(Body->GetMaterialIndex(TEXT("bottom_denim")));
                 FLinearColor Dye;
-                if (!Saved || !Denim || !Denim->GetVectorParameterValue(TEXT("BaseColorFactor"),Dye) || !Dye.Equals(State->DenimDye)
-                    || !Walker->HasWristwatchVisible() || Saved->EquippedAccessory!=TEXT("watch") ||
-                    Saved->CashRupees!=96950 || Saved->BankRupees!=500000 || Saved->AvatarGender!=ExpectedGender)
-                    return Fail(TEXT("denim, watch, purchases or body changed"));
-                if (Age>.22 && Age<1.15 && State->PhaseFrameAt>0.) State->DressingFrames.Add((Now-State->PhaseFrameAt)*1000.);
-                State->PhaseFrameAt=Now;
-                if (Walker->GetWardrobeOutfit()==TEXT("fitting-base"))
-                {
-                    if (!Walker->FindComponentByClass<UPoseableMeshComponent>() || Saved->EquippedOutfit!=TEXT("cotton-sand"))
-                        return Fail(TEXT("base layer or premature save"));
-                    if (!State->bTestedCancel)
-                    {
-                        const FKeyEvent Escape(EKeys::Escape,FModifierKeysState(),uint32(0),false,27,27);
-                        if (!FSlateApplication::Get().ProcessKeyDownEvent(Escape) || IsShowingMenu()
-                            || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand")
-                            || FVector::Dist(Walker->GetActorLocation(),BeforeMirrorLocation)>1.)
-                            return Fail(TEXT("Escape during undressing and restore wardrobe position"));
-                        FSlateApplication::Get().ProcessKeyUpEvent(Escape);
-                        State->bTestedCancel=true;
-                        InteractWithPlace();
-                        State->IdleMirrorUpdates=MirrorUpdates;
-                        Next(EMorningStep::ChangingPreview);
-                        break;
-                    }
-                    if (!State->Pictures.Contains(TEXT("02-changing-base.png"))) Shot(TEXT("02-changing-base"),true);
-                }
-                if (Saved->EquippedOutfit!=TEXT("shirt-indigo") || Walker->FindComponentByClass<UPoseableMeshComponent>()) return true;
-                if (!State->bTestedCancel || !State->Pictures.Contains(TEXT("02-changing-base.png")) || MirrorUpdates<4)
-                    return Fail(TEXT("missing confirmed dressing stages"));
+                if (!Saved->HeldWardrobeItem.IsNone() || Walker->HasHeldWardrobeProp(TEXT("shirt-indigo")) || !Walker->HasWristwatchVisible()
+                    || Saved->EquippedAccessory!=TEXT("watch") || Saved->CashRupees!=96950 || Saved->BankRupees!=500000
+                    || !Denim || !Denim->GetVectorParameterValue(TEXT("BaseColorFactor"),Dye) || !Dye.Equals(State->DenimDye))
+                    return Fail(TEXT("hand, denim, watch or balance after dressing"));
                 if (!State->Pictures.Contains(TEXT("03-indigo-mirror.png"))) { Shot(TEXT("03-indigo-mirror"),true); return true; }
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
-                const auto Report=[](const TCHAR* Label,TArray<double>& Frames)
-                {
-                    if (Frames.Num()<5) return;
-                    Frames.Sort();
-                    UE_LOG(LogTemp,Display,TEXT("Sabarmati mirror %s frames=%d median=%.2f ms p95=%.2f ms"),Label,
-                        Frames.Num(),Frames[Frames.Num()/2],Frames[FMath::CeilToInt(Frames.Num()*.95)-1]);
-                };
-                Report(TEXT("idle"),State->IdleFrames);
-                Report(TEXT("dressing"),State->DressingFrames);
-                UE_LOG(LogTemp,Display,TEXT("Sabarmati mirror 256x512: idle refreshes=0, fitting refreshes=%u, shirt-indigo saved, watch and denim retained, cash=96950 bank=500000"),MirrorUpdates);
                 // Keep Slate painting just as it does during a fitting gesture, in both timing windows.
                 Overlay->RegisterActiveTimer(0.f,FWidgetActiveTimerDelegate::CreateLambda([State](double,float)
                 {
@@ -656,7 +682,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                     || !WearingResidentBody(*Walker,ERiverfrontGender::Male)) return Fail(TEXT("male outfit before sleeping"));
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::ShopPoint(),FRotator::ZeroRotator)) return Fail(TEXT("return to Sutra"));
                 InteractWithPlace();
-                const FName ShopButtons[]={TEXT("LifeItem.kurta"),TEXT("LifeBuyCash"),TEXT("LifeItem.shirt-indigo"),TEXT("LifeEquip"),TEXT("LifeClose")};
+                const FName ShopButtons[]={TEXT("LifeItem.kurta"),TEXT("LifeBuyCash"),TEXT("LifeClose")};
                 for (FName Button:ShopButtons) if (!PressMorningButton(Overlay,Button)) return Fail(TEXT("buy kurta, wear indigo"));
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("return to mirror"));
                 InteractWithPlace();
@@ -667,17 +693,19 @@ void ARiverfrontPlayerController::RunMorningReview()
                 Next(EMorningStep::WearPullover); break;
             }
             case EMorningStep::WearPullover:
-                if (!PressMorningButton(Overlay,TEXT("LifeEquip"))) return Fail(TEXT("start pullover gesture"));
+                if (!DressButtonLabel().StartsWith(TEXT("Put on")))
+                {
+                    PressMorningButton(Overlay,TEXT("LifeDress"));
+                    return true;
+                }
+                if (!Walker->HasHeldWardrobeProp(TEXT("kurta")) || !PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("start pullover gesture"));
                 Next(EMorningStep::FinishPullover); break;
             case EMorningStep::FinishPullover:
             {
-                if (auto* Pose=Walker->FindComponentByClass<UPoseableMeshComponent>(); Pose && Walker->GetWardrobeOutfit()==TEXT("fitting-base")
-                    && !State->Pictures.Contains(TEXT("04-pullover.png")))
-                {
+                if (auto* Pose=Walker->FindComponentByClass<UPoseableMeshComponent>(); Pose && !State->Pictures.Contains(TEXT("04-pullover.png")))
                     if (Pose->GetSocketLocation(TEXT("Handl")).Z>Pose->GetSocketLocation(TEXT("Shoulderl")).Z &&
                         Pose->GetSocketLocation(TEXT("Handr")).Z>Pose->GetSocketLocation(TEXT("Shoulderr")).Z)
                         Shot(TEXT("04-pullover"),true);
-                }
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 if (!Saved || Saved->EquippedOutfit!=TEXT("kurta")) return true;
                 if (!State->Pictures.Contains(TEXT("04-pullover.png")) || Saved->EquippedAccessory!=TEXT("watch")
@@ -704,7 +732,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (bWaking || (GetViewTarget()!=Walker && Age<7.)) return true;
                 if (Walker->IsLyingOnBed() || GetViewTarget()!=Walker || !Walker->GetCharacterMovement()->IsMovingOnGround())
                     return Fail(TEXT("bedside control after second wake"));
-                UE_LOG(LogTemp,Display,TEXT("Sabarmati wardrobe review passed: female bedside rise, instant preview, Escape rollback, shirt and kurta gestures, watch retention, portrait, mirror timing and male bedside rest."));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati wardrobe review passed: browse and buy without equipping, remove, cancel, persist base layer, hold, put back, reopen, wear, retain denim and watch, pullover and bedside rest."));
                 FPlatformMisc::RequestExitWithStatus(false,0); return false;
             case EMorningStep::HairChoice:
             {
@@ -847,7 +875,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 {
                     if (!PressMorningButton(Overlay,TEXT("LifeItem.kurta"))) return Fail(TEXT("preview kurta"));
                     State->bKurtaPreview = true;
-                    Next(EMorningStep::BodyFront);
+                    Next(EMorningStep::FitBodyKurta);
                     break;
                 }
                 // A clean plate at the same camera and exposure lets QA measure the outfit silhouette.
@@ -855,6 +883,14 @@ void ARiverfrontPlayerController::RunMorningReview()
                 Next(EMorningStep::BodyBackground);
                 break;
             }
+            case EMorningStep::FitBodyKurta:
+                if (const auto* Saved=RiverfrontLife::Load(ProfileSlot); Saved && !Saved->OwnedItems.Contains(TEXT("kurta")))
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeBuyCash"))) return Fail(TEXT("buy kurta for isolated fit photographs"));
+                    return true;
+                }
+                if (!FinishWearing(TEXT("kurta"))) return true;
+                Next(EMorningStep::BodyFront); break;
             case EMorningStep::BodyBackground:
             {
                 if (Age < 1.) return true;
@@ -864,6 +900,9 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (IFileManager::Get().FileSize(*FPaths::Combine(Folder,TEXT("13-shop-background.png")))<=0)
                     return Fail(TEXT("missing shop background photograph"));
                 if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close shop preview"));
+                ProfileSlot=TEXT("SabarmatiQA-")+Id;
+                RefreshLifeAppearance();
+                UGameplayStatics::DeleteGameInSlot(State->BodyReviewSlot,0);
                 const auto* Saved = RiverfrontLife::Load(ProfileSlot);
                 if (!Saved || Saved->EquippedOutfit!=TEXT("cotton-sand") || Walker->GetWardrobeOutfit()!=Saved->EquippedOutfit
                     || Saved->OwnedItems.Contains(TEXT("kurta")) || Saved->CashRupees!=100000 || Saved->BankRupees!=500000)
@@ -886,6 +925,12 @@ void ARiverfrontPlayerController::RunMorningReview()
                 {
                     if (Screen!=EScreen::Life || !PressMorningButton(Overlay,TEXT("LifeItem.cotton-sand")))
                         return Fail(TEXT("preview everyday outfit"));
+                    if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("start isolated body fitting"));
+                    State->BodyReviewSlot=TEXT("SabarmatiQA-")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+                    auto* Copy=RiverfrontLife::Load(ProfileSlot);
+                    if (!Copy || !UGameplayStatics::SaveGameToSlot(Copy,State->BodyReviewSlot,0)) return Fail(TEXT("body fitting profile"));
+                    ProfileSlot=State->BodyReviewSlot;
+                    InteractWithPlace();
                     State->OutfitFront = Walker->GetActorRotation();
                     Next(EMorningStep::BodyFront);
                     break;
@@ -899,8 +944,8 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (const FString ViewError=VerifyFittingView(TEXT("shop")); !ViewError.IsEmpty()) return Fail(ViewError);
                 const auto* P=RiverfrontLife::Load(ProfileSlot);
                 if (!P || P->CashRupees!=100000 || P->EquippedOutfit==TEXT("shirt-indigo") || P->OwnedItems.Contains(TEXT("shirt-indigo"))
-                    || !Walker->GetWardrobeShirtColor(State->IndigoShirt) || State->IndigoShirt.Equals(State->OriginalShirt,.01f))
-                    return Fail(TEXT("free preview must change the live material and preserve the save"));
+                    || !Walker->GetWardrobeShirtColor(State->IndigoShirt) || !State->IndigoShirt.Equals(State->OriginalShirt,.01f))
+                    return Fail(TEXT("browsing must preserve the live material and save"));
                 if (!PressMorningButton(Overlay,TEXT("LifeBuyCash"))) return Fail(TEXT("native cash checkout button"));
                 Next(EMorningStep::Purchase);
                 break;
@@ -908,12 +953,20 @@ void ARiverfrontPlayerController::RunMorningReview()
             case EMorningStep::Purchase:
             {
                 if (Age < .6) return true;
-                const auto Receipt=FindMorningControl(Overlay,TEXT("LifeReceipt"));
-                if (!HasMorningPurchase(RiverfrontLife::Load(ProfileSlot)) || Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo")
-                    || !Receipt || Receipt->GetType()!=FName(TEXT("STextBlock")) || StaticCastSharedPtr<STextBlock>(Receipt)->GetText().IsEmpty())
-                    return Fail(TEXT("purchased appearance, receipt, or account balances"));
-                State->Results+=TEXT("receipt=")+StaticCastSharedPtr<STextBlock>(Receipt)->GetText().ToString()+TEXT("\n");
-                Shot(TEXT("04-shop-receipt"),true);
+                if (!State->Pictures.Contains(TEXT("04-shop-receipt.png")))
+                {
+                    const auto Receipt=FindMorningControl(Overlay,TEXT("LifeReceipt"));
+                    if (!Receipt || Receipt->GetType()!=FName(TEXT("STextBlock"))) return Fail(TEXT("missing purchase receipt"));
+                    const FString Text=StaticCastSharedPtr<STextBlock>(Receipt)->GetText().ToString();
+                    if (!Text.Contains(TEXT("1,250")) || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand"))
+                        return Fail(TEXT("checkout changed the outfit or lost the amount"));
+                    State->Results+=TEXT("receipt=")+Text+TEXT("\n");
+                    Shot(TEXT("04-shop-receipt"),true);
+                    return true;
+                }
+                if (FScreenshotRequest::IsScreenshotRequested() || !FinishWearing(TEXT("shirt-indigo"))) return true;
+                if (!HasMorningPurchase(RiverfrontLife::Load(ProfileSlot)) || Walker->GetWardrobeOutfit()!=TEXT("shirt-indigo"))
+                    return Fail(TEXT("shop fitting or account balances"));
                 Next(EMorningStep::CloseStore);
                 break;
             }
@@ -1136,6 +1189,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 break;
             case EMorningStep::Kurta:
             {
+                if (!FinishWearing(TEXT("watch"))) return true;
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 const bool PublicMesh=State->InitialMesh.StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
                 if (!Saved || Saved->CashRupees!=98750 || Saved->BankRupees!=499050 || Saved->EquippedAccessory!=TEXT("watch") ||
@@ -1152,6 +1206,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 break;
             case EMorningStep::FinishedFitting:
             {
+                if (!FinishWearing(TEXT("kurta"))) return true;
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 const auto* Mesh=Walker->GetMesh()->GetSkeletalMeshAsset();
                 const bool PublicMesh=State->InitialMesh.StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
