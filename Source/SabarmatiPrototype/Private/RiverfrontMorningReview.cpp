@@ -29,6 +29,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/HUD.h"
 #include "InputKeyEventArgs.h"
+#if WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 #include "Kismet/GameplayStatics.h"
 #include "Layout/Children.h"
 #include "Misc/CommandLine.h"
@@ -43,7 +46,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, CheckCover, InnerLayers, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, CheckCover, InnerLayers, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain, FittingWalk, FittingSelect, FittingTake, FittingPutOn, FittingWear, FittingPortrait, FittingCheckout, FittingChinos, FittingTakeChinos, FittingWearChinos, FittingCheckChinos, FittingWornOut
 };
 
 struct FMorningEvidence
@@ -65,6 +68,8 @@ struct FMorningEvidence
     TWeakObjectPtr<ACameraActor> FamilyView;
     FRotator OutfitFront = FRotator::ZeroRotator;
     bool bKurtaPreview = false;
+    FQuat InspectionHead=FQuat::Identity;
+    double InspectionAngle=0.;
     bool bBodyCaptured = false;
     int32 StartingViewMode = INDEX_NONE;
     FVector WakeOrigin = FVector::ZeroVector;
@@ -248,6 +253,7 @@ void ARiverfrontPlayerController::RunMorningReview()
         return;
     }
 
+    const bool bSutraReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSutraReview"));
     const bool bClosetReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiWardrobeReview"));
     const bool bGenderReview = bClosetReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGenderReview"));
     const bool bBodyReview = bGenderReview || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBodyReview"));
@@ -256,7 +262,7 @@ void ARiverfrontPlayerController::RunMorningReview()
     State->Route = FRiverfrontFirstMorningWorld::ExitRoute();
     UE_LOG(LogTemp,Display,TEXT("Sabarmati morning review started: %s, continue=%d"), *Folder, bContinue);
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,bClosetReview,ExpectedGender](float)
+        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,bClosetReview,bSutraReview,ExpectedGender](float)
         {
             auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
             const double Now = FPlatformTime::Seconds(), Age = Now - State->Since;
@@ -416,6 +422,13 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto Size = GetWorld()->GetGameViewport()->Viewport->GetSizeXY();
                 State->Results = FString::Printf(TEXT("viewport=%dx%d\nwake_camera_displacement_cm=%.2f\nstart_to_control_ms=%.1f\nstarting_cash=100000\nstarting_bank=500000\n"),
                     Size.X, Size.Y, State->WakeTravel, State->StartToControlMs);
+                if (bSutraReview)
+                {
+                    const FVector Entrance=FRiverfrontFirstMorningWorld::FittingRoomPoint()+FVector(-15,-170,0);
+                    if (!Walker->TeleportTo(Entrance,FRotator(0,90,0))) return Fail(TEXT("shop aisle access"));
+                    Next(EMorningStep::FittingWalk);
+                    break;
+                }
                 if (bClosetReview)
                 {
                     UE_LOG(LogTemp,Display,TEXT("Sabarmati bed planted samples=%d max drift=%.2f cm"),State->PlantedSamples,State->FootDrift);
@@ -433,6 +446,172 @@ void ARiverfrontPlayerController::RunMorningReview()
                 }
                 WalkAgain();
                 break;
+            }
+            case EMorningStep::FittingWalk:
+            {
+                const FVector ToBooth=FRiverfrontFirstMorningWorld::FittingRoomPoint()-Walker->GetActorLocation();
+                if (ToBooth.Size2D()>18.)
+                {
+                    SetControlRotation(ToBooth.Rotation());
+                    Walker->AddMovementInput(ToBooth.GetSafeNormal2D(),1.f,true);
+                    return true;
+                }
+                Walker->GetCharacterMovement()->StopMovementImmediately();
+                if (!PlacePrompt().Contains(TEXT("Try on clothes"))) return Fail(TEXT("fitting room interaction"));
+                GameKey(EKeys::E);
+                Next(EMorningStep::FittingSelect);
+                break;
+            }
+            case EMorningStep::FittingSelect:
+            {
+                if (!MirrorCapture.IsValid() || !GetWorld()->IsPaused()) return Fail(TEXT("shop mirror"));
+                if (!State->Pictures.Contains(TEXT("sutra-mirror.png"))) { Shot(TEXT("sutra-mirror"),true); return true; }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                // Let Slate arrange the newly visible category before navigating into it.
+                switch (State->InnerAction++)
+                {
+                case 0:
+                    if (!PressMorningButton(Overlay,TEXT("LifeFilter.Bottoms"))) return Fail(TEXT("bottoms filter"));
+                    return true;
+                case 1:
+                    if (FindMorningControl(Overlay,TEXT("LifeItem.tee-jade")) || !FindMorningControl(Overlay,TEXT("LifeItem.chino-olive")))
+                        return Fail(TEXT("filtered bottom catalogue"));
+                    if (!PressMorningButton(Overlay,TEXT("LifeFilter.Tops"))) return Fail(TEXT("tops filter"));
+                    return true;
+                case 2:
+                    if (!PressMorningButton(Overlay,TEXT("LifeItem.tee-jade"))) return Fail(TEXT("choose tee"));
+                    return true;
+                default:
+                    if (!DressButtonLabel().StartsWith(TEXT("Take off")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                        return Fail(TEXT("remove current shirt for loaner: ")+DressButtonLabel());
+                }
+                Next(EMorningStep::FittingTake);
+                break;
+            }
+            case EMorningStep::FittingTake:
+                if (Age<2.25 || !DressButtonLabel().StartsWith(TEXT("Take from"))) return true;
+                if (auto Button=FindMorningControl(Overlay,TEXT("LifeDress")); !Button || !Button->IsEnabled())
+                    return Age<4. ? true : Fail(TEXT("take button remains disabled"));
+                if (!PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("take loaner button"));
+                Next(EMorningStep::FittingPutOn);
+                break;
+            case EMorningStep::FittingPutOn:
+                if (!Walker->HasHeldWardrobeProp(TEXT("tee-jade"))) return Fail(TEXT("held loaner: ")+DressButtonLabel());
+                if (!PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("put on loaner button"));
+                Next(EMorningStep::FittingWear);
+                break;
+            case EMorningStep::FittingWear:
+            {
+                if (!DressButtonLabel().StartsWith(TEXT("Take off"))) return true;
+                const auto* Body=Walker->GetAvatarMesh();
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                const FName Jersey=ExpectedGender==ERiverfrontGender::Female ? TEXT("SK_FemaleCrewTee") : TEXT("SK_MaleCrewTee");
+                if (!Saved || Saved->OwnedItems.Contains(TEXT("tee-jade")) || Saved->CashRupees!=100000 ||
+                    Saved->EquippedOutfit!=TEXT("cotton-sand") || Walker->GetWardrobeOutfit()!=TEXT("tee-jade") ||
+                    !Body || Body->GetSkeletalMeshAsset()->GetFName()!=Jersey || Body->GetMaterialIndex(TEXT("jersey_binding"))==INDEX_NONE)
+                    return Fail(TEXT("native fitted shirt or isolated trial"));
+                if (!PressMorningButton(Overlay,TEXT("LifeTailoring")) || FittingView!=EFittingView::Tailoring)
+                    return Fail(TEXT("body inspection"));
+                State->InspectionHead=Body->GetSocketTransform(TEXT("Head"),RTS_Component).GetRotation();
+                Next(EMorningStep::FittingPortrait);
+                break;
+            }
+            case EMorningStep::FittingPortrait:
+                State->InspectionAngle=FMath::Max(State->InspectionAngle,FMath::RadiansToDegrees(State->InspectionHead.AngularDistance(
+                    Walker->GetAvatarMesh()->GetSocketTransform(TEXT("Head"),RTS_Component).GetRotation())));
+#if WITH_EDITOR
+                if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return true;
+#endif
+                if (Age<1.35 || FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!State->Pictures.Contains(TEXT("sutra-jersey.png")))
+                {
+                    if (State->InspectionAngle<.09) return Age<3.5 ? true : Fail(TEXT("resident idle frozen in close-up"));
+                    UE_LOG(LogTemp,Display,TEXT("Sutra inspection idle head rotation %.3f degrees"),State->InspectionAngle);
+                    Shot(TEXT("sutra-jersey"),true);
+                    return true;
+                }
+                if (FittingView!=EFittingView::Face)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || FittingView!=EFittingView::Face)
+                        return Fail(TEXT("face inspection"));
+                    return true;
+                }
+                if (!State->Pictures.Contains(TEXT("sutra-face.png"))) { Shot(TEXT("sutra-face"),true); return true; }
+                if (!PressMorningButton(Overlay,TEXT("LifeKeepOutfit")) || !IsShowingMenu())
+                    return Fail(TEXT("unpaid fitting outfit must stay in the booth"));
+                if (ExpectedGender==ERiverfrontGender::Female)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeBuyCash"))) return Fail(TEXT("pay for the fitted shirt"));
+                    if (!PressMorningButton(Overlay,TEXT("LifeFilter.Bottoms"))) return Fail(TEXT("browse matching trousers"));
+                    Next(EMorningStep::FittingChinos);
+                    break;
+                }
+                if (!PressMorningButton(Overlay,TEXT("LifeClose")) || Walker->GetWardrobeOutfit()!=TEXT("cotton-sand"))
+                    return Fail(TEXT("discard loaner on leaving booth"));
+                GameKey(EKeys::E);
+                Next(EMorningStep::FittingCheckout);
+                break;
+            case EMorningStep::FittingChinos:
+                if (!PressMorningButton(Overlay,TEXT("LifeItem.chino-olive")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("remove current jeans"));
+                Next(EMorningStep::FittingTakeChinos); break;
+            case EMorningStep::FittingTakeChinos:
+                if (Age<3.65 || !DressButtonLabel().StartsWith(TEXT("Take from"))) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeDress"))) return Fail(TEXT("take unowned chinos"));
+                Next(EMorningStep::FittingWearChinos); break;
+            case EMorningStep::FittingWearChinos:
+                if (!Walker->HasHeldWardrobeProp(TEXT("chino-olive")) || !PressMorningButton(Overlay,TEXT("LifeDress")))
+                    return Fail(TEXT("put on olive chinos"));
+                Next(EMorningStep::FittingCheckChinos); break;
+            case EMorningStep::FittingCheckChinos:
+            {
+                if (Age<3.65 || !DressButtonLabel().StartsWith(TEXT("Take off"))) return true;
+                const auto* Mesh=Walker->GetAvatarMesh();
+                const auto* Fabric=Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(Mesh->GetMaterialIndex(TEXT("bottom_denim"))));
+                FLinearColor Colour;
+                if (Walker->GetWardrobeBottom()!=TEXT("chino-olive") || !Fabric || !Fabric->Parent ||
+                    Fabric->Parent->GetFName()!=TEXT("M_ChinoTwill") ||
+                    !Fabric->GetVectorParameterValue(FMaterialParameterInfo(TEXT("BaseColorFactor")),Colour) ||
+                    !Colour.Equals(RiverfrontLife::FindItem(TEXT("chino-olive"))->Tint,.005f))
+                    return Fail(TEXT("worn chino fabric and dye"));
+                if (!PressMorningButton(Overlay,TEXT("LifeTailoring")) || FittingView!=EFittingView::Trousers)
+                    return Fail(TEXT("inspect trousers"));
+                Next(EMorningStep::FittingWornOut); break;
+            }
+            case EMorningStep::FittingWornOut:
+            case EMorningStep::FittingCheckout:
+            {
+                const bool bKeep=State->Step==EMorningStep::FittingWornOut;
+                if (bKeep)
+                {
+#if WITH_EDITOR
+                    if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return true;
+#endif
+                    if (Age<.6 || FScreenshotRequest::IsScreenshotRequested()) return true;
+                    if (!State->Pictures.Contains(TEXT("sutra-chinos.png"))) { Shot(TEXT("sutra-chinos"),true); return true; }
+                    if (!PressMorningButton(Overlay,TEXT("LifeBuyBank"))) return Fail(TEXT("buy the second garment from bank"));
+                    if (!PressMorningButton(Overlay,TEXT("LifeKeepOutfit")) || IsShowingMenu() || Walker->GetWardrobeOutfit()!=TEXT("tee-jade"))
+                        return Fail(TEXT("wear out purchased outfit"));
+                }
+                else
+                {
+                    if (!State->bTestedPutBack)
+                    {
+                        if (!PressMorningButton(Overlay,TEXT("LifeItem.tee-jade"))) return Fail(TEXT("select tee to buy"));
+                        State->bTestedPutBack=true;
+                        return true;
+                    }
+                    if (!PressMorningButton(Overlay,TEXT("LifeBuyCash")) || !PressMorningButton(Overlay,TEXT("LifeClose")))
+                        return Fail(TEXT("fitting room purchase"));
+                }
+                const auto* Saved=RiverfrontLife::Load(ProfileSlot);
+                if (!Saved || Saved->CashRupees!=99250 || Saved->BankRupees!=(bKeep ? 498250 : 500000) || !Saved->OwnedItems.Contains(TEXT("tee-jade")) ||
+                    Saved->EquippedBottom!=(bKeep ? TEXT("chino-olive") : TEXT("denim-dark")) ||
+                    Saved->EquippedOutfit!=(bKeep ? TEXT("tee-jade") : TEXT("cotton-sand")) || !Saved->HeldWardrobeItem.IsNone())
+                    return Fail(TEXT("purchase and chosen exit outfit"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati Sutra review passed: gender=%d walked through booth entrance, filters, mirror, staged shirt, tailoring, face, prepaid exit check, purchase, wear-out=%d."),int32(ExpectedGender),bKeep);
+                FPlatformMisc::RequestExitWithStatus(false,0);
+                return false;
             }
             case EMorningStep::HudControls:
                 if (GetWorld()->GetGameViewport()->ViewModeIndex != State->StartingViewMode)
