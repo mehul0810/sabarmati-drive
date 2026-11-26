@@ -124,8 +124,8 @@ void ARiverfrontCharacter::PoseChangingTrousers(FName Item,float Undress)
     const auto SetBone=[this](FName Name,const FTransform& T){ChangingMesh->SetBoneTransformByName(Name,T,EBoneSpaces::ComponentSpace);};
     auto Hips=Bone(TEXT("Pelvis"));
     // Hinge at the hips while the waistband still surrounds both knees.
-    const double KneeBend=Ease(.38f,.56f)*(1.-Ease(.75f,.98f));
-    Hips.AddToTranslation(-(Up*8.+Forward*14.)*Crouch-Up*12.*KneeBend);
+    const double KneeBend=Ease(.47f,.62f)*(1.-Ease(.75f,.98f));
+    Hips.AddToTranslation(-Forward*2.*Crouch-(Up*17.+Forward*12.)*KneeBend);
     SetBone(TEXT("Pelvis"),Hips);
     auto Spine=Bone(TEXT("Spine"));
     Spine.SetRotation(FQuat(Body->GetComponentQuat().UnrotateVector(GetActorRightVector()),FMath::DegreesToRadians(59.*Crouch))*Spine.GetRotation());
