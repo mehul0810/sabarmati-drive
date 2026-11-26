@@ -21,6 +21,10 @@ namespace
 {
 constexpr double BridgeX = RiverfrontCrossings::CentralRoadX;
 constexpr double BridgeSide = 540.0;
+constexpr double BridgeRoadHalfWidth = 360.0;
+constexpr double BridgeRampStart = 3800.0;
+constexpr double BankRoadInnerEdge = 3580.0;
+constexpr double BankRoadOuterEdge = 4600.0;
 constexpr double SegmentHalfLength = 7600.0;
 constexpr double StairX = -3215.0;
 constexpr double StairHalfWidth = 156.0;
@@ -392,7 +396,16 @@ void ARiverfrontWorld::BuildBanks()
             Box(ETint::Rail, FVector(X, BankY(Bank, 2430), -23), FVector(9, 9, 100));
         }
         Box(ETint::Paving, FVector(0, BankY(Bank, 3100), -23), FVector(15500, 960, 50), true);
-        Box(ETint::Asphalt, FVector(0, BankY(Bank, 4090), -28), FVector(15500, 1020, 56), true);
+        // Leave the bridge approach open for its graded ramp. Both through lanes
+        // remain on the level bank road, with no second road surface underneath.
+        const auto RoadSection=[&](double Left,double Right,double Inner,double Outer)
+        {
+            Box(ETint::Asphalt,FVector((Left+Right)*.5,BankY(Bank,(Inner+Outer)*.5),-28),
+                FVector(Right-Left,Outer-Inner,56),true);
+        };
+        RoadSection(-7750.,BridgeX-BridgeRoadHalfWidth,BankRoadInnerEdge,BankRoadOuterEdge);
+        RoadSection(BridgeX+BridgeRoadHalfWidth,7750.,BankRoadInnerEdge,BankRoadOuterEdge);
+        RoadSection(BridgeX-BridgeRoadHalfWidth,BridgeX+BridgeRoadHalfWidth,BridgeRampStart,BankRoadOuterEdge);
         Box(ETint::Paving, FVector(0, BankY(Bank, 5020), -24), FVector(15500, 840, 56), true);
         Box(ETint::Earth, FVector(0, BankY(Bank, 6540), -50), FVector(15500, 2240, 100), true);
         Box(ETint::Stone, FVector(0, BankY(Bank, 7640), 72), FVector(15640, 105, 144), true);
@@ -506,6 +519,9 @@ void ARiverfrontWorld::BuildBridge()
         DeckBox(ETint::Retaining,FVector(BridgeX,ChannelCenter+Side*(DeckLength+DeepSpan)*.25,-31.),
             FVector(1060,(DeckLength-DeepSpan)*.5,18.));
     DeckBox(ETint::Asphalt, FVector(BridgeX, ChannelCenter, -20), FVector(720, DeckLength, 40), true);
+    for (const double Bank : {-1.,1.})
+        DeckBox(ETint::Asphalt,FVector(BridgeX,BankY(Bank,(BankRoadInnerEdge+BridgeRampStart)*.5),-20),
+            FVector(2.*BridgeRoadHalfWidth,BridgeRampStart-BankRoadInnerEdge,40),true);
     for (const double Side : {-1.0, 1.0})
     {
         const double OuterX = BridgeX + Side * 520;

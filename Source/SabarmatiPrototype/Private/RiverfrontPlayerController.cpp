@@ -140,10 +140,18 @@ bool CheckCorridorRoutes(UWorld& World)
                 FQuat::Identity,FCollisionObjectQueryParams(ECC_WorldStatic),FCollisionShape::MakeBox(FVector(96.,210.,29.)));
         }
     }
+    int32 RampSamples=0;
+    for (double Bank : {-1.,1.})
+        for (double Lane : {-165.,165.})
+            for (double Distance : {3530.,3580.,3620.,3700.,3760.,3800.,3868.})
+            {
+                const double Y=Bank*Distance+(Bank<0.?2.*RiverfrontCrossings::CentreY:0.);
+                RampSamples+=HitsFloor(RiverfrontCrossings::CentralRoadX+Lane,Y,RiverfrontCrossings::DeckZ(Y));
+            }
     UE_LOG(LogTemp, Display,
-        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/15, road seams=%d/4, foot seams=%d/4, central lanes=%d/4."),
-        Road, Walk, Bridges, OpenSeams, OpenFootSeams, OpenCentralLanes);
-    return Road==16 && Walk==16 && Bridges==15 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==6 && OpenCentralLanes==4;
+        TEXT("Sabarmati QA: expanded roads=%d/16, lower walks=%d/16, bridge decks=%d/15, road seams=%d/4, foot seams=%d/4, central lanes=%d/4, graded approaches=%d/28."),
+        Road, Walk, Bridges, OpenSeams, OpenFootSeams, OpenCentralLanes, RampSamples);
+    return Road==16 && Walk==16 && Bridges==15 && OpenSeams==4 && OpenFootSeams==4 && Underpasses==6 && OpenCentralLanes==4 && RampSamples==28;
 }
 #endif
 
