@@ -29,9 +29,10 @@ def bake(base, system, output, lower=False):
                 sculpt = work/name
             else:
                 tools("sculpt-resident-face.py")["apply"](base, ASSETS/"river-resident-adult.target", work/name, sculpt)
-            physique["fit"](sculpt, output/name, athlete)
+            fixed=("hair","iris","sclera","shoe","street_shoe_l","street_shoe_r")
+            physique["fit"](sculpt, output/name, athlete, fixed_materials=fixed+("lips",))
             if preset == "female":
-                physique["fit"](output/name, output/name, female, fixed_materials=("hair","iris","sclera","shoe"))
+                physique["fit"](output/name, output/name, female, fixed_materials=fixed)
 
 
 if __name__ == "__main__":

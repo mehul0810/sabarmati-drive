@@ -237,7 +237,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         vis,uis = np.array(list(keys)).T
         tex = uv[uis].copy()
         tex[:,1] = 1-tex[:,1]
-        ids,weights = skinning(verts[vis],"bottom_denim" if lower_only else slot)
+        ids,weights = skinning(verts[vis],"shoe" if slot.startswith("street_shoe") else "bottom_denim" if lower_only else slot)
         if slot in ("bare_lower_skin","midriff_skin"):
             # Use torso skin weights at its shared ring, transitioning into the denim leg rig.
             coords = verts[vis]
@@ -274,8 +274,20 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         for name, vertices, texcoords, polygons in lower_foundation(body, body_uv, body_faces):
             mats[name] = len(scene["materials"])
             scene["materials"].append({"name":name,"doubleSided":True})
-            body_normals = [f for g,f in body_faces if g=="body"] if name in ("bare_lower_skin","midriff_skin") else None
+            body_normals = [f for g,f in body_faces if g=="body"] if name in ("bare_lower_skin","midriff_skin") or name.startswith("foot_skin") else None
             add_panel(name,vertices,texcoords,polygons,normal_faces=body_normals)
+        shoe = system/"clothes"/SHOES
+        verts,tex,shoe_faces = read_obj(shoe/(SHOES+".obj"))
+        fitted,_ = fit(shoe/(SHOES+".mhclo"),body)
+        components_by_vertex = components(len(verts),shoe_faces)
+        # shoes01 also contains two disconnected ankle socks. Keep only the leather uppers and soles.
+        leather = {part for part in set(components_by_vertex) if fitted[components_by_vertex==part,1].min() < -8.}
+        for side,sign in (("l",1),("r",-1)):
+            name="street_shoe_"+side
+            mats[name]=len(scene["materials"])
+            scene["materials"].append({"name":name})
+            faces=[f for _,f in shoe_faces if components_by_vertex[f[0][0]] in leather and fitted[f[0][0],0]*sign>0]
+            add_panel(name,fitted,tex,faces)
         write_mesh("SK_"+foundation.title()+"LowerBody")
         return
 

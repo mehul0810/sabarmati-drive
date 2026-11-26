@@ -44,7 +44,9 @@ def import_outfit(name, reference_path):
     slots = list(model.materials)
     if LOWER:
         cotton = library.load_asset(ROOT+"/Wardrobe/M_ResidentCotton")
-        source_materials = dict.fromkeys(("leg_skin","bare_lower_skin","midriff_skin"),source_materials["skin"])
+        leather=source_materials["shoe"]
+        source_materials = dict.fromkeys(("leg_skin","bare_lower_skin","midriff_skin","foot_skin_l","foot_skin_r"),source_materials["skin"])
+        source_materials.update(cotton_sock_l=cotton,cotton_sock_r=cotton,street_shoe_l=leather,street_shoe_r=leather)
         source_materials.update(underwear_knit=cotton,underwear_band=cotton)
     elif FOUNDATION:
         source_materials = {k:v for k,v in source_materials.items() if k in ("skin","lips","hair","iris","sclera","bottom_denim","shoe")}
@@ -57,7 +59,7 @@ def import_outfit(name, reference_path):
     face = library.load_asset(face_path)
     if not isinstance(face, ue.MaterialInterface):
         raise RuntimeError("Import the female skin before the skeletal meshes")
-    if LOWER: source_materials.update(dict.fromkeys(("leg_skin","bare_lower_skin","midriff_skin"),face))
+    if LOWER: source_materials.update(dict.fromkeys(("leg_skin","bare_lower_skin","midriff_skin","foot_skin_l","foot_skin_r"),face))
     else: source_materials.update(skin=face, lips=face)
     for slot in slots:
         parent = source_materials[str(slot.material_slot_name)]

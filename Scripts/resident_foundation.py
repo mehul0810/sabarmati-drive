@@ -84,7 +84,7 @@ def cut_bralette(body, uv, normals, faces):
 def lower_foundation(body, uv, faces):
     """Cut boxer briefs on the fitted garment shell and tuck the leg skin into its hems."""
     legs = [face for group,face in faces if group=="body"
-            and -7.18 < np.mean([body[i,1] for i,_ in face]) < -1.18]
+            and -6.00 <= np.mean([body[i,1] for i,_ in face]) < -1.18]
     # Leave a short overlap inside the shorts and the ankle opening of each shoe.
     skin = body.copy()
     tuck = np.clip((skin[:,1]+1.68)/.52,0,1)
@@ -102,14 +102,23 @@ def lower_foundation(body, uv, faces):
     waist = (1.-ease(.45,1.72,y))*ease(-1.5,-.18,y)
     bare[:,0] *= 1.-.105*waist
     bare[:,2] = .13+(bare[:,2]-.13)*(1.-.19*waist)
-    for name,low,high in (("bare_lower_skin",-7.18,.42),("midriff_skin",.42,3.25)):
+    for name,low,high in (("bare_lower_skin",-6.00,.42),("midriff_skin",.42,3.25)):
         region = []
         for group,face in faces:
             if group!="body": continue
             centre = body[[i for i,_ in face]].mean(axis=0)
-            if low<=centre[1]<high and abs(centre[0])<2.4:
+            if low<=centre[1]<high and (centre[1]<-.5 or abs(centre[0])<2.4):
                 region.append(face)
         yield name,bare,uv,region
+    # Feet complete the same rings as the calves. The tights helper forms a closed sock toe.
+    for side,sign in (("l",1),("r",-1)):
+        for group,name,top in (("body","foot_skin",-6.00),("helper-tights","cotton_sock",-5.80)):
+            region=[]
+            for label,face in faces:
+                if label!=group: continue
+                centre=body[[i for i,_ in face]].mean(axis=0)
+                if centre[1]<top and centre[0]*sign>0: region.append(face)
+            yield name+"_"+side,body,uv,region
     shell = body.copy()
     shell[:,0] *= 1.030
     shell[:,2] = .18+(shell[:,2]-.18)*1.065
