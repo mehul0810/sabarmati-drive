@@ -9,6 +9,7 @@
 #include "Components/PoseableMeshComponent.h"
 #include "Containers/Ticker.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/StaticMeshActor.h"
 #include "EngineUtils.h"
 #include "InputKeyEventArgs.h"
 #include "UnrealClient.h"
@@ -131,9 +132,19 @@ void ARiverfrontPlayerController::RunImpactReview()
                 Run->Trees.IsValid()?Run->Trees->GetInstanceCount():-1,Run->Count-1);
             if (GetPawn()!=Walker || Walker->IsHidden() || !Run->Trees.IsValid() || Run->Trees->GetInstanceCount()!=Run->Count-1)
                 return Fail(TEXT("wreck, walkable player or broken tree"));
+            int32 VisibleWrecks=0;
+            for (TActorIterator<AStaticMeshActor> It(GetWorld());It;++It)
+            {
+                const UStaticMeshComponent* Shell=It->GetStaticMeshComponent();
+                if (It->ActorHasTag(TEXT("SabarmatiWreck")) && Shell && Shell->GetStaticMesh() && Shell->IsVisible())
+                    ++VisibleWrecks;
+            }
+            if (VisibleWrecks!=1) return Fail(TEXT("visible wreck shell"));
+            FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("collision-wreck.png")),false,false);
             UE_LOG(LogTemp,Display,TEXT("Sabarmati impact review: %s peak %.1f km/h, tree and car removed, player back on foot."),Chaos?TEXT("Chaos hatch"):TEXT("parked coupe"),Run->TopKph);
-            FPlatformMisc::RequestExit(false);return false;
+            Next();
         }
+        else if (Run->Step==5 && Age>.5) {FPlatformMisc::RequestExit(false);return false;}
         return true;
     }));
 }

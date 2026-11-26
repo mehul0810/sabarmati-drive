@@ -776,9 +776,11 @@ bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
         if (Remains)
         {
             auto* Mesh=Remains->GetStaticMeshComponent();
+            Mesh->SetMobility(EComponentMobility::Movable);
             Mesh->SetStaticMesh(Shell->GetStaticMesh());
             for (int32 I=0;I<Shell->GetNumMaterials();++I) Mesh->SetMaterial(I,Shell->GetMaterial(I));
             Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Remains->Tags.Add(TEXT("SabarmatiWreck"));
             Remains->FinishSpawning(T);
             Remains->SetLifeSpan(40.f);
         }
