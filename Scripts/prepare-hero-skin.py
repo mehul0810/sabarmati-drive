@@ -144,6 +144,40 @@ def face_detail(system, base, colour, roughness, shaved_shadow):
         roughness[rows, cols] -= (.12*nose+.047*forehead+.14*lips)*facing
 
 
+def regional_skin(base, rgb, rough, positions_uv=None):
+    """Paint vascular colour and dry contact skin in body space, across UV seams."""
+    pos, uv, tris = positions_uv if positions_uv is not None else mesh(base, 'body')
+    image = rgb if rgb is not None else rough
+    height, width = image.shape[:2]
+    for tri in tris:
+        coverage = pixels(uv[tri[:, 1]]*(width, height), width, height)
+        if coverage is None:
+            continue
+        rows, cols, weights = coverage
+        if not len(rows):
+            continue
+        x, y, z = (weights@pos[tri[:, 0]]).T
+        side = abs(x)
+        front = np.clip((z-.62)/.45, 0., 1.)
+        cheek = front*oval((side-.43)/.24, (y-7.03)/.21)
+        under_eye = front*oval((side-.33)/.19, (y-7.23)/.075)
+        lips = front*oval(x/.245, (y-6.615)/.073)
+        ears = oval((side-.82)/.13, (y-7.12)/.30)
+        elbows = oval((side-3.33)/.53, (y-2.40)/.53)
+        knees = oval((side-.94)/.65, (y+4.54)/.57)*np.clip((z+.42)/.9, 0., 1.)
+        fingers = np.clip((side-4.05)/.65, 0., 1.)*oval((side-4.86)/.8, (y-.44)/1.05)
+        if rgb is not None:
+            original = rgb[rows, cols].astype(np.float32)
+            warm = cheek*.68 + ears*.95 + lips*.95 + elbows*.35 + knees*.29 + fingers*.40
+            # Add local capillary warmth while retaining each resident's albedo and complexion.
+            gain = 1 + warm[:, None]*[.047,-.026,-.036] - under_eye[:, None]*[.038,.048,.017]
+            rgb[rows, cols] = np.clip(np.rint(original*gain), 0, 255).astype(np.uint8)
+        else:
+            dry = .055*cheek + .105*elbows + .096*knees + .065*fingers
+            wet = .058*lips + .045*under_eye + .035*ears
+            rough[rows, cols] = np.clip(np.rint(rough[rows, cols] + 255*(dry-wet)), 0, 255).astype(np.uint8)
+
+
 def quantize(array):
     return np.clip(np.rint(array), 0, 255).astype(np.uint8)
 
@@ -173,10 +207,14 @@ def bake(system, base, output, preset='male'):
 
     face_detail(system, base, colour, roughness, shaved_shadow=(preset == 'male'))
     output.mkdir(parents=True, exist_ok=True)
+    positions_uv = mesh(base, 'body')
+    regional_skin(base, colour, None, positions_uv)
     Image.fromarray(colour).save(output/f'{prefix}_Color.png')
     Image.fromarray(quantize(127.5*(normal+1))).save(output/f'{prefix}_Normal.png')
     rough = Image.fromarray(quantize(roughness*255))
-    rough.resize((1024, 1024), Image.Resampling.BOX).save(output/f'{prefix}_Roughness.png')
+    spec = np.array(rough.resize((1024, 1024), Image.Resampling.BOX))
+    regional_skin(base, None, spec, positions_uv)
+    Image.fromarray(spec).save(output/f'{prefix}_Roughness.png')
 
 
 if __name__ == '__main__':
