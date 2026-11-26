@@ -50,6 +50,17 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestTrue(TEXT("reference catalogue"), RiverfrontLife::Catalog().Num() >= 4);
     TestTrue(TEXT("unowned watch cannot be equipped"), !Dress(Slot, EAction::Take, TEXT("watch")).IsEmpty());
 
+    auto* Trial=DuplicateObject<URiverfrontLocalProfile>(Profile,GetTransientPackage());
+    TestTrue(TEXT("take denim off in fitting room"),RiverfrontLife::TryOn(*Trial,EAction::TakeOff,RiverfrontLife::StarterBottom).IsEmpty());
+    TestTrue(TEXT("try unowned chinos"),RiverfrontLife::TryOn(*Trial,EAction::Take,TEXT("chino-olive")).IsEmpty());
+    TestTrue(TEXT("put on trial chinos"),RiverfrontLife::TryOn(*Trial,EAction::PutOn,TEXT("chino-olive")).IsEmpty());
+    TestFalse(TEXT("cannot wear out an unpaid outfit"),RiverfrontLife::KeepFittingOutfit(Slot,*Profile,*Trial).IsEmpty());
+    TestEqual(TEXT("trial preserves saved jeans"),RiverfrontLife::Load(Slot)->EquippedBottom,RiverfrontLife::StarterBottom);
+    TestTrue(TEXT("wear out owned layers"),RiverfrontLife::TryOn(*Trial,EAction::TakeOff,TEXT("chino-olive")).IsEmpty() &&
+        RiverfrontLife::TryOn(*Trial,EAction::Take,RiverfrontLife::StarterBottom).IsEmpty() &&
+        RiverfrontLife::TryOn(*Trial,EAction::PutOn,RiverfrontLife::StarterBottom).IsEmpty() &&
+        RiverfrontLife::KeepFittingOutfit(Slot,*Profile,*Trial).IsEmpty());
+
     TestFalse(TEXT("take shoes off before socks"),Dress(Slot,EAction::TakeOff,RiverfrontLife::CottonSocks).IsEmpty());
     TestTrue(TEXT("remove shoes"),Dress(Slot,EAction::TakeOff,RiverfrontLife::StreetShoes).IsEmpty());
     TestTrue(TEXT("remove socks"),Dress(Slot,EAction::TakeOff,RiverfrontLife::CottonSocks).IsEmpty());

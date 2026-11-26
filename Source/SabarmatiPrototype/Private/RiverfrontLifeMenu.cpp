@@ -210,9 +210,21 @@ public:
                 Body->AddSlot().AutoHeight()[Label(Copy(Work),15,Paper)];
             }
         }
+        if (bTrial)
+            Actions->AddSlot().AutoHeight().Padding(0,3)
+            [
+                SNew(SButton).Tag(TEXT("LifeKeepOutfit")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
+                    .IsEnabled_Lambda([this]{return Held.IsNone() && !DressingTimer.IsValid();})
+                    .ContentPadding(FMargin(6,6)).HAlign(HAlign_Center)
+                    .OnClicked_Lambda([this]{
+                        const auto Error=RiverfrontLife::KeepFittingOutfit(Slot,*Entered.Get(),*Trial.Get());
+                        if (!Error.IsEmpty()) { Feedback=Error; return FReply::Handled(); }
+                        return Close();
+                    })[Label(Copy(TEXT("Wear this outfit out")),13,Paper,true)]
+            ];
         if (bTrial || Page==ERiverfrontLifeMenu::Shop)
             Actions->AddSlot().AutoHeight().Padding(0,4)[Label(Copy(bTrial
-                ? TEXT("Try any garment. Leaving restores your outfit. Purchases stay in your wardrobe.")
+                ? TEXT("Try any garment. Esc restores your outfit. Purchases stay in your wardrobe.")
                 : TEXT("Try clothes in the curtained fitting room to the right of the counter.")),12,Muted)];
         if (!bAvailable)
             Body->AddSlot().AutoHeight()[Label(Copy(TEXT("Your local profile could not be opened.")),14,Amber)];
@@ -338,7 +350,7 @@ private:
     FButtonStyle ButtonStyle;
     TSharedPtr<SButton> CloseButton;
     TMap<FName,TSharedPtr<SButton>> Rows;
-    TStrongObjectPtr<URiverfrontLocalProfile> Trial;
+    TStrongObjectPtr<URiverfrontLocalProfile> Entered,Trial;
     TArray<FName> Owned;
     FName Selected, Outfit, Bottom, InnerTop, InnerBottom, Shoes, Socks, Accessory, Held, Tone;
     ERiverfrontGender Gender = ERiverfrontGender::Male;
@@ -382,7 +394,7 @@ private:
 
     void Reload()
     {
-        const URiverfrontLocalProfile* Saved = RiverfrontLife::Load(Slot);
+        URiverfrontLocalProfile* Saved = RiverfrontLife::Load(Slot);
         bAvailable = Saved != nullptr;
         if (!Saved) return;
         Cash = Saved->CashRupees;
@@ -391,7 +403,11 @@ private:
         LastReceipt = Saved->LastReceipt;
         if (Page==ERiverfrontLifeMenu::FittingRoom)
         {
-            if (!Trial.IsValid()) Trial.Reset(DuplicateObject<URiverfrontLocalProfile>(Saved,GetTransientPackage()));
+            if (!Trial.IsValid())
+            {
+                Entered.Reset(Saved);
+                Trial.Reset(DuplicateObject<URiverfrontLocalProfile>(Saved,GetTransientPackage()));
+            }
             Saved=Trial.Get();
         }
         Outfit = Saved->EquippedOutfit.IsNone() ? FName(TEXT("cotton-sand")) : Saved->EquippedOutfit;

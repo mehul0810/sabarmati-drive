@@ -54,6 +54,7 @@ namespace RiverfrontLife
     enum class EDressingAction : uint8 { TakeOff, Take, PutOn, PutBack };
     FText Buy(const FString& Slot, FName Item, bool bPayFromBank);
     FText TryOn(URiverfrontLocalProfile& FittingCopy, EDressingAction Action, FName Item);
+    FText KeepFittingOutfit(const FString& Slot, const URiverfrontLocalProfile& Entered, const URiverfrontLocalProfile& Tried);
     FText Dress(const FString& Slot, EDressingAction Action, FName Item);
     FText SetAvatarGender(const FString& Slot, ERiverfrontGender Gender);
     FText SetAppearanceTone(const FString& Slot, FName Tone);

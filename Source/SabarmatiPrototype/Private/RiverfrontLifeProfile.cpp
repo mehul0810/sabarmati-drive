@@ -355,6 +355,27 @@ FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName I
     });
 }
 
+FText RiverfrontLife::KeepFittingOutfit(const FString& Slot, const URiverfrontLocalProfile& Entered, const URiverfrontLocalProfile& Tried)
+{
+    return Update(Slot,[&](URiverfrontLocalProfile& Saved)
+    {
+        if (!Tried.HeldWardrobeItem.IsNone()) return LOCTEXT("FinishFitting","Put down or put on the item in your hand first.");
+        using P=URiverfrontLocalProfile;
+        FName P::* const Fields[]={&P::EquippedOutfit,&P::EquippedBottom,&P::EquippedInnerTop,&P::EquippedInnerBottom,
+            &P::EquippedShoes,&P::EquippedSocks,&P::EquippedAccessory,&P::HeldWardrobeItem};
+        if (Saved.AvatarGender!=Entered.AvatarGender) return LOCTEXT("FittingConflict","Your saved outfit changed. Re-enter the fitting room.");
+        for (auto Field : Fields)
+        {
+            if (Saved.*Field!=Entered.*Field) return LOCTEXT("FittingConflict","Your saved outfit changed. Re-enter the fitting room.");
+            const FName Id=Tried.*Field;
+            if (!Id.IsNone() && Id!=BaseLayer && Id!=Underwear && !Saved.OwnedItems.Contains(Id))
+                return FText::Format(LOCTEXT("BuyLoaner","Purchase {0} first."),FText::FromString(FindItem(Id) ? FindItem(Id)->Label : Id.ToString()));
+        }
+        for (auto Field : Fields) Saved.*Field=Tried.*Field;
+        return FText::GetEmpty();
+    });
+}
+
 FText RiverfrontLife::SetAvatarGender(const FString& Slot, ERiverfrontGender Gender)
 {
     if (Gender != ERiverfrontGender::Male && Gender != ERiverfrontGender::Female)
