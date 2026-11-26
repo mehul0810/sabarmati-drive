@@ -148,14 +148,18 @@ void ARiverfrontPlayerController::RunImpactReview()
                 Run->Trees.IsValid()?Run->Trees->GetInstanceCount():-1,Run->Count-1);
             if (GetPawn()!=Walker || Walker->IsHidden() || !Run->Trees.IsValid() || Run->Trees->GetInstanceCount()!=Run->Count-1)
                 return Fail(TEXT("wreck, walkable player or broken tree"));
-            int32 VisibleWrecks=0;
+            int32 VisibleWrecks=0,VisibleWheels=0;
             for (TActorIterator<AStaticMeshActor> It(GetWorld());It;++It)
             {
                 const UStaticMeshComponent* Shell=It->GetStaticMeshComponent();
                 if (It->ActorHasTag(TEXT("SabarmatiWreck")) && Shell && Shell->GetStaticMesh() && Shell->IsVisible())
+                {
                     ++VisibleWrecks;
+                    for (const auto* Part:TInlineComponentArray<UStaticMeshComponent*>(*It))
+                        if (Part->ComponentHasTag(TEXT("WreckWheel")) && Part->GetStaticMesh() && Part->IsVisible()) ++VisibleWheels;
+                }
             }
-            if (VisibleWrecks!=1) return Fail(TEXT("visible wreck shell"));
+            if (VisibleWrecks!=1 || VisibleWheels!=4) return Fail(TEXT("visible wreck shell and wheels"));
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("collision-wreck.png")),false,false);
             UE_LOG(LogTemp,Display,TEXT("Sabarmati impact review: %s peak %.1f km/h, tree and car removed, player back on foot."),Chaos?TEXT("Chaos hatch"):TEXT("parked coupe"),Run->TopKph);
             Next();

@@ -799,6 +799,24 @@ bool ARiverfrontCar::HandleImpact(const FHitResult& Hit,float ImpactSpeed)
             Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Remains->Tags.Add(TEXT("SabarmatiWreck"));
             Remains->FinishSpawning(T);
+
+            AActor* WheelOwner=FleetBody ? static_cast<AActor*>(FleetBody.Get()) : this;
+            for (auto* Wheel:TInlineComponentArray<UStaticMeshComponent*>(WheelOwner))
+            {
+                UStaticMesh* WheelMesh=Wheel->GetStaticMesh();
+                if (!Wheel->IsVisible() || !WheelMesh || !WheelMesh->GetName().Contains(TEXT("Wheel"))) continue;
+                auto* Copy=NewObject<UStaticMeshComponent>(Remains);
+                Remains->AddInstanceComponent(Copy);
+                Copy->SetMobility(EComponentMobility::Movable);
+                Copy->SetupAttachment(Mesh);
+                Copy->SetStaticMesh(WheelMesh);
+                for (int32 I=0;I<Wheel->GetNumMaterials();++I) Copy->SetMaterial(I,Wheel->GetMaterial(I));
+                Copy->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Copy->SetCanEverAffectNavigation(false);
+                Copy->ComponentTags.Add(TEXT("WreckWheel"));
+                Copy->RegisterComponent();
+                Copy->SetWorldTransform(Wheel->GetComponentTransform());
+            }
             Remains->SetLifeSpan(40.f);
         }
     }
