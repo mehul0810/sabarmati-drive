@@ -253,4 +253,51 @@ bool FSabarmatiFinderProfile::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSabarmatiWesternWardrobe,
+    "Sabarmati.FirstMorning.WesternWardrobe",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FSabarmatiWesternWardrobe::RunTest(const FString& Parameters)
+{
+    using namespace RiverfrontLife;
+    using EAction=EDressingAction;
+    TSet<FName> Ids;
+    for (const auto& Entry : Catalog())
+    {
+        TestFalse(FString::Printf(TEXT("unique catalog ID %s"),*Entry.Id.ToString()),Ids.Contains(Entry.Id));
+        Ids.Add(Entry.Id);
+    }
+    for (const auto Gender : {ERiverfrontGender::Male,ERiverfrontGender::Female})
+    {
+        TMap<ERiverfrontWearSlot,int32> Count;
+        for (const auto& Entry : Catalog())
+        {
+            auto* Trial=NewObject<URiverfrontLocalProfile>();
+            Trial->AvatarGender=Gender;
+            Trial->EquippedOutfit=BaseLayer;
+            Trial->EquippedBottom=Underwear;
+            Trial->EquippedInnerTop=Gender==ERiverfrontGender::Male ? SportsBra : NAME_None;
+            Trial->EquippedInnerBottom=Trial->EquippedSocks=Trial->EquippedShoes=Trial->EquippedAccessory=NAME_None;
+            const FString Label=Entry.Id.ToString();
+            const FText Take=TryOn(*Trial,EAction::Take,Entry.Id);
+            if (!Entry.Fits(Gender))
+            {
+                TestFalse(TEXT("incompatible garment ")+Label,Take.IsEmpty());
+                continue;
+            }
+            ++Count.FindOrAdd(Entry.Slot);
+            TestTrue(TEXT("take fitted garment ")+Label,Take.IsEmpty());
+            TestTrue(TEXT("put on fitted garment ")+Label,TryOn(*Trial,EAction::PutOn,Entry.Id).IsEmpty());
+            TestTrue(TEXT("remove fitted garment ")+Label,TryOn(*Trial,EAction::TakeOff,Entry.Id).IsEmpty());
+        }
+        for (const auto Slot : {ERiverfrontWearSlot::Top,ERiverfrontWearSlot::Bottom,ERiverfrontWearSlot::InnerTop,
+            ERiverfrontWearSlot::InnerBottom,ERiverfrontWearSlot::Socks,ERiverfrontWearSlot::Shoes,ERiverfrontWearSlot::Accessory})
+        {
+            const int32 Choices=Count.FindRef(Slot);
+            TestTrue(FString::Printf(TEXT("5–10 fitting choices for avatar %d slot %d"),int32(Gender),int32(Slot)),Choices>=5 && Choices<=10);
+        }
+    }
+    return true;
+}
+
 #endif
