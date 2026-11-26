@@ -288,6 +288,19 @@ public:
                         Error,TrialDirection,bHold?1:0,bTrialBraking?1:0,SafeSpeed*.036,Traffic->BankTrafficHasGreen()?1:0,NearestGap,*NearestAgent);
                     LastTrialSampleAt=Now;
                 }
+                if (Now-LastTrafficSampleAt>=.25)
+                {
+                    for (TActorIterator<ARiverfrontRoadAgent> It(PC.GetWorld());It;++It)
+                    {
+                        const FVector Location=It->GetActorLocation();
+                        if (FVector::DistSquared2D(Location,Here)>FMath::Square(2500.)) continue;
+                        const FVector Motion=Traffic->RoadVelocity(*It);
+                        TrafficTrace.Appendf(TEXT("%.2f,%s,%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n"),
+                            Age,*It->GetName(),It->GetVehicleLabel(),Location.X,Location.Y,Location.Z,
+                            It->GetActorRotation().Yaw,Motion.X,Motion.Y);
+                    }
+                    LastTrafficSampleAt=Now;
+                }
                 return true;
             }
             TrialSteer(0);Key(EKeys::W,IE_Released);Key(EKeys::SpaceBar,IE_Pressed);break;
@@ -345,12 +358,14 @@ private:
     bool Fail(const TCHAR* Why)
     {
         if (!TrialTrace.IsEmpty()) Write(TEXT("trial-trace.csv"),TEXT("seconds,x_cm,y_cm,z_cm,yaw_deg,speed_kmh,condition,steer_error_deg,steer,hold,braking,safe_speed_kmh,bank_green,gap_cm,nearest_agent\n")+TrialTrace);
+        if (!TrafficTrace.IsEmpty()) Write(TEXT("trial-traffic.csv"),TEXT("seconds,agent,label,x_cm,y_cm,z_cm,yaw_deg,velocity_x,velocity_y\n")+TrafficTrace);
         UE_LOG(LogTemp,Error,TEXT("Sabarmati systems review failed in stage %d: %s"),Stage,Why);
         FPlatformMisc::RequestExitWithStatus(false,1);return false;
     }
     bool Finish()
     {
         if (!TrialTrace.IsEmpty()) Write(TEXT("trial-trace.csv"),TEXT("seconds,x_cm,y_cm,z_cm,yaw_deg,speed_kmh,condition,steer_error_deg,steer,hold,braking,safe_speed_kmh,bank_green,gap_cm,nearest_agent\n")+TrialTrace);
+        if (!TrafficTrace.IsEmpty()) Write(TEXT("trial-traffic.csv"),TEXT("seconds,agent,label,x_cm,y_cm,z_cm,yaw_deg,velocity_x,velocity_y\n")+TrafficTrace);
         UE_LOG(LogTemp,Display,TEXT("Sabarmati systems review complete: %s"),*Folder);FPlatformMisc::RequestExit(false);return false;
     }
     bool Endurance(double Now)
@@ -425,9 +440,9 @@ private:
     ARiverfrontPlayerController& PC;
     TWeakObjectPtr<ARiverfrontWorld> District;TWeakObjectPtr<ARiverfrontCar> Car;
     TWeakObjectPtr<ARiverfrontCharacter> Walker;TWeakObjectPtr<ARiverfrontTraffic> Traffic;
-    FString Folder,Buffer,TrialTrace,PendingTrialFailure;FVector Origin,Previous;FKey Pending;
+    FString Folder,Buffer,TrialTrace,TrafficTrace,PendingTrialFailure;FVector Origin,Previous;FKey Pending;
     double StartTime=0,StageTime=0,EnduranceStart=0,LastFrame=0,LapStart=0,WalkCm=0,DriveCm=0;
-    double LastTrialSampleAt=0,FailureCaptureAt=0;
+    double LastTrialSampleAt=0,LastTrafficSampleAt=0,FailureCaptureAt=0;
     bool bTrialBraking=false;
     int32 Minutes=0,Stage=-1,Leg=0,Laps=0,Count=0,TrialDirection=0;
 };

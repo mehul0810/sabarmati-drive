@@ -19,7 +19,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontRoadAgent : public AActor
 public:
     ARiverfrontRoadAgent();
     bool Assemble(int32 Style, int32 Variant);
-    bool MoveOnRoad(const FVector& Position, const FRotator& Heading, double Travel, bool Near);
+    bool MoveOnRoad(const FVector& Position, const FRotator& Heading, double Travel, bool Near, FHitResult* OutHit=nullptr);
     void UpdateLights(bool Night, bool Stopping, bool Project);
     void AnimateWheels(double Travel, double Steering);
     void SetManualDriver(const ARiverfrontCharacter* Driver);
@@ -59,6 +59,9 @@ struct FSabarmatiLane
     double At=0, Speed=0, Cruise=800, Offset=0;
     bool WasStopped=false;
     bool bParked=false;
+#if !UE_BUILD_SHIPPING
+    double LastDiagnosticAt=-100.;
+#endif
 };
 
 UCLASS()
@@ -103,5 +106,5 @@ private:
     void UpdateJunctionClearance(FSabarmatiLane& Driver, const ARiverfrontRoadAgent& Agent, const FVector& Heading, int32 Signal);
     int32 Phase() const;
     float StopDistance(const FVector& At, const FVector& Heading, double Length, bool& Obstacle,
-        int32 Index, TConstArrayView<FVector> CrossingWalkers);
+        int32 Index, TConstArrayView<FVector> CrossingWalkers, FString* Diagnostic=nullptr);
 };

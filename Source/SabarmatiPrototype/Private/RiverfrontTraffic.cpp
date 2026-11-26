@@ -20,6 +20,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/FileHelper.h"
+#include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -231,11 +232,12 @@ void ARiverfrontRoadAgent::AnimateWheels(double Travel, double Steering)
             * FRotator(Spin,0,0).Quaternion());
 }
 
-bool ARiverfrontRoadAgent::MoveOnRoad(const FVector& Position,const FRotator& Heading,double Travel,bool Near)
+bool ARiverfrontRoadAgent::MoveOnRoad(const FVector& Position,const FRotator& Heading,double Travel,bool Near,FHitResult* OutHit)
 {
     const double Turn=FMath::FindDeltaAngleDegrees(GetActorRotation().Yaw,Heading.Yaw);
     FHitResult Hit;
     SetActorLocationAndRotation(Position,Heading,Near,&Hit,ETeleportType::None);
+    if (OutHit) *OutHit=Hit;
     if (Hit.bBlockingHit) return false;
     if (Near)
     {
@@ -668,9 +670,15 @@ void ARiverfrontTraffic::SetUpSignals()
     }
 }
 float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double Length,bool& Obstacle,
-    int32 Index,TConstArrayView<FVector> CrossingWalkers)
+    int32 Index,TConstArrayView<FVector> CrossingWalkers,FString* Diagnostic)
 {
     double Limit=1.e7; Obstacle=false;
+    const auto Restrict=[&](double Distance,const TCHAR* Reason,const AActor* Actor=nullptr)
+    {
+        if (Distance>=Limit) return;
+        Limit=Distance;
+        if (Diagnostic) *Diagnostic=Actor?FString::Printf(TEXT("%s:%s"),Reason,*Actor->GetName()):Reason;
+    };
     const int32 H=Phase(); const bool Along=FMath::Abs(D.X)>FMath::Abs(D.Y);
     for (int32 J=0;J<Junctions.Num();++J)
     {
@@ -678,16 +686,16 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
         const bool Red=Along?H!=0:H!=3;
         const FVector V=Junctions[J]-At;
         if (Red && Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295. && V.Dot(D)>0 && V.Dot(D)<2350)
-            Limit=FMath::Min(Limit,V.Dot(D)-Length-337.);
+            Restrict(V.Dot(D)-Length-337.,TEXT("red_signal"));
     }
-    auto Ahead=[&](FVector P,double OtherLength,double OtherWidth)
+    auto Ahead=[&](FVector P,double OtherLength,double OtherWidth,const AActor* Other,const TCHAR* Reason)
     {
         const FVector V=P-At; const double Distance=V.Dot(D);
         if (Distance>0 && Distance<2350 && FMath::Abs(V.X*D.Y-V.Y*D.X)<Agents[Index]->HalfWidth+OtherWidth+22.)
-            Limit=FMath::Min(Limit,Distance-Length-OtherLength-84.);
+            Restrict(Distance-Length-OtherLength-84.,Reason,Other);
     };
     for (int32 I=0;I<Agents.Num();++I)
-        if (I!=Index) Ahead(Agents[I]->GetActorLocation(),Agents[I]->HalfLength,Agents[I]->HalfWidth);
+        if (I!=Index) Ahead(Agents[I]->GetActorLocation(),Agents[I]->HalfLength,Agents[I]->HalfWidth,Agents[I],TEXT("traffic"));
     for (const auto& C:Parked)
         if (C.IsValid())
         {
@@ -695,11 +703,11 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
             if (!bCity && Along && !C->IsOccupied() && V.Dot(D)>-360 && V.Dot(D)<1600 &&
                 FMath::Abs(V.X*D.Y-V.Y*D.X)<340) Obstacle=true;
             const FVector Hull = C->GetCollisionExtents();
-            Ahead(C->GetActorLocation(),Hull.X,Hull.Y);
+            Ahead(C->GetActorLocation(),Hull.X,Hull.Y,C.Get(),TEXT("car"));
         }
     if (const auto* PC=GetWorld()->GetFirstPlayerController())
-        if (const APawn* Pawn=PC->GetPawn();Pawn && !Cast<ARiverfrontCar>(Pawn)) Ahead(Pawn->GetActorLocation(),36,37);
-    for (const FVector& Walker : CrossingWalkers) Ahead(Walker,33,38);
+        if (const APawn* Pawn=PC->GetPawn();Pawn && !Cast<ARiverfrontCar>(Pawn)) Ahead(Pawn->GetActorLocation(),36,37,Pawn,TEXT("player"));
+    for (const FVector& Walker : CrossingWalkers) Ahead(Walker,33,38,nullptr,TEXT("crossing_pedestrian"));
     if (!bCity && Along)
     {
         const FVector Crossing = PedestrianCrossing - At;
@@ -711,7 +719,7 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
             // to the crossing. A vehicle already across the line keeps clearing it.
             const double DistanceToClear = Forward + Length + CrossingClearance;
             if (H != 0 || Limit < DistanceToClear)
-                Limit = FMath::Min(Limit, Forward - Length - 337.);
+                Restrict(Forward-Length-337.,TEXT("crosswalk"));
         }
     }
     return Limit;
@@ -788,7 +796,14 @@ void ARiverfrontTraffic::Tick(float Dt)
         const FVector D=R->GetDirectionAtDistanceAlongSpline(L.At,ESplineCoordinateSpace::World).GetSafeNormal2D();
         UpdateJunctionClearance(L,*A,D,H);
         bool ParkedAhead=false;
-        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I,CrossingWalkers);
+#if !UE_BUILD_SHIPPING
+        static const bool bTrafficTrace=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiTrafficTrace"));
+        FString StopReason;
+        FString* Diagnostic=bTrafficTrace?&StopReason:nullptr;
+#else
+        FString* Diagnostic=nullptr;
+#endif
+        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I,CrossingWalkers,Diagnostic);
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
         bool Passing=ParkedAhead;
         if (Passing)
@@ -816,12 +831,24 @@ void ARiverfrontTraffic::Tick(float Dt)
         const double Advance=bClosed?L.Speed*Dt:FMath::Min(L.Speed*Dt,Length-L.At);
         const double Next=bClosed?FMath::Fmod(L.At+Advance,Length):L.At+Advance;
         const FTransform Pose=RoadPose(*R,Next,L.Offset,A->TyreRadius,A->Wheelbase,Near);
-        if (A->MoveOnRoad(Pose.GetLocation(),Pose.Rotator(),Advance,Near))
+        FHitResult Block;
+        const bool bMoved=A->MoveOnRoad(Pose.GetLocation(),Pose.Rotator(),Advance,Near,&Block);
+        if (bMoved)
         {
             if (Advance>0 && D.Dot(Pose.GetUnitAxis(EAxis::X).GetSafeNormal2D())<.9998) ++Turns;
             TravelCm+=Advance; L.At=Next;
         }
         else L.Speed=0;
+#if !UE_BUILD_SHIPPING
+        if (bTrafficTrace && !bCity && Near && FVector::DistSquared2D(A->GetActorLocation(),Junctions[1])<FMath::Square(1800.)
+            && (Want<15. || !bMoved) && GetWorld()->GetTimeSeconds()-L.LastDiagnosticAt>4.)
+        {
+            UE_LOG(LogTemp, Display, TEXT("Sabarmati traffic trace: %s (%s) at %s gap=%.1f want=%.1f phase=%d clearance=%d reason=%s moved=%d hit=%s/%s instance=%d normal=%s"),
+                *A->GetName(),A->GetVehicleLabel(),*A->GetActorLocation().ToCompactString(),Gap,Want,H,L.ClearingJunction,
+                *StopReason,bMoved,*GetNameSafe(Block.GetActor()),*GetNameSafe(Block.GetComponent()),Block.Item,*Block.ImpactNormal.ToCompactString());
+            L.LastDiagnosticAt=GetWorld()->GetTimeSeconds();
+        }
+#endif
         const bool bFar=FVector::DistSquared2D(A->GetActorLocation(),Eye)>FMath::Square(51000.);
         A->SetActorHiddenInGame(bFar);
         // The mapped starting road has open ends. Re-enter only offscreen and
