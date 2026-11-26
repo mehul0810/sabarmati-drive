@@ -810,6 +810,21 @@ void ARiverfrontCharacter::SetFittingPose(bool bFitting)
     Body->MarkRenderDynamicDataDirty();
 }
 
+void ARiverfrontCharacter::AdvanceFittingIdle(float DeltaSeconds)
+{
+    // Close-ups can breathe while the simulation is paused. Keep held and dressing poses in charge.
+    if (!bInFittingPose || bBlueprintAvatarActive || ChangingMesh || HeldProp || !ActiveSequence) return;
+    const float Length=ActiveSequence->GetPlayLength();
+    if (Length<=KINDA_SMALL_NUMBER) return;
+    auto* Body=GetAvatarMesh();
+    Body->SetPosition(FMath::Fmod(Body->GetPosition()+FMath::Clamp(DeltaSeconds,0.f,.10f),Length),false);
+    Body->TickAnimation(0.f,false);
+    Body->RefreshBoneTransforms();
+    Body->RefreshFollowerComponents();
+    Body->UpdateChildTransforms();
+    Body->MarkRenderDynamicDataDirty();
+}
+
 void ARiverfrontCharacter::UpdateWatchAttachment()
 {
     Wristwatch->SetVisibility(false);

@@ -45,6 +45,7 @@ public:
     FString GetWaterHint() const;
     void BeginSeatExit(const FVector& Seat,const FVector& Landing,const FVector& Out);
     void SetInCar(bool bInCar);
+    void AdvanceFittingIdle(float DeltaSeconds);
     void SetFittingPose(bool bFitting);
     bool LieOnBed(const FVector& Pillow);
     void LeaveBed();

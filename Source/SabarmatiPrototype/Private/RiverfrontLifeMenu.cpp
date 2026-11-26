@@ -362,6 +362,7 @@ private:
     FText Feedback;
     TWeakObjectPtr<UWorld> AudioWorld;
     TWeakPtr<FActiveTimerHandle> DressingTimer;
+    TWeakPtr<FActiveTimerHandle> InspectionTimer;
     double DressStageStart=0.;
     EAction PendingAction=EAction::Take;
     FName PendingItem;
@@ -525,12 +526,29 @@ private:
             {
                 const EFittingView Next=Target()==ViewMode ? EFittingView::Full : Target();
                 auto* Controller = Cast<ARiverfrontPlayerController>(UGameplayStatics::GetPlayerController(AudioWorld.Get(),0));
-                if (Controller && Controller->SetFittingView(Next)) ViewMode=Next;
+                if (Controller && Controller->SetFittingView(Next))
+                {
+                    ViewMode=Next;
+                    if (Next!=EFittingView::Full && !InspectionTimer.IsValid())
+                        InspectionTimer=RegisterActiveTimer(1.f/24.f,FWidgetActiveTimerDelegate::CreateSP(this,&SRiverfrontLifeMenu::InspectIdle));
+                }
                 else Feedback=Copy(TEXT("There isn't room for a close-up here."));
                 return FReply::Handled();
             })
             [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
                 .Text_Lambda([this,Target,LabelText]{ return Copy(Target()==ViewMode ? FString(TEXT("Full outfit")) : LabelText); })];
+    }
+
+    EActiveTimerReturnType InspectIdle(double, float DeltaSeconds)
+    {
+        if (ViewMode==EFittingView::Full)
+        {
+            InspectionTimer.Reset();
+            return EActiveTimerReturnType::Stop;
+        }
+        if (!DressingTimer.IsValid())
+            if (auto* Walker=Resident()) Walker->AdvanceFittingIdle(DeltaSeconds);
+        return EActiveTimerReturnType::Continue;
     }
 
     TSharedRef<SWidget> ToneButton(FName Choice, const FString& Name)
