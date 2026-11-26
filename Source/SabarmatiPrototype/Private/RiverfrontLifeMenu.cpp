@@ -124,7 +124,9 @@ public:
                 Body->AddSlot().AutoHeight()[Section];
                 if (WearSlot==ERiverfrontWearSlot::Top) AddCaption(Section,TEXT("Tops"));
                 if (WearSlot==ERiverfrontWearSlot::Bottom) AddCaption(Section,TEXT("Bottoms"));
-                if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Section,TEXT("Innerwear"));
+                if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Section,TEXT("Inner tops"));
+                if (WearSlot==ERiverfrontWearSlot::InnerBottom) AddCaption(Section,TEXT("Inner bottoms"));
+                if (WearSlot==ERiverfrontWearSlot::Socks) AddCaption(Section,TEXT("Socks"));
                 if (WearSlot==ERiverfrontWearSlot::Shoes) AddCaption(Section,TEXT("Footwear"));
                 if (WearSlot==ERiverfrontWearSlot::Accessory) AddCaption(Section,TEXT("Accessories"));
                 for (const auto& Entry : RiverfrontLife::Catalog())
@@ -336,7 +338,7 @@ private:
                 const auto* Current=Item(Selected);
                 if (Group!=EGroup::All && (!Current || GroupOf(Current->Slot)!=Group))
                     for (const auto& Entry:RiverfrontLife::Catalog())
-                        if (GroupOf(Entry.Slot)==Group && (Entry.Id!=RiverfrontLife::SportsBra || Gender==ERiverfrontGender::Female))
+                        if (GroupOf(Entry.Slot)==Group && Entry.Fits(Gender))
                             return Select(Entry.Id);
                 return FReply::Handled();
             })
@@ -414,7 +416,7 @@ private:
         }
         Outfit = Saved->EquippedOutfit.IsNone() ? FName(TEXT("cotton-sand")) : Saved->EquippedOutfit;
         Bottom = Saved->EquippedBottom;
-        InnerTop = Saved->EquippedInnerTop;
+        InnerTop = RiverfrontLife::FittedItem(Saved->EquippedInnerTop,Saved->AvatarGender);
         InnerBottom = Saved->EquippedInnerBottom;
         Shoes = Saved->EquippedShoes;
         Socks = Saved->EquippedSocks;
@@ -422,7 +424,7 @@ private:
         Tone = Saved->AppearanceTone;
         Held = Saved->HeldWardrobeItem;
         Gender = Saved->AvatarGender;
-        if (Selected==RiverfrontLife::SportsBra && Gender==ERiverfrontGender::Male) Selected=RiverfrontLife::Briefs;
+        if (const auto* SelectedItem=Item(Selected); SelectedItem && !SelectedItem->Fits(Gender)) Selected=RiverfrontLife::Briefs;
         bCroppedHair = Saved->bCroppedHair;
         bDeliveryActive = Saved->bPrintDeliveryActive;
         Deliveries = Saved->CompletedPrintDeliveries;
@@ -460,7 +462,7 @@ private:
             ];
     }
 
-    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id==Shoes || Id==Socks || Id == InnerBottom || (Id == InnerTop && Gender==ERiverfrontGender::Female) || Id == Accessory); }
+    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id==Shoes || Id==Socks || Id==InnerBottom || Id==InnerTop || Id==Accessory); }
 
     TSharedRef<SWidget> ItemRow(const FRiverfrontWearable& Entry)
     {
@@ -469,7 +471,7 @@ private:
         SAssignNew(RowButton,SButton).Tag(FName(*(TEXT("LifeItem.")+Id.ToString()))).ButtonStyle(&ButtonStyle)
             .ContentPadding(FMargin(10,6)).HAlign(HAlign_Fill)
             .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected == Id ? Amber.CopyWithNewOpacity(.15f) : Row); })
-            .Visibility_Lambda([this,Id]{ return Show(Id!=RiverfrontLife::SportsBra || Gender==ERiverfrontGender::Female); })
+            .Visibility_Lambda([this,Id]{ return Show(!RiverfrontLife::FittedItem(Id,Gender).IsNone()); })
             .OnClicked_Lambda([this,Id]{ return Select(Id); })
             [
                 SNew(SHorizontalBox)
@@ -643,12 +645,13 @@ private:
         const float Time=FMath::Clamp(float((Now-DressStageStart)/((bChangingBottom || bChangingFeet) ? 3.25 : RiverfrontLife::IsPullover(PendingItem) ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
-            if (bChangingBottom || bChangingFeet || PendingItem==RiverfrontLife::SportsBra)
+            const auto* ChangingItem=Item(PendingItem);
+            if (bChangingBottom || bChangingFeet || (ChangingItem && ChangingItem->Slot==ERiverfrontWearSlot::InnerTop))
             {
                 const float Undress=PendingAction==EAction::TakeOff ? Time : 1.f-Time;
                 if (bChangingBottom) Walker->PoseChangingTrousers(PendingItem,Undress);
                 else if (bChangingFeet) Walker->PoseChangingFootwear(PendingItem,Undress);
-                else Walker->PoseChangingSportsBra(Undress);
+                else Walker->PoseChangingInnerTop(PendingItem,Undress);
                 if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
                 return EActiveTimerReturnType::Continue;
             }

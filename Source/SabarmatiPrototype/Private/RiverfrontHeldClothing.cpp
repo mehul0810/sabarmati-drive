@@ -132,10 +132,11 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
     if (Id.IsNone() || !Body || !Body->GetSkeletalMeshAsset()) return;
     const FName Hand=Body->DoesSocketExist(TEXT("Handr")) ? TEXT("Handr") : TEXT("hand_r");
     if (!Body->DoesSocketExist(Hand)) return;
-    const auto* Item=RiverfrontLife::Catalog().FindByPredicate([Id](const auto& Entry){return Entry.Id==Id;});
-    if (!Item) return;
+    const auto* Item=RiverfrontLife::FindItem(Id);
+    if (!Item || !Item->Fits(AvatarGender)) return;
+    const bool bWesternTop=Item->Slot==ERiverfrontWearSlot::Top && LoadFittedTop(Item->Cut)!=nullptr;
     if (Item->Slot==ERiverfrontWearSlot::Bottom || Item->Slot==ERiverfrontWearSlot::InnerBottom || Item->Slot==ERiverfrontWearSlot::InnerTop ||
-        Item->Slot==ERiverfrontWearSlot::Shoes || Item->Slot==ERiverfrontWearSlot::Socks)
+        Item->Slot==ERiverfrontWearSlot::Shoes || Item->Slot==ERiverfrontWearSlot::Socks || bWesternTop)
     {
         HeldProp=CreateGarmentDisplay(Id);
         if (HeldProp)
@@ -152,6 +153,7 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
         if (!Wristwatch->GetStaticMesh()) return;
         auto* Watch=NewObject<UStaticMeshComponent>(this);
         Watch->SetStaticMesh(Wristwatch->GetStaticMesh());
+        DyeWatch(*Watch,Id);
         HeldProp=Watch;
     }
     else

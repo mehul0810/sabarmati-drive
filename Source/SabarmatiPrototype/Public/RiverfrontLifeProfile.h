@@ -9,7 +9,11 @@ UENUM()
 enum class ERiverfrontWearSlot : uint8 { Top, Bottom, Accessory, InnerTop, InnerBottom, Shoes, Socks };
 
 UENUM()
-enum class ERiverfrontGarmentCut : uint8 { Standard, Kurta, CrewTee, Chino };
+enum class ERiverfrontGarmentCut : uint8
+{
+    Standard, Kurta, CrewTee, Chino, FineKnit, Quilted, Blazer, Tailored, DenimShorts,
+    Tank, Trunks, CourtRunner, ZipBoot, CrewSocks
+};
 
 USTRUCT()
 struct FRiverfrontWearable
@@ -22,6 +26,9 @@ struct FRiverfrontWearable
     UPROPERTY(EditAnywhere) ERiverfrontWearSlot Slot = ERiverfrontWearSlot::Top;
     UPROPERTY(EditAnywhere) ERiverfrontGarmentCut Cut = ERiverfrontGarmentCut::Standard;
     UPROPERTY(EditAnywhere) FLinearColor Tint = FLinearColor::White;
+    UPROPERTY(EditAnywhere) bool bFemaleFit = false;
+
+    bool Fits(ERiverfrontGender Gender) const { return !bFemaleFit || Gender==ERiverfrontGender::Female; }
 };
 
 // The packaged catalogue is authored in DefaultGame.ini using Unreal property serialization.
@@ -38,6 +45,7 @@ namespace RiverfrontLife
 {
     const TArray<FRiverfrontWearable>& Catalog();
     const FRiverfrontWearable* FindItem(FName Id);
+    FName FittedItem(FName Id, ERiverfrontGender Gender);
     bool IsPullover(FName Id);
     bool Exists(const FString& Slot);
     URiverfrontLocalProfile* Load(const FString& Slot);

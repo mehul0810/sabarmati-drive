@@ -440,15 +440,41 @@ void ARiverfrontCharacter::UpdateHair()
 
 void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile& Profile)
 {
-    bWearingShoes=Profile.EquippedShoes==RiverfrontLife::StreetShoes;
-    bWearingSocks=Profile.EquippedSocks==RiverfrontLife::CottonSocks;
-    bWearingBra = Profile.EquippedInnerTop==RiverfrontLife::SportsBra;
-    bWearingBriefs = Profile.EquippedInnerBottom==RiverfrontLife::Briefs;
+    EndChangingPose();
+    WardrobeShoes=Profile.EquippedShoes;
+    WardrobeSocks=Profile.EquippedSocks;
+    WardrobeInnerTop=RiverfrontLife::FittedItem(Profile.EquippedInnerTop,Profile.AvatarGender);
+    WardrobeInnerBottom=Profile.EquippedInnerBottom;
     WardrobeBottom = Profile.EquippedBottom.IsNone() ? RiverfrontLife::StarterBottom : Profile.EquippedBottom;
     AvatarGender = Profile.AvatarGender;
     bCroppedHair = Profile.bCroppedHair;
     ApplyWardrobeLook(Profile.EquippedOutfit, Profile.EquippedAccessory, Profile.AppearanceTone);
     ShowHeldWardrobeItem(Profile.HeldWardrobeItem);
+}
+
+USkeletalMesh* ARiverfrontCharacter::LoadFittedTop(ERiverfrontGarmentCut Cut) const
+{
+    const TCHAR* Style;
+    switch (Cut)
+    {
+    case ERiverfrontGarmentCut::FineKnit: Style=TEXT("FineKnit"); break;
+    case ERiverfrontGarmentCut::Quilted: Style=TEXT("Quilted"); break;
+    case ERiverfrontGarmentCut::Blazer: Style=TEXT("Blazer"); break;
+    case ERiverfrontGarmentCut::Tank: Style=TEXT("TankFoundation"); break;
+    default: return nullptr;
+    }
+    const FString Asset=FString::Printf(TEXT("SK_%s%s"),AvatarGender==ERiverfrontGender::Female ? TEXT("Female") : TEXT("Male"),Style);
+    return LoadObject<USkeletalMesh>(nullptr,*FString::Printf(TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Western/%s.%s"),*Asset,*Asset));
+}
+
+USkeletalMesh* ARiverfrontCharacter::LoadFoundationMesh(FName Item) const
+{
+    if (const auto* Inner=RiverfrontLife::FindItem(Item); Inner && Inner->Cut==ERiverfrontGarmentCut::Tank)
+        return LoadFittedTop(Inner->Cut);
+    const TCHAR* Path=AvatarGender==ERiverfrontGender::Female
+        ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleFoundation.SK_FemaleFoundation")
+        : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleFoundation.SK_MaleFoundation");
+    return LoadObject<USkeletalMesh>(nullptr,Path);
 }
 
 void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FName Tone)
@@ -477,10 +503,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     bool bUsingKurtaRig = false;
     if (bPublic && bBaseLayer)
     {
-        const TCHAR* BaseMesh = AvatarGender == ERiverfrontGender::Female
-            ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleFoundation.SK_FemaleFoundation")
-            : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleFoundation.SK_MaleFoundation");
-        if (auto* Foundation = LoadObject<USkeletalMesh>(nullptr, BaseMesh)) Model = Foundation;
+        if (auto* Foundation=LoadFoundationMesh(WardrobeInnerTop)) Model=Foundation;
     }
     else if (bPublic && bTee)
     {
@@ -489,17 +512,16 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
             : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Jersey/SK_MaleCrewTee.SK_MaleCrewTee");
         if (auto* Fitted=LoadObject<USkeletalMesh>(nullptr,Jersey)) Model=Fitted;
     }
-    else if (bPublic && (bKurta || AvatarGender == ERiverfrontGender::Female))
+    else if (bPublic && Top)
     {
-        if (USkeletalMesh* Fitted = RiverfrontResident::LoadOutfitMesh(AvatarGender, bKurta))
+        if (USkeletalMesh* Western=LoadFittedTop(Top->Cut)) Model=Western;
+        else if (bKurta || AvatarGender==ERiverfrontGender::Female)
         {
-            Model = Fitted;
-            bUsingKurtaRig = bKurta;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("No fitted wardrobe mesh for avatar %d, outfit %s."),
-                static_cast<int32>(AvatarGender), *WardrobeOutfit.ToString());
+            if (USkeletalMesh* Fitted=RiverfrontResident::LoadOutfitMesh(AvatarGender,bKurta))
+            {
+                Model=Fitted;
+                bUsingKurtaRig=bKurta;
+            }
         }
     }
     UseWardrobeMesh(Model, bUsingKurtaRig);
@@ -508,7 +530,8 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     const bool bNewDye=bTee || (bKurta && WardrobeOutfit!=TEXT("kurta"));
     const FColor Shirt = bNewDye ? Top->Tint.ToFColorSRGB() : bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
     const FColor Trim = bNewDye ? (Top->Tint*.73f).ToFColorSRGB() : bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
-    const FColor Trousers = bChino ? Bottom->Tint.ToFColorSRGB() : WardrobeBottom==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73);
+    const FColor Trousers = Bottom && (bChino || WardrobeBottom==TEXT("denim-black")) ? Bottom->Tint.ToFColorSRGB() :
+        WardrobeBottom==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
@@ -541,6 +564,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
     SetSurface(TEXT("bottom_denim"), bChino ? ChinoFabric() : Cloth, Trousers);
+    if (Top) SetSurface(TEXT("western_top"),nullptr,Top->Tint);
     if (bTee)
     {
         SetSurface(TEXT("jersey_knit"),nullptr,Shirt);
@@ -577,7 +601,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         else
             SetSurface(SkinSlot, nullptr, Skin);
     }
-    SetBraFabricVisible(bWearingBra);
+    SetInnerTopVisible(true);
     SetLowerBodyVisible(bPublic && WardrobeBottom==RiverfrontLife::Underwear);
     UpdateHair();
     UpdateWatchAttachment();
@@ -591,7 +615,8 @@ void ARiverfrontCharacter::EndChangingPose()
         if (MovingGarment) MovingGarment->DestroyComponent();
         MovingGarment=nullptr;
         ChangingFoot=INDEX_NONE;
-        SetBraFabricVisible(bWearingBra);
+        ChangingFootwear=NAME_None;
+        SetInnerTopVisible(true);
         SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
     }
     if (!ChangingMesh) return;
@@ -844,7 +869,8 @@ void ARiverfrontCharacter::AdvanceFittingIdle(float DeltaSeconds)
 void ARiverfrontCharacter::UpdateWatchAttachment()
 {
     Wristwatch->SetVisibility(false);
-    if (WardrobeAccessory != TEXT("watch") || !Wristwatch->GetStaticMesh()) return;
+    const auto* Item=RiverfrontLife::FindItem(WardrobeAccessory);
+    if (!Item || Item->Slot!=ERiverfrontWearSlot::Accessory || !Wristwatch->GetStaticMesh()) return;
     auto* Body = GetAvatarMesh();
     const USkeletalMesh* Model = Body->GetSkeletalMeshAsset();
     if (!Model) return;
@@ -862,12 +888,24 @@ void ARiverfrontCharacter::UpdateWatchAttachment()
     const FTransform Fit(FRotationMatrix::MakeFromZX(Axis, Outside).ToQuat(), Hand.GetLocation()-Axis*2.7);
     Wristwatch->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Skeleton.GetBoneName(Wrist));
     Wristwatch->SetRelativeTransform(Fit.GetRelativeTransform(Hand));
+    DyeWatch(*Wristwatch,WardrobeAccessory);
     Wristwatch->SetVisibility(true);
+}
+
+void ARiverfrontCharacter::DyeWatch(UStaticMeshComponent& Watch,FName Item)
+{
+    const auto* Entry=RiverfrontLife::FindItem(Item);
+    const FName Case(TEXT("brushed_case"));
+    const int32 Index=Watch.GetMaterialIndex(Case);
+    if (!Entry || Index==INDEX_NONE) return;
+    if (Item==TEXT("watch")) Watch.SetMaterial(Index,Watch.GetStaticMesh()->GetStaticMaterials()[Index].MaterialInterface);
+    else DyeWardrobeSection(Watch,Case,Entry->Tint);
 }
 
 bool ARiverfrontCharacter::GetWardrobeShirtColor(FLinearColor& Out) const
 {
-    const int32 Slot = GetMesh()->GetMaterialIndex(TEXT("top_teal_woven"));
+    int32 Slot=GetMesh()->GetMaterialIndex(TEXT("western_top"));
+    if (Slot==INDEX_NONE) Slot=GetMesh()->GetMaterialIndex(TEXT("top_teal_woven"));
     auto* MID = Slot != INDEX_NONE ? Cast<UMaterialInstanceDynamic>(GetMesh()->GetMaterial(Slot)) : nullptr;
     if (!MID) return false;
     Out = MID->K2_GetVectorParameterValue(TEXT("BaseColorFactor"));

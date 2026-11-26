@@ -31,6 +31,8 @@ class UBlendSpace1D;
 class UMaterialInterface;
 class URiverfrontAvatarMotion;
 class URiverfrontLocalProfile;
+class UMeshComponent;
+enum class ERiverfrontGarmentCut : uint8;
 
 UCLASS()
 class SABARMATIPROTOTYPE_API ARiverfrontCharacter : public ACharacter
@@ -54,7 +56,7 @@ public:
     void PoseChangingSleeves(float Lift,float PulloverWeight,float SleevePass=0.f);
     void EndChangingPose();
     void PoseChangingFootwear(FName Item,float Undress);
-    void PoseChangingSportsBra(float Undress);
+    void PoseChangingInnerTop(FName Item,float Undress);
     void PoseChangingTrousers(FName Item, float Undress);
     FName GetWardrobeBottom() const { return WardrobeBottom; }
     bool IsLyingOnBed() const { return bLyingOnBed; }
@@ -193,15 +195,22 @@ private:
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Hair;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Wristwatch;
     FName WardrobeOutfit = TEXT("cotton-sand");
-    bool bWearingShoes=true,bWearingSocks=true;
+    FName WardrobeShoes = TEXT("street-shoes");
+    FName WardrobeSocks = TEXT("cotton-socks");
     int32 ChangingFoot=INDEX_NONE;
-    bool bWearingBra=true;
-    bool bWearingBriefs=true;
+    FName ChangingFootwear;
+    FName WardrobeInnerTop;
+    FName WardrobeInnerBottom = TEXT("boxer-briefs");
     FName WardrobeBottom = TEXT("denim-dark");
     UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> LowerBody;
     UPROPERTY(Transient) TObjectPtr<class UPoseableMeshComponent> MovingGarment;
     void SetLowerBodyVisible(bool bVisible,bool bMovingBriefs=false,int32 ShoeMask=INDEX_NONE,int32 SockMask=INDEX_NONE);
-    void SetBraFabricVisible(bool bVisible);
+    void SetInnerTopVisible(bool bVisible);
+    USkeletalMesh* LoadFittedTop(ERiverfrontGarmentCut Cut) const;
+    USkeletalMesh* LoadFoundationMesh(FName Item) const;
+    USkeletalMesh* LoadLowerBodyMesh() const;
+    static void DyeWardrobeSection(UMeshComponent& Mesh,FName Slot,const FLinearColor& Dye,UMaterialInterface* Parent=nullptr);
+    static void DyeWatch(UStaticMeshComponent& Watch,FName Item);
     void PoseLowerDressingBody(float Undress,int32 OnlyFoot=INDEX_NONE,double FootLift=0.);
     UPoseableMeshComponent* CreateGarmentDisplay(FName Item,int32 Side=INDEX_NONE);
     FTransform FoldedGarmentTransform(const USkinnedMeshComponent& Wearer,FName Item) const;

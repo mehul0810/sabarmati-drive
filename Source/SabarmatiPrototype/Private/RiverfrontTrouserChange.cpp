@@ -15,47 +15,123 @@ void ShowSection(USkinnedMeshComponent& Mesh, FName Name, bool bShow)
     for (int32 LOD=0;LOD<Mesh.GetSkinnedAsset()->GetLODNum();++LOD)
         if (Mesh.IsMaterialSectionShown(Slot,LOD)!=bShow) Mesh.ShowMaterialSection(Slot,INDEX_NONE,bShow,LOD);
 }
+
+struct FFootSections
+{
+    FName Slots[2];
+};
+
+const FFootSections StreetShoe{{TEXT("street_shoe_l"),TEXT("street_shoe_r")}};
+const FFootSections CourtShoe{{TEXT("court_shoe_l"),TEXT("court_shoe_r")}};
+const FFootSections Boot{{TEXT("zip_boot_l"),TEXT("zip_boot_r")}};
+const FFootSections AnkleSock{{TEXT("cotton_sock_l"),TEXT("cotton_sock_r")}};
+const FFootSections CrewSock{{TEXT("crew_sock_l"),TEXT("crew_sock_r")}};
+const FFootSections SockToe{{TEXT("sock_toe_l"),TEXT("sock_toe_r")}};
+const FFootSections BareFoot{{TEXT("foot_skin_l"),TEXT("foot_skin_r")}};
+const FFootSections BareAnkle{{TEXT("foot_ankle_l"),TEXT("foot_ankle_r")}};
+
+const FFootSections& FootSections(ERiverfrontGarmentCut Cut,bool bShoes)
+{
+    if (bShoes)
+    {
+        if (Cut==ERiverfrontGarmentCut::CourtRunner) return CourtShoe;
+        if (Cut==ERiverfrontGarmentCut::ZipBoot) return Boot;
+        return StreetShoe;
+    }
+    return Cut==ERiverfrontGarmentCut::CrewSocks ? CrewSock : AnkleSock;
 }
 
-void ARiverfrontCharacter::SetBraFabricVisible(bool bVisible)
+FName TrouserSection(ERiverfrontGarmentCut Cut)
+{
+    if (Cut==ERiverfrontGarmentCut::Tailored) return TEXT("tailored_trousers");
+    if (Cut==ERiverfrontGarmentCut::DenimShorts) return TEXT("denim_shorts");
+    return NAME_None;
+}
+
+bool IsTrunks(const FRiverfrontWearable* Item)
+{
+    return Item && Item->Cut==ERiverfrontGarmentCut::Trunks;
+}
+
+FLinearColor InnerDye(const FRiverfrontWearable& Item,bool bBand)
+{
+    if (Item.Id==RiverfrontLife::SportsBra)
+        return FLinearColor(bBand ? FColor(32,42,46) : FColor(47,60,68));
+    if (Item.Id==RiverfrontLife::Briefs)
+        return FLinearColor(bBand ? FColor(41,47,52) : FColor(61,73,81));
+    FLinearColor Dye=Item.Tint*(bBand ? .72f : 1.f);
+    Dye.A=1.f;
+    return Dye;
+}
+
+FLinearColor FootDye(const FRiverfrontWearable& Item)
+{
+    return Item.Id==RiverfrontLife::CottonSocks ? FLinearColor(FColor(211,212,215)) : Item.Tint;
+}
+}
+
+void ARiverfrontCharacter::DyeWardrobeSection(UMeshComponent& Mesh,FName Slot,const FLinearColor& Dye,UMaterialInterface* Parent)
+{
+    const int32 Index=Mesh.GetMaterialIndex(Slot);
+    if (Index==INDEX_NONE) return;
+    auto* Material=Cast<UMaterialInstanceDynamic>(Mesh.GetMaterial(Index));
+    if (!Material || (Parent && Material->Parent!=Parent))
+    {
+        if (!Parent) Parent=Mesh.GetMaterial(Index);
+        if (!Parent) return;
+        Material=Mesh.CreateDynamicMaterialInstance(Index,Parent);
+    }
+    if (Material) Material->SetVectorParameterValue(TEXT("BaseColorFactor"),Dye);
+}
+
+void ARiverfrontCharacter::SetInnerTopVisible(bool bVisible)
 {
     auto* Body=GetMesh();
     const int32 Skin=Body->GetMaterialIndex(TEXT("skin"));
     if (Skin==INDEX_NONE) return;
-    // The bra panels share the original torso topology, normals and skin UV seams.
+    const auto* Item=bVisible ? RiverfrontLife::FindItem(WardrobeInnerTop) : nullptr;
+    // The fabric panels share the original torso's positions and UV seams.
     for (FName Name : {FName(TEXT("foundation_knit")),FName(TEXT("foundation_elastic"))})
     {
         const int32 Slot=Body->GetMaterialIndex(Name);
         if (Slot==INDEX_NONE) continue;
-        UMaterialInterface* Surface=Body->GetMaterial(Skin);
-        if (bVisible)
-        {
-            auto* Fabric=Cast<UMaterialInstanceDynamic>(Body->GetMaterial(Slot));
-            if (!Fabric || Fabric->Parent!=CottonMaterial.Get()) Fabric=Body->CreateDynamicMaterialInstance(Slot,CottonMaterial);
-            if (!Fabric) continue;
-            Fabric->SetVectorParameterValue(TEXT("BaseColorFactor"),FLinearColor(Name==TEXT("foundation_knit") ? FColor(47,60,68) : FColor(32,42,46)));
-            Surface=Fabric;
-        }
-        Body->SetMaterial(Slot,Surface);
-        if (ChangingMesh) ChangingMesh->SetMaterial(Slot,Surface);
+        if (Item) DyeWardrobeSection(*Body,Name,InnerDye(*Item,Name==TEXT("foundation_elastic")),CottonMaterial);
+        else Body->SetMaterial(Slot,Body->GetMaterial(Skin));
+        if (ChangingMesh) ChangingMesh->SetMaterial(Slot,Body->GetMaterial(Slot));
     }
+}
+
+USkeletalMesh* ARiverfrontCharacter::LoadLowerBodyMesh() const
+{
+    const TCHAR* Path=AvatarGender==ERiverfrontGender::Female
+        ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleLowerBody.SK_FemaleLowerBody")
+        : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleLowerBody.SK_MaleLowerBody");
+    return LoadObject<USkeletalMesh>(nullptr,Path);
 }
 
 void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible,bool bMovingBriefs,int32 ShoeMask,int32 SockMask)
 {
     auto* Body=GetMesh();
-    const bool bPublic=SupportsClothingChange();
-    if (!bPublic) { if (LowerBody) LowerBody->SetVisibility(false); return; }
-    const bool bSplitFeet=bLyingOnBed || !bWearingShoes || !bWearingSocks || ShoeMask!=INDEX_NONE || SockMask!=INDEX_NONE;
-    const bool bShowLower=bVisible || bSplitFeet;
-    const int32 Shoes=bLyingOnBed ? 0 : ShoeMask!=INDEX_NONE ? ShoeMask : bWearingShoes ? 3 : 0;
-    const int32 Socks=SockMask!=INDEX_NONE ? SockMask : bWearingSocks ? 3 : 0;
+    if (!SupportsClothingChange())
+    {
+        if (LowerBody) LowerBody->SetVisibility(false);
+        return;
+    }
+    const auto* Bottom=RiverfrontLife::FindItem(WardrobeBottom);
+    const FName Trousers=Bottom && !bVisible ? TrouserSection(Bottom->Cut) : NAME_None;
+    const bool bShorts=Trousers==TEXT("denim_shorts");
+    const FName ShoeId=ShoeMask==INDEX_NONE ? WardrobeShoes : ChangingFootwear;
+    const FName SockId=SockMask==INDEX_NONE ? WardrobeSocks : ChangingFootwear;
+    const auto* Shoe=RiverfrontLife::FindItem(ShoeId);
+    const auto* Sock=RiverfrontLife::FindItem(SockId);
+    const bool bSplitFeet=bLyingOnBed || ShoeId!=RiverfrontLife::StreetShoes || SockId!=RiverfrontLife::CottonSocks ||
+        ShoeMask!=INDEX_NONE || SockMask!=INDEX_NONE || bShorts;
+    const bool bShowLower=bVisible || bSplitFeet || !Trousers.IsNone();
+    const int32 Shoes=bLyingOnBed || !Shoe ? 0 : ShoeMask!=INDEX_NONE ? ShoeMask : 3;
+    const int32 Socks=!Sock ? 0 : SockMask!=INDEX_NONE ? SockMask : 3;
     if (bShowLower)
     {
-        const TCHAR* Path=AvatarGender==ERiverfrontGender::Female
-            ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleLowerBody.SK_FemaleLowerBody")
-            : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleLowerBody.SK_MaleLowerBody");
-        auto* Shape=LoadObject<USkeletalMesh>(nullptr,Path);
+        auto* Shape=LoadLowerBodyMesh();
         if (!Shape) return;
         if (!LowerBody)
         {
@@ -70,90 +146,142 @@ void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible,bool bMovingBriefs,
         {
             LowerBody->EmptyOverrideMaterials();
             LowerBody->SetSkeletalMesh(Shape);
-            for (FName Name : {FName(TEXT("cotton_sock_l")),FName(TEXT("cotton_sock_r"))})
-                if (auto* Knit=LowerBody->CreateDynamicMaterialInstance(LowerBody->GetMaterialIndex(Name),CottonMaterial))
-                    Knit->SetVectorParameterValue(TEXT("BaseColorFactor"),FLinearColor(FColor(211,212,215)));
-            for (const FName Slot : {FName(TEXT("underwear_knit")),FName(TEXT("underwear_band"))})
-                if (auto* Material=LowerBody->CreateDynamicMaterialInstance(LowerBody->GetMaterialIndex(Slot),CottonMaterial))
-                    Material->SetVectorParameterValue(TEXT("BaseColorFactor"),
-                        FLinearColor(Slot==TEXT("underwear_band") ? FColor(41,47,52) : FColor(61,73,81)));
         }
-        const bool bBriefs=bWearingBriefs && !bMovingBriefs;
-        for (FName Name : {FName(TEXT("leg_skin")),FName(TEXT("bare_lower_skin")),FName(TEXT("midriff_skin")),FName(TEXT("foot_skin_l")),FName(TEXT("foot_skin_r"))})
-            LowerBody->SetMaterialByName(Name,Body->GetMaterial(Body->GetMaterialIndex(TEXT("skin"))));
-        for (FName Name : {FName(TEXT("leg_skin")),FName(TEXT("underwear_knit")),FName(TEXT("underwear_band"))})
-            ShowSection(*LowerBody,Name,bVisible && bBriefs);
-        ShowSection(*LowerBody,TEXT("bare_lower_skin"),bVisible && !bBriefs);
-        ShowSection(*LowerBody,TEXT("midriff_skin"),bVisible && !bBriefs && WardrobeOutfit!=RiverfrontLife::BaseLayer);
+
+        const auto* Brief=bVisible && !bMovingBriefs ? RiverfrontLife::FindItem(WardrobeInnerBottom) : nullptr;
+        const bool bTrunks=IsTrunks(Brief);
+        UMaterialInterface* Skin=Body->GetMaterial(Body->GetMaterialIndex(TEXT("skin")));
+        if (Skin)
+            for (FName Name : {FName(TEXT("leg_skin")),FName(TEXT("trunk_skin")),FName(TEXT("shorts_skin")),
+                FName(TEXT("bare_lower_skin")),FName(TEXT("midriff_skin")),BareFoot.Slots[0],BareFoot.Slots[1],
+                BareAnkle.Slots[0],BareAnkle.Slots[1]})
+                LowerBody->SetMaterialByName(Name,Skin);
+        ShowSection(*LowerBody,TEXT("leg_skin"),Brief && !bTrunks);
+        ShowSection(*LowerBody,TEXT("trunk_skin"),bTrunks);
+        ShowSection(*LowerBody,TEXT("shorts_skin"),bShorts);
+        ShowSection(*LowerBody,TEXT("bare_lower_skin"),bVisible && !Brief);
+        ShowSection(*LowerBody,TEXT("midriff_skin"),(bVisible || bShorts) && WardrobeOutfit!=RiverfrontLife::BaseLayer);
+        ShowSection(*LowerBody,TEXT("tailored_trousers"),Trousers==TEXT("tailored_trousers"));
+        ShowSection(*LowerBody,TEXT("denim_shorts"),bShorts);
+        if (!Trousers.IsNone()) DyeWardrobeSection(*LowerBody,Trousers,Bottom->Tint);
+
+        const FName Fabric=bTrunks ? TEXT("trunk_knit") : TEXT("underwear_knit");
+        const FName Band=bTrunks ? TEXT("trunk_band") : TEXT("underwear_band");
+        for (FName Slot : {FName(TEXT("underwear_knit")),FName(TEXT("underwear_band")),
+            FName(TEXT("trunk_knit")),FName(TEXT("trunk_band"))})
+            ShowSection(*LowerBody,Slot,Brief && (Slot==Fabric || Slot==Band));
+        if (Brief)
+        {
+            DyeWardrobeSection(*LowerBody,Fabric,InnerDye(*Brief,false),CottonMaterial);
+            DyeWardrobeSection(*LowerBody,Band,InnerDye(*Brief,true),CottonMaterial);
+        }
+
+        const auto& ShoeStyle=FootSections(Shoe ? Shoe->Cut : ERiverfrontGarmentCut::Standard,true);
+        const auto& SockStyle=FootSections(Sock ? Sock->Cut : ERiverfrontGarmentCut::Standard,false);
         for (int32 Side=0;Side<2;++Side)
         {
             const int32 Bit=1<<Side;
-            ShowSection(*LowerBody,Side ? TEXT("street_shoe_r") : TEXT("street_shoe_l"),bSplitFeet && (Shoes&Bit));
-            ShowSection(*LowerBody,Side ? TEXT("cotton_sock_r") : TEXT("cotton_sock_l"),bSplitFeet && (Socks&Bit));
-            ShowSection(*LowerBody,Side ? TEXT("foot_skin_r") : TEXT("foot_skin_l"),bSplitFeet && !(Socks&Bit));
+            const bool bHasShoe=bSplitFeet && (Shoes&Bit);
+            const bool bHasSock=bSplitFeet && (Socks&Bit);
+            for (const auto* Style : {&StreetShoe,&CourtShoe,&Boot})
+                ShowSection(*LowerBody,Style->Slots[Side],bHasShoe && Style==&ShoeStyle);
+            for (const auto* Style : {&AnkleSock,&CrewSock})
+                ShowSection(*LowerBody,Style->Slots[Side],bHasSock && Style==&SockStyle);
+            ShowSection(*LowerBody,BareFoot.Slots[Side],bSplitFeet && !bHasSock && !bHasShoe);
+            ShowSection(*LowerBody,BareAnkle.Slots[Side],bHasShoe && !bHasSock);
+            ShowSection(*LowerBody,SockToe.Slots[Side],bHasSock && !bHasShoe);
+            if (bHasShoe)
+                DyeWardrobeSection(*LowerBody,ShoeStyle.Slots[Side],ShoeId==RiverfrontLife::StreetShoes ? FLinearColor::White : FootDye(*Shoe));
+            if (bHasSock)
+            {
+                DyeWardrobeSection(*LowerBody,SockStyle.Slots[Side],FootDye(*Sock),CottonMaterial);
+                if (!bHasShoe) DyeWardrobeSection(*LowerBody,SockToe.Slots[Side],FootDye(*Sock),CottonMaterial);
+            }
         }
         LowerBody->SetLeaderPoseComponent(ChangingMesh ? static_cast<USkinnedMeshComponent*>(ChangingMesh.Get()) : Body);
     }
-    ShowSection(*Body,TEXT("bottom_denim"),!bVisible);
-    if (ChangingMesh) ShowSection(*ChangingMesh,TEXT("bottom_denim"),!bVisible);
-    ShowSection(*Body,TEXT("shoe"),!bSplitFeet);
-    if (ChangingMesh) ShowSection(*ChangingMesh,TEXT("shoe"),!bSplitFeet);
+
+    for (auto* View : {static_cast<USkinnedMeshComponent*>(Body),static_cast<USkinnedMeshComponent*>(ChangingMesh.Get())})
+    {
+        if (!View) continue;
+        ShowSection(*View,TEXT("bottom_denim"),!bVisible && Trousers.IsNone());
+        ShowSection(*View,TEXT("shoe"),!bSplitFeet);
+    }
     if (LowerBody) LowerBody->SetVisibility(bShowLower);
 }
 
 UPoseableMeshComponent* ARiverfrontCharacter::CreateGarmentDisplay(FName Item,int32 Side)
 {
-    const bool bBriefs=Item==RiverfrontLife::Briefs, bBra=Item==RiverfrontLife::SportsBra;
-    const bool bShoes=Item==RiverfrontLife::StreetShoes,bSocks=Item==RiverfrontLife::CottonSocks;
-    auto* Source=(bBriefs || bShoes || bSocks) ? LowerBody.Get() : GetMesh();
-    if (!Source || !Source->GetSkeletalMeshAsset()) return nullptr;
-    const FName Panel=bBra ? TEXT("foundation_knit") : bBriefs ? TEXT("underwear_knit") : TEXT("bottom_denim");
-    const FName Band=bBra ? FName(TEXT("foundation_elastic")) : bBriefs ? FName(TEXT("underwear_band")) : FName();
-    const int32 MainSlot=Source->GetMaterialIndex(Panel);
-    if (MainSlot==INDEX_NONE && !bShoes && !bSocks) return nullptr;
+    const auto* Entry=RiverfrontLife::FindItem(Item);
+    if (!Entry) return nullptr;
+    auto* Body=GetMesh();
+    const bool bBriefs=Entry->Slot==ERiverfrontWearSlot::InnerBottom;
+    const bool bInnerTop=Entry->Slot==ERiverfrontWearSlot::InnerTop;
+    const bool bShoes=Entry->Slot==ERiverfrontWearSlot::Shoes;
+    const bool bFootwear=bShoes || Entry->Slot==ERiverfrontWearSlot::Socks;
+    const FName Trousers=TrouserSection(Entry->Cut);
+    const auto& Footwear=FootSections(Entry->Cut,bShoes);
+    USkeletalMesh* Shape=Body->GetSkeletalMeshAsset();
+    FName Panel=TEXT("bottom_denim");
+    FName Band;
+    if (bInnerTop)
+    {
+        Shape=LoadFoundationMesh(Item);
+        Panel=TEXT("foundation_knit");
+        Band=TEXT("foundation_elastic");
+    }
+    else if (bBriefs || bFootwear || !Trousers.IsNone())
+    {
+        Shape=LoadLowerBodyMesh();
+        if (bBriefs)
+        {
+            Panel=IsTrunks(Entry) ? TEXT("trunk_knit") : TEXT("underwear_knit");
+            Band=IsTrunks(Entry) ? TEXT("trunk_band") : TEXT("underwear_band");
+        }
+        else Panel=Trousers;
+    }
+    else if (Entry->Slot==ERiverfrontWearSlot::Top)
+    {
+        Shape=LoadFittedTop(Entry->Cut);
+        Panel=TEXT("western_top");
+    }
+    if (!Shape || !Shape->GetMaterials().ContainsByPredicate([&](const FSkeletalMaterial& Slot)
+    {
+        return bFootwear ? Slot.MaterialSlotName==Footwear.Slots[0] : Slot.MaterialSlotName==Panel;
+    })) return nullptr;
+
     auto* Garment=NewObject<UPoseableMeshComponent>(this);
     AddInstanceComponent(Garment);
-    Garment->SetupAttachment(Source);
-    Garment->SetSkinnedAssetAndUpdate(Source->GetSkeletalMeshAsset());
+    Garment->SetupAttachment(Body);
+    Garment->SetSkinnedAssetAndUpdate(Shape);
     Garment->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Garment->SetCanEverAffectNavigation(false);
     Garment->RegisterComponent();
-    for (int32 Slot=0;Slot<Source->GetNumMaterials();++Slot)
+    for (const auto& Slot : Shape->GetMaterials())
     {
-        const FName Name=Source->GetSkeletalMeshAsset()->GetMaterials()[Slot].MaterialSlotName;
-        const FName Left=bShoes ? TEXT("street_shoe_l") : TEXT("cotton_sock_l");
-        const FName Right=bShoes ? TEXT("street_shoe_r") : TEXT("cotton_sock_r");
-        const bool bDisplay=(bShoes || bSocks) ? ((Side!=1 && Name==Left) || (Side!=0 && Name==Right))
+        const FName Name=Slot.MaterialSlotName;
+        const bool bDisplay=bFootwear ? ((Side!=1 && (Name==Footwear.Slots[0] || (!bShoes && Name==SockToe.Slots[0]))) ||
+            (Side!=0 && (Name==Footwear.Slots[1] || (!bShoes && Name==SockToe.Slots[1]))))
             : Name==Panel || (!Band.IsNone() && Name==Band);
-        if (!bDisplay)
+        ShowSection(*Garment,Name,bDisplay);
+        if (!bDisplay) continue;
+
+        if (bBriefs || bInnerTop)
+            DyeWardrobeSection(*Garment,Name,InnerDye(*Entry,Name==Band),CottonMaterial);
+        else if (bFootwear)
         {
-            for (int32 LOD=0;LOD<Source->GetNumLODs();++LOD) Garment->ShowMaterialSection(Slot,INDEX_NONE,false,LOD);
-            continue;
-        }
-        if (bShoes || bSocks) Garment->SetMaterial(Slot,Source->GetMaterial(Slot));
-        else if (bBriefs || bBra)
-        {
-            const FColor Color=bBra ? (Name==Band ? FColor(32,42,46) : FColor(47,60,68))
-                : (Name==Band ? FColor(41,47,52) : FColor(61,73,81));
-            if (auto* Fabric=Garment->CreateDynamicMaterialInstance(Slot,CottonMaterial))
-                Fabric->SetVectorParameterValue(TEXT("BaseColorFactor"),FLinearColor(Color));
+            if (Item!=RiverfrontLife::StreetShoes)
+                DyeWardrobeSection(*Garment,Name,FootDye(*Entry),bShoes ? nullptr : CottonMaterial.Get());
         }
         else
         {
-            auto* Worn=Source->GetMaterial(Slot);
-            const auto* Entry=RiverfrontLife::FindItem(Item);
-            const bool bChino=Entry && Entry->Cut==ERiverfrontGarmentCut::Chino;
-            auto* Instance=Cast<UMaterialInstanceDynamic>(Worn);
-            auto* Parent=bChino ? ChinoFabric() : (Instance ? Instance->Parent.Get() : Worn);
-            if (auto* Material=Garment->CreateDynamicMaterialInstance(Slot,Parent ? Parent : Worn))
-            {
-                const FLinearColor Dye=bChino ? Entry->Tint : FLinearColor(Item==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73));
-                Material->SetVectorParameterValue(TEXT("BaseColorFactor"),Dye);
-                Material->SetVectorParameterValue(TEXT("TrouserDye"),Dye);
-            }
+            const bool bChino=Entry->Cut==ERiverfrontGarmentCut::Chino;
+            const FLinearColor Dye=Item==TEXT("denim-dark") ? FLinearColor(FColor(53,62,73)) :
+                Item==TEXT("denim-washed") ? FLinearColor(FColor(121,149,173)) : Entry->Tint;
+            DyeWardrobeSection(*Garment,Name,Dye,bChino ? ChinoFabric() : nullptr);
         }
     }
-    Garment->CopyPoseFromSkeletalComponent(GetMesh());
+    Garment->CopyPoseFromSkeletalComponent(Body);
     Garment->RefreshBoneTransforms();
     return Garment;
 }
@@ -163,10 +291,12 @@ FTransform ARiverfrontCharacter::FoldedGarmentTransform(const USkinnedMeshCompon
     auto* Body=GetMesh();
     const FVector Palm=Wearer.GetSocketLocation(TEXT("Handr"));
     const FVector Grip=Palm+(Palm-Wearer.GetSocketLocation(TEXT("Elbowr"))).GetSafeNormal()*7.;
-    const bool bFoot=Item==RiverfrontLife::StreetShoes || Item==RiverfrontLife::CottonSocks;
+    const auto* Entry=RiverfrontLife::FindItem(Item);
+    const bool bFoot=Entry && (Entry->Slot==ERiverfrontWearSlot::Shoes || Entry->Slot==ERiverfrontWearSlot::Socks);
+    const bool bChest=Entry && (Entry->Slot==ERiverfrontWearSlot::InnerTop || Entry->Slot==ERiverfrontWearSlot::Top);
     const FVector Anchor=bFoot ? (Body->GetSocketTransform(TEXT("Footl"),RTS_Component).GetLocation()+
         Body->GetSocketTransform(TEXT("Footr"),RTS_Component).GetLocation())*.5 :
-        Body->GetSocketTransform(Item==RiverfrontLife::SportsBra ? TEXT("Chest") : TEXT("Pelvis"),RTS_Component).GetLocation();
+        Body->GetSocketTransform(bChest ? TEXT("Chest") : TEXT("Pelvis"),RTS_Component).GetLocation();
     FTransform Fold(Body->GetComponentQuat(),FVector::ZeroVector,Body->GetComponentScale()*FVector(.40,.43,.32));
     Fold.SetLocation(Grip-Fold.TransformVector(Anchor));
     return Fold;
@@ -188,7 +318,8 @@ void ARiverfrontCharacter::PoseChangingTrousers(FName Item,float Undress)
         MovingGarment=CreateGarmentDisplay(Item);
         if (!MovingGarment) return;
         MovingGarment->ComponentTags.Add(TEXT("WardrobeMovingJeans"));
-        SetLowerBodyVisible(true,Item==RiverfrontLife::Briefs);
+        const auto* Entry=RiverfrontLife::FindItem(Item);
+        SetLowerBodyVisible(true,Entry && Entry->Slot==ERiverfrontWearSlot::InnerBottom);
         ShowHeldWardrobeItem(NAME_None);
     }
     PoseLowerDressingBody(Undress);
@@ -238,16 +369,16 @@ void ARiverfrontCharacter::PoseChangingTrousers(FName Item,float Undress)
     MovingGarment->SetWorldTransform(Placed);
 }
 
-void ARiverfrontCharacter::PoseChangingSportsBra(float Undress)
+void ARiverfrontCharacter::PoseChangingInnerTop(FName Item,float Undress)
 {
     if (!PreparePosedMesh()) return;
     if (!MovingGarment)
     {
-        MovingGarment=CreateGarmentDisplay(RiverfrontLife::SportsBra);
+        MovingGarment=CreateGarmentDisplay(Item);
         if (!MovingGarment) return;
         MovingGarment->ComponentTags.Add(TEXT("WardrobeMovingBra"));
         ShowHeldWardrobeItem(NAME_None);
-        SetBraFabricVisible(false);
+        SetInnerTopVisible(false);
     }
     const float Overhead=FMath::SmoothStep(0.f,.56f,Undress)*(1.f-FMath::SmoothStep(.65f,.98f,Undress));
     const float Hand=FMath::SmoothStep(.59f,1.f,Undress);
@@ -261,7 +392,7 @@ void ARiverfrontCharacter::PoseChangingSportsBra(float Undress)
     Lifted.SetLocation(Worn.TransformPosition(Center)-Lifted.TransformVector(Center)
         +FVector::UpVector*Rise*56.+GetActorForwardVector()*Rise*10.);
     FTransform Placed;
-    Placed.Blend(Lifted,FoldedGarmentTransform(*ChangingMesh,RiverfrontLife::SportsBra),Hand);
+    Placed.Blend(Lifted,FoldedGarmentTransform(*ChangingMesh,Item),Hand);
     MovingGarment->SetWorldTransform(Placed);
 }
 
@@ -336,7 +467,9 @@ void ARiverfrontCharacter::PoseChangingFootwear(FName Item,float Undress)
         if (MovingGarment) { MovingGarment->DestroyComponent(); MovingGarment=nullptr; }
         ChangingFoot=Side;
         const int32 Stationary=Side==0 ? 2 : 0;
-        const bool bShoes=Item==RiverfrontLife::StreetShoes;
+        const auto* Entry=RiverfrontLife::FindItem(Item);
+        const bool bShoes=Entry && Entry->Slot==ERiverfrontWearSlot::Shoes;
+        ChangingFootwear=Item;
         SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear,false,bShoes ? Stationary : INDEX_NONE,bShoes ? INDEX_NONE : Stationary);
         MovingGarment=CreateGarmentDisplay(Item,Side);
         if (!MovingGarment) return;

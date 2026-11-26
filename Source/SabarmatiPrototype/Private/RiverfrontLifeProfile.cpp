@@ -126,7 +126,14 @@ const FRiverfrontWearable* RiverfrontLife::FindItem(FName Id)
 bool RiverfrontLife::IsPullover(FName Id)
 {
     const auto* Item=FindItem(Id);
-    return Item && (Item->Cut==ERiverfrontGarmentCut::Kurta || Item->Cut==ERiverfrontGarmentCut::CrewTee);
+    return Item && (Item->Cut==ERiverfrontGarmentCut::Kurta || Item->Cut==ERiverfrontGarmentCut::CrewTee ||
+        Item->Cut==ERiverfrontGarmentCut::FineKnit || Item->Slot==ERiverfrontWearSlot::InnerTop);
+}
+
+FName RiverfrontLife::FittedItem(FName Id, ERiverfrontGender Gender)
+{
+    const auto* Item=FindItem(Id);
+    return Item && Item->Fits(Gender) ? Id : NAME_None;
 }
 
 const TArray<FRiverfrontWearable>& RiverfrontLife::Catalog()
@@ -273,6 +280,7 @@ FText RiverfrontLife::Buy(const FString& Slot, FName Id, bool bPayFromBank)
     if (!Item) return LOCTEXT("UnknownItem", "This item is unavailable.");
     return Update(Slot, [&](URiverfrontLocalProfile& Profile)
     {
+        if (!Item->Fits(Profile.AvatarGender)) return LOCTEXT("InnerFit", "This garment is fitted to the female avatar.");
         if (!Profile.OwnedItems.Contains(Id))
         {
             int64& Account = bPayFromBank ? Profile.BankRupees : Profile.CashRupees;
@@ -307,7 +315,7 @@ FText RiverfrontLife::TryOn(URiverfrontLocalProfile& Profile, EDressingAction Ac
     const bool bBottom=Item->Slot==ERiverfrontWearSlot::Bottom;
     if (Action!=EDressingAction::PutBack)
     {
-        if (Id==SportsBra && Profile.AvatarGender!=ERiverfrontGender::Female)
+        if (!Item->Fits(Profile.AvatarGender))
             return LOCTEXT("InnerFit", "This garment is fitted to the female avatar.");
         if (const auto* Cover=FindItem(CoveringItem(Item->Slot,Profile.EquippedOutfit,Profile.EquippedBottom,Profile.EquippedShoes)))
             return FText::Format(LOCTEXT("CoveredLayer","Take off {0} first."),FText::FromString(Cover->Label));
@@ -319,6 +327,7 @@ FText RiverfrontLife::TryOn(URiverfrontLocalProfile& Profile, EDressingAction Ac
         Item->Slot==ERiverfrontWearSlot::Socks ? Profile.EquippedSocks : Profile.EquippedAccessory;
     if (bTop && Worn.IsNone()) Worn=StarterOutfit;
     const FName Empty=bTop ? BaseLayer : bBottom ? Underwear : NAME_None;
+    const bool bSlotEmpty=Worn==Empty || (Item->Slot==ERiverfrontWearSlot::InnerTop && FittedItem(Worn,Profile.AvatarGender).IsNone());
     if (Action==EDressingAction::TakeOff && !Profile.HeldWardrobeItem.IsNone())
         return LOCTEXT("HandsFull", "Put the item in your hand back first.");
     switch (Action)
@@ -329,12 +338,12 @@ FText RiverfrontLife::TryOn(URiverfrontLocalProfile& Profile, EDressingAction Ac
         break;
     case EDressingAction::Take:
         if (!Profile.HeldWardrobeItem.IsNone()) return LOCTEXT("HandsFull", "Put the item in your hand back first.");
-        if (Worn != Empty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
+        if (!bSlotEmpty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
         Profile.HeldWardrobeItem = Id;
         break;
     case EDressingAction::PutOn:
         if (Profile.HeldWardrobeItem != Id) return LOCTEXT("NotHeld", "Take the item into your hand first.");
-        if (Worn != Empty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
+        if (!bSlotEmpty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
         Worn = Id;
         Profile.HeldWardrobeItem = NAME_None;
         break;
@@ -383,7 +392,7 @@ FText RiverfrontLife::SetAvatarGender(const FString& Slot, ERiverfrontGender Gen
     return Update(Slot, [Gender](URiverfrontLocalProfile& Profile)
     {
         Profile.AvatarGender = Gender;
-        if (Gender==ERiverfrontGender::Male && Profile.HeldWardrobeItem==SportsBra) Profile.HeldWardrobeItem=NAME_None;
+        Profile.HeldWardrobeItem=FittedItem(Profile.HeldWardrobeItem,Gender);
         return FText::GetEmpty();
     });
 }
