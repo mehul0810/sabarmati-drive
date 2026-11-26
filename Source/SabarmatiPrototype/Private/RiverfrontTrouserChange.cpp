@@ -141,11 +141,10 @@ UPoseableMeshComponent* ARiverfrontCharacter::CreateGarmentDisplay(FName Item,in
         else
         {
             auto* Worn=Source->GetMaterial(Slot);
-            auto* Instance=Cast<UMaterialInstanceDynamic>(Worn);
             const auto* Entry=RiverfrontLife::FindItem(Item);
             const bool bChino=Entry && Entry->Cut==ERiverfrontGarmentCut::Chino;
             auto* Native=Source->GetSkeletalMeshAsset()->GetMaterials()[Slot].MaterialInterface.Get();
-            auto* Parent=bChino ? CottonMaterial.Get() : (Instance && Instance->Parent!=CottonMaterial ? Instance->Parent.Get() : Native);
+            auto* Parent=bChino ? ChinoFabric() : Native;
             if (auto* Material=Garment->CreateDynamicMaterialInstance(Slot,Parent ? Parent : Worn))
             {
                 const FLinearColor Dye=bChino ? Entry->Tint : FLinearColor(Item==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73));

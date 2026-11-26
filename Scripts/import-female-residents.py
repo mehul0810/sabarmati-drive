@@ -59,6 +59,27 @@ def make_jersey_material():
     return material
 
 
+def make_twill_material():
+    # Retain the tailored waistband, fly, pocket stitching and fold normals from the trouser UVs.
+    edit=ue.MaterialEditingLibrary
+    path=TARGET+"/M_ChinoTwill"
+    mat=library.duplicate_asset(ROOT+"/Wardrobe/Everyday/M_EverydayFabric",path)
+    if not mat:
+        raise RuntimeError("Expected a clean staging folder for "+path)
+    base=edit.get_material_property_input_node(mat,ue.MaterialProperty.MP_BASE_COLOR)
+    weave=next(n for n in edit.get_inputs_for_material_expression(mat,base) if isinstance(n,ue.MaterialExpressionTextureSample))
+    soften=edit.create_material_expression(mat,ue.MaterialExpressionLinearInterpolate)
+    soften.set_editor_property("const_b",.78)
+    soften.set_editor_property("const_alpha",.40)
+    if not edit.connect_material_expressions(weave,"RGB",soften,"A") or not edit.connect_material_expressions(soften,"",base,"A"):
+        raise RuntimeError("Could not tint the cotton twill")
+    rough=edit.get_material_property_input_node(mat,ue.MaterialProperty.MP_ROUGHNESS)
+    rough.set_editor_property("r",.86)
+    edit.layout_material_expressions(mat)
+    edit.recompile_material(mat)
+    if not library.save_loaded_asset(mat,False): raise RuntimeError(path)
+
+
 def import_outfit(name, reference_path):
     path = TARGET + "/" + name
     if library.does_asset_exist(path):
@@ -126,6 +147,7 @@ def import_outfit(name, reference_path):
 
 
 if TEE:
+    make_twill_material()
     jersey_material=make_jersey_material()
     import_outfit("SK_MaleCrewTee","Everyday/SK_RiverEveryday")
     import_outfit("SK_FemaleCrewTee","Female/SK_FemaleEveryday")

@@ -210,6 +210,7 @@ private:
     FName WardrobeTone;
     UPROPERTY(Transient) TObjectPtr<class UPrimitiveComponent> HeldProp;
     FName HeldPropItem;
+    UMaterialInterface* ChinoFabric() const;
     void UseWardrobeMesh(USkeletalMesh* Model, bool bKurta);
     void UpdateWatchAttachment();
     bool bCroppedHair = false;

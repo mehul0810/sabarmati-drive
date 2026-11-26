@@ -633,7 +633,7 @@ private:
         const FString Name=ItemLabel(Id);
         const FText Error=Trial.IsValid() ? RiverfrontLife::TryOn(*Trial.Get(),Action,Id) : RiverfrontLife::Dress(Slot,Action,Id);
         const FString Message=Action==EAction::Take ? Name+TEXT(" in hand.") :
-            Action==EAction::PutOn ? TEXT("Wearing ")+Name+TEXT(".") : Name+TEXT(" returned to the shelf.");
+            Action==EAction::PutOn ? (Trial.IsValid() && !Owned.Contains(Id) ? TEXT("Trying on ") : TEXT("Wearing "))+Name+TEXT(".") : Name+TEXT(" returned to the shelf.");
         return Complete(Error,Message);
     }
 

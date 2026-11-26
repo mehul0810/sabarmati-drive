@@ -275,6 +275,21 @@ void ARiverfrontCharacter::BindAuthoredAvatarMotion(USkeletalMeshComponent* Body
         *Mesh->GetPathName(), *Motion->GetPathName());
 }
 
+UMaterialInterface* ARiverfrontCharacter::ChinoFabric() const
+{
+    // The everyday trouser charts share the stitched fly and pocket UVs. The kurta has a separate atlas.
+    const auto* Mesh=GetMesh()->GetSkeletalMeshAsset();
+    const int32 Slot=GetMesh()->GetMaterialIndex(TEXT("bottom_denim"));
+    if (Mesh && Mesh->GetMaterials().IsValidIndex(Slot))
+    {
+        const auto* Original=Mesh->GetMaterials()[Slot].MaterialInterface.Get();
+        if (Original && Original->GetFName()==TEXT("M_EverydayFabric"))
+            if (auto* Twill=LoadObject<UMaterialInterface>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Jersey/M_ChinoTwill.M_ChinoTwill"))) return Twill;
+    }
+    return CottonMaterial.Get();
+}
+
 void ARiverfrontCharacter::UseWardrobeMesh(USkeletalMesh* Model, bool bKurta)
 {
     if (!Model || GetMesh()->GetSkeletalMeshAsset() == Model) return;
@@ -524,7 +539,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
-    SetSurface(TEXT("bottom_denim"), bChino ? CottonMaterial.Get() : Cloth, Trousers);
+    SetSurface(TEXT("bottom_denim"), bChino ? ChinoFabric() : Cloth, Trousers);
     if (bTee)
     {
         SetSurface(TEXT("jersey_knit"),nullptr,Shirt);
