@@ -141,6 +141,7 @@ private:
 #if !UE_BUILD_SHIPPING
     void RunMorningReview();
     void RunAwarenessReview();
+    void RunErrandReview();
     void RunRenderingBenchmark();
     void RunDistrictReview();
     void RunGaitReview();

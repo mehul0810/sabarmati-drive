@@ -41,6 +41,9 @@ public:
     bool HasPlayerAwareness() const { return Awareness != nullptr; }
     bool HasSeenPlayer() const { return bPlayerVisible; }
     double HeardPlayerAt() const { return LastPlayerFootstep; }
+    int32 PrintCounterVisits() const { return PrintVisits; }
+    int32 TeaCounterVisits() const { return TeaVisits; }
+    bool HasTwoShopErrand() const { return bTwoShopErrand; }
 #endif
 
 protected:
@@ -80,7 +83,8 @@ private:
     UPROPERTY() TObjectPtr<UAnimSequence> IdlePose;
     UPROPERTY() TObjectPtr<UBlendSpace1D> GaitBlend;
     TArray<FVector> Errand;
-    int32 ErrandStep=0,ErrandDirection=1,CounterVisits=0;
+    int32 ErrandStep=0,ErrandDirection=1,CounterVisits=0,PrintVisits=0,TeaVisits=0;
+    bool bTwoShopErrand=false;
     static bool SpawnFamilyOuting(ARiverfrontWorld& District, USkeletalMesh& FirstModel, UAnimSequence& FirstWalk,
         USkeletalMesh& SecondModel, UAnimSequence& SecondWalk);
     void TickFamily(float Delta);

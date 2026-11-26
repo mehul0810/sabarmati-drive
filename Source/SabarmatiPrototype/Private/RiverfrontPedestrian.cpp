@@ -122,6 +122,40 @@ bool ValidateCircuit(UWorld& World, const FPedestrianRoute& Route, double& Groun
     return true;
 }
 
+// Amina's two shops share a pavement. Check the complete walk, including both
+// doorways, against real floor and solid geometry before using the route.
+bool MakeTwoShopErrand(UWorld& World, const TArray<FVector>& Print, const TArray<FVector>& Tea,
+    TArray<FVector>& Out)
+{
+    if (Print.Num()!=4 || Tea.Num()!=4) return false;
+    Out={Print[3],Print[2],Print[1],Print[0],Tea[0],Tea[1],Tea[2],Tea[3]};
+    const FCollisionObjectQueryParams Statics(ECC_WorldStatic);
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(TwoShopErrand),false);
+    const FCollisionShape Body=FCollisionShape::MakeCapsule(25.f,79.f);
+    FVector Previous=Out[0]+FVector(0.,0.,93.);
+    for (int32 Leg=0; Leg<Out.Num()-1; ++Leg)
+    {
+        const int32 Samples=FMath::Max(1,FMath::CeilToInt(FVector::Dist(Out[Leg],Out[Leg+1])/60.));
+        for (int32 I=0; I<=Samples; ++I)
+        {
+            const FVector Feet=FMath::Lerp(Out[Leg],Out[Leg+1],double(I)/Samples);
+            const FVector Centre=Feet+FVector(0.,0.,93.);
+            FHitResult Floor,Obstacle;
+            const bool bFloor=World.LineTraceSingleByObjectType(Floor,Feet+FVector(0,0,25),Feet-FVector(0,0,25),Statics,Query)
+                && Floor.ImpactNormal.Z>.75;
+            if (!bFloor || World.SweepSingleByObjectType(Obstacle,Previous,Centre,FQuat::Identity,Statics,Body,Query))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Sabarmati errand: route blocked near %s by %s (floor=%d)."),
+                    *Feet.ToCompactString(),*GetNameSafe(Obstacle.GetComponent()),bFloor);
+                Out.Reset();
+                return false;
+            }
+            Previous=Centre;
+        }
+    }
+    return true;
+}
+
 // Variants persist across city tile reloads. Use a separate seeded draw for the
 // body so clothing, walking speed and social roles can all appear with either rig.
 ERiverfrontGender GenderForVariant(int32 Variant)
@@ -239,6 +273,8 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
             if (Tea && bFamilyAtTea) continue;
             const auto& Path=District->GetShopVisit(Tea);
             if (Path.Num()<3) continue;
+            TArray<FVector> TwoShops;
+            const bool bTwoShops=!Tea && Public && MakeTwoShopErrand(World,Path,District->GetShopVisit(true),TwoShops);
             if (auto* Customer=World.SpawnActor<ARiverfrontPedestrian>(Path[0],FRotator::ZeroRotator))
             {
                 const bool Alternate=SecondReady;
@@ -252,7 +288,11 @@ int32 ARiverfrontPedestrian::SpawnRiverfrontCrowd(UWorld& World)
                     Customer->SetGarmentColor(TEXT("scarf"), FColor(108, 120, 131));
                     Customer->EnablePlayerAwareness();
                 }
-                Customer->Errand=Path; Customer->ErrandStep=1;
+                Customer->bTwoShopErrand=bTwoShops;
+                Customer->Errand=bTwoShops?MoveTemp(TwoShops):Path;
+                Customer->ErrandStep=bTwoShops?2:1;
+                Customer->ErrandDirection=bTwoShops?-1:1;
+                if (bTwoShops) UE_LOG(LogTemp, Display, TEXT("Sabarmati errand: Amina walks between the print and tea counters."));
                 Customer->SetActorLocation(Path[0]); Customer->RestLeft=Tea?1.8:7.2; Customer->SetMoving(false);
             }
         }
@@ -474,11 +514,15 @@ void ARiverfrontPedestrian::TickErrand(float Delta)
 {
     if (RestLeft>0.)
     {
-        if (bVisitingPrintmaker && ErrandDirection < 0 && ErrandStep == Errand.Num() - 2)
+        const bool bLookingAtPrint=bVisitingPrintmaker && (bTwoShopErrand
+            ? ErrandDirection>0 && ErrandStep==1 : ErrandDirection<0 && ErrandStep==Errand.Num()-2);
+        if (bLookingAtPrint)
         {
-            const FVector Inside = (Errand[1] - Errand[0]).GetSafeNormal2D();
+            const FVector Inside = bTwoShopErrand ? (Errand[0]-Errand[2]).GetSafeNormal2D()
+                : (Errand[1]-Errand[0]).GetSafeNormal2D();
             // Look over the prints behind the counter while holding the portfolio.
-            LookTowards(Errand.Last() + Inside * 270. + FVector(Inside.Y, -Inside.X, 0.) * 95., Delta);
+            LookTowards((bTwoShopErrand?Errand[0]:Errand.Last()) + Inside * 270.
+                + FVector(Inside.Y, -Inside.X, 0.) * 95., Delta);
         }
         RestLeft-=Delta;
         if (RestLeft<=0.) SetMoving(true);
@@ -491,7 +535,13 @@ void ARiverfrontPedestrian::TickErrand(float Delta)
     if (To.Size()>4.) return;
     if (ErrandStep==Errand.Num()-1 || ErrandStep==0)
     {
-        if (ErrandStep) ++CounterVisits;
+        if (ErrandStep || bTwoShopErrand) ++CounterVisits;
+        if (bTwoShopErrand)
+        {
+            if (ErrandStep==0) ++PrintVisits; else ++TeaVisits;
+            UE_LOG(LogTemp, Display, TEXT("Sabarmati errand: Amina reached %s (print=%d tea=%d)."),
+                ErrandStep==0?TEXT("the print counter"):TEXT("the tea counter"),PrintVisits,TeaVisits);
+        }
         ErrandDirection=-ErrandDirection;
         RestLeft=ErrandStep?6.+FMath::Fmod(Speed,4.):11.+FMath::Fmod(Speed,7.);
         SetMoving(false);
