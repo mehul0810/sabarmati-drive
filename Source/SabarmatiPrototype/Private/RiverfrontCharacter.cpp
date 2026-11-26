@@ -449,7 +449,14 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     const bool bPublic = DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
     USkeletalMesh* Model = DefaultAvatarMesh;
     bool bUsingKurtaRig = false;
-    if (bPublic && (bKurta || AvatarGender == ERiverfrontGender::Female))
+    if (bPublic && bBaseLayer)
+    {
+        const TCHAR* BaseMesh = AvatarGender == ERiverfrontGender::Female
+            ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleFoundation.SK_FemaleFoundation")
+            : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleFoundation.SK_MaleFoundation");
+        if (auto* Foundation = LoadObject<USkeletalMesh>(nullptr, BaseMesh)) Model = Foundation;
+    }
+    else if (bPublic && (bKurta || AvatarGender == ERiverfrontGender::Female))
     {
         if (USkeletalMesh* Fitted = RiverfrontResident::LoadOutfitMesh(AvatarGender, bKurta))
         {
@@ -465,8 +472,8 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     UseWardrobeMesh(Model, bUsingKurtaRig);
 
     // The fabric is UV-mapped on the garment and moves with the animated body.
-    const FColor Shirt = bBaseLayer ? FColor(214,214,202) : bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
-    const FColor Trim = bBaseLayer ? FColor(186,184,172) : bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
+    const FColor Shirt = bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
+    const FColor Trim = bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
     const FColor Trousers(53,62,73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
@@ -493,13 +500,15 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     // The everyday shirt and jeans have their own complete clothing UV atlas and normal maps.
     // Passing a null override keeps the material assigned to each skeletal mesh section.
     UMaterialInterface* Cloth = nullptr;
-    if (bBaseLayer || !bPublic || bUsingKurtaRig)
+    if (!bPublic || bUsingKurtaRig)
         Cloth = CottonMaterial.Get();
     else if (Model->GetFName() == TEXT("SK_RiverResident"))
         Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
-    SetSurface(TEXT("bottom_denim"), bBaseLayer && bPublic ? nullptr : Cloth, Trousers);
+    SetSurface(TEXT("bottom_denim"), Cloth, Trousers);
+    SetSurface(TEXT("foundation_knit"), CottonMaterial, FColor(47, 60, 68));
+    SetSurface(TEXT("foundation_elastic"), CottonMaterial, FColor(32, 42, 46));
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)
     {

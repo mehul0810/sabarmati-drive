@@ -27,3 +27,15 @@ These are plane intersections through the reference skin in its A-pose. Each ent
 | Upper arm | 7.9 × 8.8 | 8.3 × 10.2 |
 | Thigh | 14.6 × 16.8 | 16.7 × 19.2 |
 | Calf | 10.6 × 11.4 | 11.5 × 12.5 |
+
+## Undressed upper bodies
+
+The wardrobe uses two fitted meshes on the everyday skeleton. The male mesh exposes the athletic torso. The female mesh includes an opaque knit bralette with an elastic band. Both reuse the original denim, shoes, facial sculpt, hair attachment and skin maps. Only the selected mesh is drawn.
+
+To rebuild, use the hm08 OBJ and the official clothing pack listed in [the skin and source notes](RESIDENT-SKIN.md). With NumPy and Pillow available, run the following command. The output GLBs are temporary import inputs.
+
+```sh
+python3 Scripts/make-foundation-bodies.py /path/to/base.obj /path/to/system-assets /tmp/sabarmati-foundation
+```
+
+In a scratch Unreal project containing the shipped People assets, set `SABARMATI_FOUNDATION_SOURCE` to the GLB output directory and run `Scripts/import-female-residents.py`. Promote the two verified skeletal meshes from `Wardrobe/Foundation`.

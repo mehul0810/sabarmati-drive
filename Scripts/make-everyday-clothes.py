@@ -113,7 +113,7 @@ def smooth(edge0, edge1, value):
     return t*t*(3-2*t)
 
 
-def build(base, reference, system, output):
+def build(base, reference, system, output, foundation=None):
     io = runpy.run_path(str(SCRIPTS/"prepare-riverfront-hatch.py"))
     scene, raw = io["read_glb"](reference)
     binary = bytearray(raw)
@@ -264,10 +264,19 @@ def build(base, reference, system, output):
         for _,face in faces:
             panels[parts[comps[face[0][0]]]].append(face)
         for slot, polygons in panels.items():
+            if foundation and slot == "top_teal_woven":
+                continue
             add_panel(slot,fitted,uv,polygons)
-        write_textures(asset,name,uv,panels,output)
+        if not foundation:
+            write_textures(asset,name,uv,panels,output)
 
     body_polygons = [f for group,f in body_faces if group=="body"]
+    if foundation:
+        # Overlap the inside of the original waistband. The cut stays inside the jeans
+        # when the hips flex and does not change the visible abdomen above the belt.
+        waist = 1-smooth(.45,1.72,body[:,1])
+        body[:,0] *= 1-.105*waist
+        body[:,2] = .13+(body[:,2]-.13)*(1-.19*waist)
     exposed = []
     for face in body_polygons:
         indices = [v for v,_ in face]
@@ -280,19 +289,31 @@ def build(base, reference, system, output):
         # Keep the full neck above the collar and only its inner faces beneath it.
         collar = y>5.84 or (y>4.20 and max(abs(body[i,0]) for i in indices)<.65)
         cuff = abs(x)>3.05 and y<3.90
-        if (y<6.30 and not collar and not cuff) or all(i in hidden for i in indices):
+        if foundation and y < .42:
+            continue
+        if not foundation and ((y<6.30 and not collar and not cuff) or all(i in hidden for i in indices)):
             continue
         if abs(x)<.39 and 6.50<y<6.65 and z>1.10:
             continue  # The existing lips use their own material.
         if y>7.92+.55*max(-1,min(1,z-.5)):
             continue  # Scalp is already part of the original hair section.
         exposed.append(face)
+    if foundation == "female":
+        from resident_foundation import make_bralette
+        covered, panels = make_bralette(body, exposed)
+        exposed = [face for i,face in enumerate(exposed) if i not in covered]
+        for name, (vertices, texcoords, polygons) in panels.items():
+            mats[name] = len(scene["materials"])
+            scene["materials"].append({"name":name, "doubleSided":True})
+            add_panel(name,vertices,texcoords,polygons)
     add_panel("skin",body,body_uv,exposed,body_polygons)
     binary.extend(bytes(-len(binary)%4))
     scene["buffers"] = [dict(byteLength=len(binary))]
     header = json.dumps(scene,separators=(",",":")).encode()
     header += b" "*(-len(header)%4)
-    output.joinpath("SK_RiverEveryday.glb").write_bytes(
+    filename = "SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+"Foundation"
+    mesh["name"] = scene["nodes"][-1]["name"] = filename
+    output.joinpath(filename+".glb").write_bytes(
         struct.pack("<4sIII4s",b"glTF",2,28+len(header)+len(binary),len(header),b"JSON")
         +header+struct.pack("<I4s",len(binary),b"BIN\0")+binary)
 
@@ -301,6 +322,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     for name in ("base","reference","system","output"):
         p.add_argument(name,type=Path)
+    p.add_argument("--foundation", choices=("male","female"), help="Build the uncovered upper body on the everyday rig")
     args = p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
-    build(args.base,args.reference,args.system,args.output)
+    build(args.base,args.reference,args.system,args.output,args.foundation)
