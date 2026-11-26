@@ -113,6 +113,12 @@ public:
             for (bool Accessories : {false,true})
             {
                 AddCaption(Body, Accessories ? TEXT("Accessories") : TEXT("Tops"));
+                if (!Accessories)
+                    Body->AddSlot().AutoHeight().Padding(0,0,0,4)
+                    [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",12))
+                        .Visibility_Lambda([this]{ return Show(Outfit==RiverfrontLife::BaseLayer); })
+                        .Text_Lambda([this]{ return Copy(Gender==ERiverfrontGender::Female
+                            ? TEXT("Base layer · Sports bra") : TEXT("No top worn")); })];
                 for (const auto& Entry : RiverfrontLife::Catalog())
                     if (Entry.bAccessory==Accessories)
                         Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
@@ -148,21 +154,11 @@ public:
             {
                 Body->AddSlot().AutoHeight().Padding(0,6,0,1)
                 [
-                    SNew(SButton).Tag(TEXT("LifePortrait")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
-                    .ContentPadding(FMargin(9,7)).HAlign(HAlign_Center)
-                    .OnClicked_Lambda([this]
-                    {
-                        auto* Controller = Cast<ARiverfrontPlayerController>(UGameplayStatics::GetPlayerController(AudioWorld.Get(),0));
-                        if (Controller && Controller->SetFittingPortraitView(!bPortrait))
-                            bPortrait = !bPortrait;
-                        else
-                            Feedback = Copy(TEXT("There isn't room for a close-up here."));
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
-                        .Text_Lambda([this]{ return Copy(bPortrait ? TEXT("View full outfit") : TEXT("Inspect face")); })
-                    ]
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().FillWidth(1.f).Padding(0,0,3,0)
+                    [ ViewButton(EFittingView::Face,TEXT("LifePortrait"),TEXT("Inspect face")) ]
+                    + SHorizontalBox::Slot().FillWidth(1.f).Padding(3,0,0,0)
+                    [ ViewButton(EFittingView::Tailoring,TEXT("LifeTailoring"),TEXT("Inspect fit")) ]
                 ];
                 AddCaption(Body,TEXT("Skin tone"));
                 Body->AddSlot().AutoHeight()
@@ -288,7 +284,7 @@ private:
     int32 Deliveries = 0;
     bool bAvailable = false, bDeliveryActive = false;
     bool bCroppedHair = false;
-    bool bPortrait = false;
+    EFittingView ViewMode = EFittingView::Full;
     FText Feedback;
     TWeakObjectPtr<UWorld> AudioWorld;
     TWeakPtr<FActiveTimerHandle> DressingTimer;
@@ -420,6 +416,22 @@ private:
                         bBank ? TEXT("from bank") : TEXT("cash")));
                 })
             ];
+    }
+
+    TSharedRef<SWidget> ViewButton(EFittingView Mode, FName Tag, FString LabelText)
+    {
+        return SNew(SButton).Tag(Tag).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
+            .ContentPadding(FMargin(8,7)).HAlign(HAlign_Center)
+            .OnClicked_Lambda([this,Mode]
+            {
+                const EFittingView Next = Mode==ViewMode ? EFittingView::Full : Mode;
+                auto* Controller = Cast<ARiverfrontPlayerController>(UGameplayStatics::GetPlayerController(AudioWorld.Get(),0));
+                if (Controller && Controller->SetFittingView(Next)) ViewMode=Next;
+                else Feedback=Copy(TEXT("There isn't room for a close-up here."));
+                return FReply::Handled();
+            })
+            [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
+                .Text_Lambda([this,Mode,LabelText]{ return Copy(Mode==ViewMode ? FString(TEXT("Full outfit")) : LabelText); })];
     }
 
     TSharedRef<SWidget> ToneButton(FName Choice, const FString& Name)

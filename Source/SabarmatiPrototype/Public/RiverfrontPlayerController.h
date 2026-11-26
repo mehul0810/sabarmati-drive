@@ -10,6 +10,7 @@ class FReply;
 class ACameraActor;
 class ALevelSequenceActor;
 enum class ERiverfrontLifeMenu : uint8;
+enum class EFittingView : uint8 { Full, Face, Tailoring };
 class ARiverfrontWorld;
 class ARiverfrontPedestrian;
 
@@ -32,7 +33,7 @@ class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerControl
 public:
     bool IsShowingMenu() const { return Screen != EScreen::Playing; }
     void RefreshWardrobeMirror();
-    bool SetFittingPortraitView(bool bPortrait);
+    bool SetFittingView(EFittingView Mode);
 
     void InteractWithPlace();
     void Drowned();
@@ -98,7 +99,7 @@ private:
     bool OpenWardrobeMirror();
     TWeakObjectPtr<class USceneCaptureComponent2D> MirrorCapture;
     FVector BeforeMirrorLocation = FVector::ZeroVector;
-    bool bMirrorPortrait = false;
+    EFittingView FittingView = EFittingView::Full;
     uint32 MirrorUpdates = 0;
     uint64 LastMirrorFrame = MAX_uint64;
     bool UpdatePrintDelivery(ERiverSiteKind Kind);

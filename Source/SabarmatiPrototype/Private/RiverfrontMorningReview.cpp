@@ -601,6 +601,26 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (Saved->EquippedOutfit!=RiverfrontLife::BaseLayer) return true;
                 if (!Saved->HeldWardrobeItem.IsNone() || Walker->GetWardrobeOutfit()!=RiverfrontLife::BaseLayer)
                     return Fail(TEXT("removed shirt was replaced"));
+                const auto* Base=Walker->GetMesh()->GetSkeletalMeshAsset();
+                if (!Base || Base->GetFName()!=TEXT("SK_FemaleFoundation") || Walker->GetMesh()->GetMaterialIndex(TEXT("top_teal_woven"))!=INDEX_NONE ||
+                    Walker->GetMesh()->GetMaterialIndex(TEXT("foundation_knit"))==INDEX_NONE || !Walker->HasWristwatchVisible())
+                    return Fail(TEXT("female uncovered torso, undergarment or retained watch"));
+                if (!State->Pictures.Contains(TEXT("02-female-fit.png")))
+                {
+                    if (FittingView!=EFittingView::Tailoring)
+                    {
+                        if (!PressMorningButton(Overlay,TEXT("LifeTailoring")) || FittingView!=EFittingView::Tailoring)
+                            return Fail(TEXT("inspect upper-body fit"));
+                        return true;
+                    }
+                    Shot(TEXT("02-female-fit"),true); return true;
+                }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (FittingView!=EFittingView::Full)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeTailoring"))) return Fail(TEXT("restore full fitting view"));
+                    return true;
+                }
                 if (!State->Pictures.Contains(TEXT("02-base-layer.png"))) { Shot(TEXT("02-base-layer"),true); return true; }
                 if (FScreenshotRequest::IsScreenshotRequested()) return true;
                 if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close while in base layer"));
@@ -687,12 +707,31 @@ void ARiverfrontPlayerController::RunMorningReview()
                 if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator::ZeroRotator)) return Fail(TEXT("return to mirror"));
                 InteractWithPlace();
                 if (!PressMorningButton(Overlay,TEXT("LifePortrait")) || LifeCamera->GetCameraComponent()->FieldOfView>50.
-                    || !PressMorningButton(Overlay,TEXT("LifePortrait")) || bMirrorPortrait)
+                    || !PressMorningButton(Overlay,TEXT("LifePortrait")) || FittingView!=EFittingView::Full)
                     return Fail(TEXT("inspect face and return to mirror"));
                 if (!PressMorningButton(Overlay,TEXT("LifeItem.kurta"))) return Fail(TEXT("preview owned pullover"));
                 Next(EMorningStep::WearPullover); break;
             }
             case EMorningStep::WearPullover:
+                if (DressButtonLabel().StartsWith(TEXT("Take from")) && !State->Pictures.Contains(TEXT("03-male-fit.png")))
+                {
+                    const auto* Base=Walker->GetMesh()->GetSkeletalMeshAsset();
+                    if (!Base || Base->GetFName()!=TEXT("SK_MaleFoundation") || Walker->GetMesh()->GetMaterialIndex(TEXT("top_teal_woven"))!=INDEX_NONE ||
+                        Walker->GetMesh()->GetMaterialIndex(TEXT("foundation_knit"))!=INDEX_NONE || !Walker->HasWristwatchVisible())
+                        return Fail(TEXT("male uncovered torso or retained watch"));
+                    if (FittingView!=EFittingView::Tailoring)
+                    {
+                        if (!PressMorningButton(Overlay,TEXT("LifeTailoring"))) return Fail(TEXT("male fit view"));
+                        return true;
+                    }
+                    Shot(TEXT("03-male-fit"),true); return true;
+                }
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (FittingView!=EFittingView::Full)
+                {
+                    if (!PressMorningButton(Overlay,TEXT("LifeTailoring"))) return Fail(TEXT("return to mirror"));
+                    return true;
+                }
                 if (!DressButtonLabel().StartsWith(TEXT("Put on")))
                 {
                     PressMorningButton(Overlay,TEXT("LifeDress"));

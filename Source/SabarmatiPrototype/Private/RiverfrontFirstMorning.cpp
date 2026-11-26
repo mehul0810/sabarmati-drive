@@ -181,39 +181,41 @@ void ARiverfrontPlayerController::PrepareFittingCamera()
     }
 }
 
-bool ARiverfrontPlayerController::SetFittingPortraitView(bool bPortrait)
+bool ARiverfrontPlayerController::SetFittingView(EFittingView Mode)
 {
     ACameraActor* View = LifeCamera.Get();
     auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
     if (!View || !Walker) return false;
 
-    if (bPortrait)
+    if (Mode != EFittingView::Full)
     {
+        const bool bFace = Mode == EFittingView::Face;
         const USkeletalMeshComponent* Body = Walker->GetAvatarMesh();
-        const FVector Face = Body && Body->DoesSocketExist(TEXT("Head"))
-            ? Body->GetSocketLocation(TEXT("Head")) + FVector(0,0,2)
-            : Walker->GetPawnViewLocation();
-        const FVector Forward = Walker->GetActorForwardVector();
+        const FName FocusBone = bFace ? FName(TEXT("Head")) : FName(TEXT("Neck"));
+        const FVector Focus = Body && Body->DoesSocketExist(FocusBone)
+            ? Body->GetSocketLocation(FocusBone) + FVector(0,0,bFace ? 2. : -12.)
+            : Walker->GetPawnViewLocation() - FVector(0,0,bFace ? 0. : 18.);
+        const FVector Forward = Walker->GetActorForwardVector().RotateAngleAxis(bFace ? 0. : -36., FVector::UpVector);
         const FVector Right = FVector::CrossProduct(FVector::UpVector, -Forward);
-        const FVector Desired = Face + Forward * 80. + FVector(0,0,1.5);
+        const FVector Desired = Focus + Forward*(bFace ? 80. : 126.) + FVector(0,0,bFace ? 1.5 : 5.);
         FHitResult Hit;
         const FCollisionQueryParams Query(SCENE_QUERY_STAT(WardrobePortrait), false, Walker);
-        const bool bObstructed = GetWorld()->SweepSingleByChannel(Hit, Face, Desired, FQuat::Identity,
+        const bool bObstructed = GetWorld()->SweepSingleByChannel(Hit, Focus, Desired, FQuat::Identity,
             ECC_Camera, FCollisionShape::MakeSphere(6), Query);
         if (bObstructed && Hit.Distance < 40.) return false;
         const FVector Eye = bObstructed ? Hit.Location : Desired;
-        const double Distance = FVector::Distance(Face, Eye);
+        const double Distance = FVector::Distance(Focus, Eye);
         // Leave the right-hand side clear for the wardrobe controls.
-        View->SetActorLocationAndRotation(Eye, (Face + Right * (Distance * .105) - Eye).Rotation());
-        View->GetCameraComponent()->SetFieldOfView(46.f);
+        View->SetActorLocationAndRotation(Eye, (Focus + Right * (Distance * (bFace ? .105 : .20)) - Eye).Rotation());
+        View->GetCameraComponent()->SetFieldOfView(bFace ? 46.f : 56.f);
     }
     else
     {
         View->SetActorTransform(FullOutfitView);
         View->GetCameraComponent()->SetFieldOfView(MirrorCapture.IsValid()?62.f:70.f);
     }
-    bMirrorPortrait=bPortrait;
-    if (!bPortrait) RefreshWardrobeMirror();
+    FittingView=Mode;
+    if (Mode == EFittingView::Full) RefreshWardrobeMirror();
     if (PlayerCameraManager)
     {
         PlayerCameraManager->SetGameCameraCutThisFrame();
@@ -265,7 +267,7 @@ void ARiverfrontPlayerController::CloseLifeMenu()
         }
         SetViewTarget(GetPawn());
         MirrorCapture.Reset();
-        bMirrorPortrait=false;
+        FittingView=EFittingView::Full;
         LifeCamera->Destroy();
         LifeCamera.Reset();
     }

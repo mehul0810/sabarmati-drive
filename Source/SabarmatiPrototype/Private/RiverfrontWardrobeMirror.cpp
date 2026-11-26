@@ -74,7 +74,7 @@ bool ARiverfrontPlayerController::OpenWardrobeMirror()
     Capture->bOverride_CustomNearClippingPlane=true;
     Capture->CustomNearClippingPlane=Distance+.4;
     MirrorCapture=Capture;
-    bMirrorPortrait=false;
+    FittingView=EFittingView::Full;
     MirrorUpdates=0;
     LastMirrorFrame=MAX_uint64;
     SetViewTarget(Camera);
@@ -85,7 +85,7 @@ bool ARiverfrontPlayerController::OpenWardrobeMirror()
 
 void ARiverfrontPlayerController::RefreshWardrobeMirror()
 {
-    if (MirrorCapture.IsValid() && !bMirrorPortrait && LastMirrorFrame!=GFrameCounter)
+    if (MirrorCapture.IsValid() && FittingView==EFittingView::Full && LastMirrorFrame!=GFrameCounter)
     {
         // Coalesce mesh and pose changes so the next draw sees the final state.
         LastMirrorFrame=GFrameCounter;
