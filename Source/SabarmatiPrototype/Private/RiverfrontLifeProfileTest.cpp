@@ -50,6 +50,12 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestTrue(TEXT("reference catalogue"), RiverfrontLife::Catalog().Num() >= 4);
     TestTrue(TEXT("unowned watch cannot be equipped"), !Dress(Slot, EAction::Take, TEXT("watch")).IsEmpty());
 
+    TestFalse(TEXT("take shoes off before socks"),Dress(Slot,EAction::TakeOff,RiverfrontLife::CottonSocks).IsEmpty());
+    TestTrue(TEXT("remove shoes"),Dress(Slot,EAction::TakeOff,RiverfrontLife::StreetShoes).IsEmpty());
+    TestTrue(TEXT("remove socks"),Dress(Slot,EAction::TakeOff,RiverfrontLife::CottonSocks).IsEmpty());
+    TestTrue(TEXT("take shoes while barefoot"),Dress(Slot,EAction::Take,RiverfrontLife::StreetShoes).IsEmpty());
+    TestTrue(TEXT("put shoes over bare feet"),Dress(Slot,EAction::PutOn,RiverfrontLife::StreetShoes).IsEmpty());
+    TestTrue(TEXT("socks stay off after reload"),RiverfrontLife::Load(Slot)->EquippedSocks.IsNone());
     TestTrue(TEXT("original denim is owned"), Profile->OwnedItems.Contains(RiverfrontLife::StarterBottom));
     TestEqual(TEXT("legacy player starts in their jeans"), Profile->EquippedBottom, RiverfrontLife::StarterBottom);
     TestFalse(TEXT("briefs are under the jeans"), Dress(Slot,EAction::TakeOff,RiverfrontLife::Briefs).IsEmpty());
@@ -216,6 +222,15 @@ bool FSabarmatiFinderProfile::RunTest(const FString& Parameters)
     TestEqual(TEXT("previously visible briefs retained"),Current->EquippedInnerBottom,RiverfrontLife::Briefs);
     TestEqual(TEXT("previously visible sports bra retained"),Current->EquippedInnerTop,RiverfrontLife::SportsBra);
     TestTrue(TEXT("previously fixed layers now owned"),Current->OwnedItems.Contains(RiverfrontLife::Briefs) && Current->OwnedItems.Contains(RiverfrontLife::SportsBra));
+    Current->Schema=4;
+    Current->EquippedInnerBottom=Current->EquippedInnerTop=NAME_None;
+    Current->EquippedShoes=Current->EquippedSocks=NAME_None;
+    Current->OwnedItems.Remove(RiverfrontLife::CottonSocks);
+    Current->OwnedItems.Remove(RiverfrontLife::StreetShoes);
+    if (!Finder.Write(*Current) || !(Current=Finder.Load())) return false;
+    TestTrue(TEXT("V4 keeps both inner layers off"),Current->EquippedInnerBottom.IsNone() && Current->EquippedInnerTop.IsNone());
+    TestEqual(TEXT("V4 original shoes retained"),Current->EquippedShoes,RiverfrontLife::StreetShoes);
+    TestEqual(TEXT("V4 original socks retained"),Current->EquippedSocks,RiverfrontLife::CottonSocks);
     Current->Schema = URiverfrontLocalProfile::CurrentSchema + 1;
     if (!TestTrue(TEXT("write future fixture"), Finder.Write(*Current))) return false;
     TArray<uint8> FutureBefore, FutureAfter;

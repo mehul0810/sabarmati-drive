@@ -46,6 +46,14 @@ void AddOriginalInnerwear(URiverfrontLocalProfile& Profile)
     Profile.EquippedInnerBottom=RiverfrontLife::Briefs;
 }
 
+void AddOriginalFootwear(URiverfrontLocalProfile& Profile)
+{
+    Profile.EquippedShoes=RiverfrontLife::StreetShoes;
+    Profile.EquippedSocks=RiverfrontLife::CottonSocks;
+    Profile.OwnedItems.AddUnique(Profile.EquippedShoes);
+    Profile.OwnedItems.AddUnique(Profile.EquippedSocks);
+}
+
 void StartLife(URiverfrontLocalProfile& Profile)
 {
     Profile.CashRupees = 100000;
@@ -54,6 +62,7 @@ void StartLife(URiverfrontLocalProfile& Profile)
     Profile.EquippedBottom = RiverfrontLife::StarterBottom;
     Profile.EquippedOutfit = StarterOutfit;
     AddOriginalInnerwear(Profile);
+    AddOriginalFootwear(Profile);
     Profile.Schema = URiverfrontLocalProfile::CurrentSchema;
 }
 
@@ -69,6 +78,11 @@ void UpgradeWardrobe(URiverfrontLocalProfile& Profile)
     if (Profile.Schema==3)
     {
         AddOriginalInnerwear(Profile);
+        Profile.Schema=4;
+    }
+    if (Profile.Schema==4)
+    {
+        AddOriginalFootwear(Profile);
         Profile.Schema=URiverfrontLocalProfile::CurrentSchema;
     }
 }
@@ -271,8 +285,9 @@ FText RiverfrontLife::Buy(const FString& Slot, FName Id, bool bPayFromBank)
     });
 }
 
-FName RiverfrontLife::CoveringItem(ERiverfrontWearSlot Slot,FName Outfit,FName Bottom)
+FName RiverfrontLife::CoveringItem(ERiverfrontWearSlot Slot,FName Outfit,FName Bottom,FName Shoes)
 {
+    if (Slot==ERiverfrontWearSlot::Socks) return Shoes;
     if (Slot==ERiverfrontWearSlot::InnerTop && Outfit!=BaseLayer) return Outfit.IsNone() ? StarterOutfit : Outfit;
     if (Slot==ERiverfrontWearSlot::InnerBottom && Bottom!=Underwear) return Bottom.IsNone() ? StarterBottom : Bottom;
     return NAME_None;
@@ -289,14 +304,16 @@ FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName I
         const bool bBottom=Item->Slot==ERiverfrontWearSlot::Bottom;
         if (Action!=EDressingAction::PutBack)
         {
-            if (Item->Slot==ERiverfrontWearSlot::InnerTop && Profile.AvatarGender!=ERiverfrontGender::Female)
+            if (Id==SportsBra && Profile.AvatarGender!=ERiverfrontGender::Female)
                 return LOCTEXT("InnerFit", "This garment is fitted to the female avatar.");
-            if (const auto* Cover=FindItem(CoveringItem(Item->Slot,Profile.EquippedOutfit,Profile.EquippedBottom)))
+            if (const auto* Cover=FindItem(CoveringItem(Item->Slot,Profile.EquippedOutfit,Profile.EquippedBottom,Profile.EquippedShoes)))
                 return FText::Format(LOCTEXT("CoveredLayer","Take off {0} first."),FText::FromString(Cover->Label));
         }
         FName& Worn=bTop ? Profile.EquippedOutfit : bBottom ? Profile.EquippedBottom :
             Item->Slot==ERiverfrontWearSlot::InnerTop ? Profile.EquippedInnerTop :
-            Item->Slot==ERiverfrontWearSlot::InnerBottom ? Profile.EquippedInnerBottom : Profile.EquippedAccessory;
+            Item->Slot==ERiverfrontWearSlot::InnerBottom ? Profile.EquippedInnerBottom :
+            Item->Slot==ERiverfrontWearSlot::Shoes ? Profile.EquippedShoes :
+            Item->Slot==ERiverfrontWearSlot::Socks ? Profile.EquippedSocks : Profile.EquippedAccessory;
         if (bTop && Worn.IsNone()) Worn=StarterOutfit;
         const FName Empty=bTop ? BaseLayer : bBottom ? Underwear : NAME_None;
         if (Action==EDressingAction::TakeOff && !Profile.HeldWardrobeItem.IsNone())

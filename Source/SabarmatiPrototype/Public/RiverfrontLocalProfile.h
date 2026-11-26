@@ -12,7 +12,7 @@ class SABARMATIPROTOTYPE_API URiverfrontLocalProfile : public USaveGame
     GENERATED_BODY()
 
 public:
-    static constexpr int32 CurrentSchema = 4;
+    static constexpr int32 CurrentSchema = 5;
     static FString CleanDisplayName(const FString& Input);
 
     UPROPERTY(SaveGame)
@@ -28,6 +28,8 @@ public:
     UPROPERTY(SaveGame) FName EquippedBottom;
     UPROPERTY(SaveGame) FName EquippedInnerTop;
     UPROPERTY(SaveGame) FName EquippedInnerBottom;
+    UPROPERTY(SaveGame) FName EquippedShoes;
+    UPROPERTY(SaveGame) FName EquippedSocks;
     UPROPERTY(SaveGame) FName EquippedAccessory;
     UPROPERTY(SaveGame) FName HeldWardrobeItem;
     // Tagged saves written before the avatar selector inherit the original resident.
