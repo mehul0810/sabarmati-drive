@@ -673,10 +673,10 @@ void ARiverfrontTraffic::SetUpSignals()
         for (int32 C=0;C<3;++C) Part(Ball,Signals[(Axis>=2?3:0)+C],Pole-D*15+FVector(0,0,320-C*25),FVector(9,20,20),R);
     }
 }
-float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double Length,bool& Obstacle,
+float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double Length,bool& Obstacle,double& PassingOffset,
     int32 Index,TConstArrayView<FVector> CrossingWalkers,FString* Diagnostic)
 {
-    double Limit=1.e7; Obstacle=false;
+    double Limit=1.e7; Obstacle=false;PassingOffset=0.;
     const auto Restrict=[&](double Distance,const TCHAR* Reason,const AActor* Actor=nullptr)
     {
         if (Distance>=Limit) return;
@@ -700,19 +700,25 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
     };
     // Check parked vehicles against the original lane, so a driver keeps its
     // passing offset until its rear has cleared the obstacle.
-    const FVector LaneOrigin=At+FVector(D.Y,-D.X,0.)*Drivers[Index].Offset;
-    const auto BlocksLane=[&](const FVector& Position,double OtherLength)
+    const auto& Lane=Drivers[Index];
+    const FVector LaneOrigin=Routes[Lane.Route]->GetLocationAtDistanceAlongSpline(Lane.At,ESplineCoordinateSpace::World);
+    const auto CheckParked=[&](const FVector& Position,double OtherLength,double OtherWidth)
     {
         const FVector V=Position-LaneOrigin;
         const double Forward=V.Dot(D);
-        return !bCity && Along && Forward>-(Length+OtherLength+110.) && Forward<1600.
-            && FMath::Abs(V.X*D.Y-V.Y*D.X)<340.;
+        if (bCity || !Along || Forward<=-(Length+OtherLength+110.) || Forward>=1600.
+            || FMath::Abs(V.X*D.Y-V.Y*D.X)>=340.) return;
+        const double Across=V.Dot(FVector(-D.Y,D.X,0.));
+        const double Needed=Agents[Index]->HalfWidth+OtherWidth+35.+Across;
+        if (Needed<=0.) return;
+        Obstacle=true;
+        PassingOffset=FMath::Max(PassingOffset,FMath::Min(Needed,400.));
     };
     for (int32 I=0;I<Agents.Num();++I)
         if (I!=Index)
         {
             const auto* Other=Agents[I].Get();
-            if (Drivers[I].bParked && BlocksLane(Other->GetActorLocation(),Other->HalfLength)) Obstacle=true;
+            if (Drivers[I].bParked) CheckParked(Other->GetActorLocation(),Other->HalfLength,Other->HalfWidth);
             Ahead(Other->GetActorLocation(),Other->HalfLength,Other->HalfWidth,Other,
                 Drivers[I].bParked?TEXT("parked_traffic"):TEXT("traffic"));
         }
@@ -720,7 +726,7 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
         if (C.IsValid())
         {
             const FVector Hull = C->GetCollisionExtents();
-            if (!C->IsOccupied() && BlocksLane(C->GetActorLocation(),Hull.X)) Obstacle=true;
+            if (!C->IsOccupied()) CheckParked(C->GetActorLocation(),Hull.X,Hull.Y);
             Ahead(C->GetActorLocation(),Hull.X,Hull.Y,C.Get(),TEXT("car"));
         }
     if (const auto* PC=GetWorld()->GetFirstPlayerController())
@@ -814,6 +820,7 @@ void ARiverfrontTraffic::Tick(float Dt)
         const FVector D=R->GetDirectionAtDistanceAlongSpline(L.At,ESplineCoordinateSpace::World).GetSafeNormal2D();
         UpdateJunctionClearance(L,*A,D,H);
         bool ParkedAhead=false;
+        double PassingOffset=0.;
 #if !UE_BUILD_SHIPPING
         static const bool bTrafficTrace=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiTrafficTrace"));
         FString StopReason;
@@ -821,19 +828,20 @@ void ARiverfrontTraffic::Tick(float Dt)
 #else
         FString* Diagnostic=nullptr;
 #endif
-        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,I,CrossingWalkers,Diagnostic);
+        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,PassingOffset,I,CrossingWalkers,Diagnostic);
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
         bool Passing=ParkedAhead;
-        if (Passing && L.Offset<=20.)
+        const bool bWithinLane=PassingOffset<=FMath::Max(0.,222.-A->HalfWidth-22.);
+        if (Passing && !bWithinLane && L.Offset<=20.)
             for (int32 K=0;K<Agents.Num();++K)
                 if (K!=I && !Drivers[K].bParked && Agents[K]->GetActorForwardVector().Dot(D)<-.65 &&
                     (Agents[K]->GetActorLocation()-A->GetActorLocation()).Dot(D)>-250. &&
-                    FVector::DistSquared2D(A->GetActorLocation(),Agents[K]->GetActorLocation())<FMath::Square(2200.)) Passing=false;
+                    FVector::DistSquared2D(A->GetActorLocation(),Agents[K]->GetActorLocation())<FMath::Square(4500.)) Passing=false;
 #if !UE_BUILD_SHIPPING
         if (bTrafficTrace && Passing && !L.bRecordedPass)
         {
-            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s began passing a parked vehicle at %s."),
-                *A->GetName(),*A->GetActorLocation().ToCompactString());
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s began passing a parked vehicle at %s, offset %.0f cm, within lane %d."),
+                *A->GetName(),*A->GetActorLocation().ToCompactString(),PassingOffset,bWithinLane);
             L.bRecordedPass=true;
         }
         if (bTrafficTrace && !ParkedAhead && L.bRecordedPass)
@@ -853,7 +861,7 @@ void ARiverfrontTraffic::Tick(float Dt)
                 if (Approach.Dot(D)>0 && Approach.Dot(D)<2700 && FMath::Abs(Approach.X*D.Y-Approach.Y*D.X)<250) Yielding=true;
             }
         }
-        L.Offset=FMath::FInterpConstantTo(L.Offset,Yielding?-115.:(Passing?225.:0.),Dt,105.);
+        L.Offset=FMath::FInterpConstantTo(L.Offset,Yielding?-115.:(Passing?PassingOffset:0.),Dt,105.);
         const double Available=bClosed?Gap:FMath::Min(double(Gap),Length-L.At);
         const double Want=FMath::Min(L.Cruise*(Yielding?.45:(A->IsEmergency?1.18:1.)),FMath::Sqrt(2.*440.*FMath::Max(0.,Available)));
         const bool Brake=Want<L.Speed-27. || Want<25.;
@@ -871,7 +879,12 @@ void ARiverfrontTraffic::Tick(float Dt)
             if (Advance>0 && D.Dot(Pose.GetUnitAxis(EAxis::X).GetSafeNormal2D())<.9998) ++Turns;
             TravelCm+=Advance; L.At=Next;
         }
-        else L.Speed=0;
+        else
+        {
+            L.Speed=0;
+            const FVector LanePoint=R->GetLocationAtDistanceAlongSpline(L.At,ESplineCoordinateSpace::World);
+            L.Offset=(A->GetActorLocation()-LanePoint).Dot(FVector(-D.Y,D.X,0.));
+        }
 #if !UE_BUILD_SHIPPING
         if (bTrafficTrace && !bCity && Near && FVector::DistSquared2D(A->GetActorLocation(),Junctions[1])<FMath::Square(1800.)
             && (Want<15. || !bMoved) && GetWorld()->GetTimeSeconds()-L.LastDiagnosticAt>4.)

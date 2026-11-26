@@ -106,6 +106,6 @@ private:
     void SetUpSignals();
     void UpdateJunctionClearance(FSabarmatiLane& Driver, const ARiverfrontRoadAgent& Agent, const FVector& Heading, int32 Signal);
     int32 Phase() const;
-    float StopDistance(const FVector& At, const FVector& Heading, double Length, bool& Obstacle,
+    float StopDistance(const FVector& At, const FVector& Heading, double Length, bool& Obstacle, double& PassingOffset,
         int32 Index, TConstArrayView<FVector> CrossingWalkers, FString* Diagnostic=nullptr);
 };
