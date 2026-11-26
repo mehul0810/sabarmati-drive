@@ -113,7 +113,7 @@ def smooth(edge0, edge1, value):
     return t*t*(3-2*t)
 
 
-def build(base, reference, system, output, foundation=None):
+def build(base, reference, system, output, foundation=None, lower_only=False):
     io = runpy.run_path(str(SCRIPTS/"prepare-riverfront-hatch.py"))
     scene, raw = io["read_glb"](reference)
     binary = bytearray(raw)
@@ -237,7 +237,7 @@ def build(base, reference, system, output, foundation=None):
         vis,uis = np.array(list(keys)).T
         tex = uv[uis].copy()
         tex[:,1] = 1-tex[:,1]
-        ids,weights = skinning(verts[vis],slot)
+        ids,weights = skinning(verts[vis],"bottom_denim" if lower_only else slot)
         assert np.allclose(weights.sum(axis=1),1) and np.isfinite(weights).all()
         attrs = dict(POSITION=accessor(verts[vis],"VEC3","f",True),NORMAL=accessor(normals[vis],"VEC3","f"),
                      TEXCOORD_0=accessor(tex,"VEC2","f"),JOINTS_0=accessor(ids,"VEC4","H"),
@@ -245,6 +245,26 @@ def build(base, reference, system, output, foundation=None):
         ix = accessor([keys[k] for tri in tris for k in tri],"SCALAR","I")
         mesh["primitives"].append(dict(attributes=attrs,indices=ix,material=mats[slot]))
         print(slot,len(tris),"triangles")
+
+    def write_mesh(filename):
+        binary.extend(bytes(-len(binary)%4))
+        scene["buffers"] = [dict(byteLength=len(binary))]
+        header = json.dumps(scene,separators=(",",":")).encode()
+        header += b" "*(-len(header)%4)
+        mesh["name"] = scene["nodes"][-1]["name"] = filename
+        output.joinpath(filename+".glb").write_bytes(
+            struct.pack("<4sIII4s",b"glTF",2,28+len(header)+len(binary),len(header),b"JSON")
+            +header+struct.pack("<I4s",len(binary),b"BIN\0")+binary)
+
+    if lower_only:
+        from resident_foundation import lower_foundation
+        mesh["primitives"] = []
+        for name, vertices, texcoords, polygons in lower_foundation(body, body_uv, body_faces):
+            mats[name] = len(scene["materials"])
+            scene["materials"].append({"name":name,"doubleSided":True})
+            add_panel(name,vertices,texcoords,polygons)
+        write_mesh("SK_"+foundation.title()+"LowerBody")
+        return
 
     hidden = set()
     for name in (SUIT,SHOES):
@@ -328,15 +348,7 @@ def build(base, reference, system, output, foundation=None):
             add_panel(name,body,body_uv,polygons,normals=normals)
     else:
         add_panel("skin",body,body_uv,exposed,body_polygons)
-    binary.extend(bytes(-len(binary)%4))
-    scene["buffers"] = [dict(byteLength=len(binary))]
-    header = json.dumps(scene,separators=(",",":")).encode()
-    header += b" "*(-len(header)%4)
-    filename = "SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+"Foundation"
-    mesh["name"] = scene["nodes"][-1]["name"] = filename
-    output.joinpath(filename+".glb").write_bytes(
-        struct.pack("<4sIII4s",b"glTF",2,28+len(header)+len(binary),len(header),b"JSON")
-        +header+struct.pack("<I4s",len(binary),b"BIN\0")+binary)
+    write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+"Foundation")
 
 
 if __name__ == "__main__":

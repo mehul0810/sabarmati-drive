@@ -79,3 +79,44 @@ def cut_bralette(body, uv, normals, faces):
             add("foundation_elastic",clip(fabric,7,-1))
             add("foundation_knit",clip(fabric,7,1))
     return np.asarray(coords),np.asarray(tex),np.asarray(shading),panels
+
+
+def lower_foundation(body, uv, faces):
+    """Cut boxer briefs on the fitted garment shell and tuck the leg skin into its hems."""
+    legs = [face for group,face in faces if group=="body"
+            and -7.18 < np.mean([body[i,1] for i,_ in face]) < -1.18]
+    # Leave a short overlap inside the shorts and the ankle opening of each shoe.
+    skin = body.copy()
+    tuck = np.clip((skin[:,1]+1.68)/.52,0,1)
+    side = np.where(skin[:,0]>=0,1.,-1.)
+    skin[:,0] -= .055*(skin[:,0]-side*.98)*tuck
+    skin[:,2] -= .085*(skin[:,2]-.22)*tuck
+    yield "leg_skin",skin,uv,legs
+    shell = body.copy()
+    shell[:,0] *= 1.030
+    shell[:,2] = .18+(shell[:,2]-.18)*1.065
+    tights = [face for group,face in faces if group=="helper-tights"]
+    # Straight elastic and leg bands have cut edges independent of the source quad rows.
+    for name,low,high in (("underwear_knit",-1.53,.88),("underwear_band",.88,1.13)):
+        polygons,positions,texcoords,keys = [],[],[],{}
+        for face in tights:
+            heights = [shell[i,1] for i,_ in face]
+            if max(heights)<=low or min(heights)>=high: continue
+            poly = [np.r_[shell[i],uv[t]] for i,t in face]
+            for level,sign in ((low,1),(high,-1)):
+                clipped = []
+                for a,b in zip(poly,poly[1:]+poly[:1]):
+                    if (a[1]-level)*sign>=0: clipped.append(a)
+                    if (a[1]-level)*(b[1]-level)<0:
+                        clipped.append(a+(b-a)*((level-a[1])/(b[1]-a[1])))
+                poly=clipped
+            corners=[]
+            for row in poly:
+                key=tuple(np.round(row,7))
+                if key not in keys:
+                    keys[key]=len(positions)
+                    positions.append(row[:3])
+                    texcoords.append(row[3:])
+                corners.append((keys[key],keys[key]))
+            if len(set(corners))>=3: polygons.append(corners)
+        yield name,np.asarray(positions),np.asarray(texcoords),polygons

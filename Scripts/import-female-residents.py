@@ -4,9 +4,10 @@ from pathlib import Path
 import unreal as ue
 
 ROOT = "/Game/Sabarmati/Riverfront/People"
+LOWER = os.environ.get("SABARMATI_LOWER_SOURCE")
 FOUNDATION = os.environ.get("SABARMATI_FOUNDATION_SOURCE")
-TARGET = ROOT + ("/Wardrobe/Foundation" if FOUNDATION else "/Wardrobe/Female")
-SOURCE = Path(FOUNDATION or os.environ["SABARMATI_FEMALE_SOURCE"])
+TARGET = ROOT + ("/Wardrobe/Foundation" if FOUNDATION or LOWER else "/Wardrobe/Female")
+SOURCE = Path(LOWER or FOUNDATION or os.environ["SABARMATI_FEMALE_SOURCE"])
 library = ue.EditorAssetLibrary
 manager = ue.InterchangeManager.get_interchange_manager_scripted()
 
@@ -41,18 +42,22 @@ def import_outfit(name, reference_path):
     model = library.load_asset(path)
     source_materials = {str(slot.material_slot_name): slot.material_interface for slot in reference.materials}
     slots = list(model.materials)
-    if FOUNDATION:
+    if LOWER:
+        cotton = library.load_asset(ROOT+"/Wardrobe/M_ResidentCotton")
+        source_materials = dict(leg_skin=source_materials["skin"],underwear_knit=cotton,underwear_band=cotton)
+    elif FOUNDATION:
         source_materials = {k:v for k,v in source_materials.items() if k in ("skin","lips","hair","iris","sclera","bottom_denim","shoe")}
         if name == "SK_FemaleFoundation":
             cotton = library.load_asset(ROOT+"/Wardrobe/M_ResidentCotton")
             source_materials.update(foundation_knit=cotton, foundation_elastic=cotton)
     if {str(slot.material_slot_name) for slot in slots} != set(source_materials):
         raise RuntimeError(f"{name} has {[str(s.material_slot_name) for s in slots]}, expected {list(source_materials)}")
-    face_path = ROOT + ("/Hero/M_HeroSkin" if name == "SK_MaleFoundation" else "/Hero/Female/M_FemaleSkin")
+    face_path = ROOT + ("/Hero/M_HeroSkin" if name.startswith("SK_Male") else "/Hero/Female/M_FemaleSkin")
     face = library.load_asset(face_path)
     if not isinstance(face, ue.MaterialInterface):
         raise RuntimeError("Import the female skin before the skeletal meshes")
-    source_materials.update(skin=face, lips=face)
+    if LOWER: source_materials["leg_skin"] = face
+    else: source_materials.update(skin=face, lips=face)
     for slot in slots:
         parent = source_materials[str(slot.material_slot_name)]
         if not parent:
@@ -67,7 +72,10 @@ def import_outfit(name, reference_path):
     ue.log(f"SABARMATI RESIDENT VERIFIED {path} skeleton={skeleton.get_path_name()} physics={physics.get_path_name()} slots={len(slots)}")
 
 
-if FOUNDATION:
+if LOWER:
+    import_outfit("SK_MaleLowerBody","Everyday/SK_RiverEveryday")
+    import_outfit("SK_FemaleLowerBody","Female/SK_FemaleEveryday")
+elif FOUNDATION:
     import_outfit("SK_MaleFoundation", "Everyday/SK_RiverEveryday")
     import_outfit("SK_FemaleFoundation", "Female/SK_FemaleEveryday")
 else:
