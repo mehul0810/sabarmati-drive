@@ -35,13 +35,14 @@ def read_obj(path):
     return np.asarray(vertices), np.asarray(uv), faces
 
 
-def fit(path, body):
+def fit(path, body, offsets=True):
     """Apply MakeClothes' base-vertex bindings and axis-scaled fitting offsets."""
     definition = path.read_text()
-    if "basemesh hm08" not in definition or "released as CC0" not in definition:
+    licensed = "released as CC0" in definition or re.search(r"^# license:?\s+CC0\s*$", definition, re.MULTILINE)
+    if "basemesh hm08" not in definition or not licensed:
         raise ValueError(f"Unexpected asset source: {path}")
     config, bindings = definition.split("verts 0\n", 1)
-    bindings, mask = bindings.split("delete_verts")
+    bindings, _, mask = bindings.partition("delete_verts")
     scale = np.ones(3)
     for axis, a, b, factor in re.findall(r"([xyz])_scale (\d+) (\d+) (\S+)", config):
         k = "xyz".index(axis)
@@ -49,10 +50,13 @@ def fit(path, body):
     points = []
     for row in bindings.splitlines():
         numbers = row.split()
+        if not numbers or numbers[0] in ("material", "vertexboneweights_file"):
+            continue
         if len(numbers) == 9:
             ids = np.array(numbers[:3], int)
             barycentric = np.array(numbers[3:6], float)
-            points.append(barycentric @ body[ids] + np.array(numbers[6:9], float)*scale)
+            anchor = barycentric @ body[ids]
+            points.append(anchor + np.array(numbers[6:9], float)*scale if offsets else anchor)
         elif len(numbers) == 1:
             points.append(body[int(numbers[0])])
         elif numbers:
@@ -113,11 +117,14 @@ def smooth(edge0, edge1, value):
     return t*t*(3-2*t)
 
 
-def build(base, reference, system, output, foundation=None, lower_only=False, tee=False):
+def build(base, reference, system, output, foundation=None, lower_only=False, tee=False, western=None, anatomy=None):
     io = runpy.run_path(str(SCRIPTS/"prepare-riverfront-hatch.py"))
     scene, raw = io["read_glb"](reference)
     binary = bytearray(raw)
     body, body_uv, body_faces = read_obj(base)
+    western_top = western in ("FineKnit", "Quilted", "Blazer")
+    if western:
+        from resident_western import western_panels
     mats = {m["name"]:i for i,m in enumerate(scene["materials"])}
     mesh = scene["meshes"][0]
     mesh["name"] = "SK_RiverEveryday"
@@ -172,7 +179,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
                     if n not in ("Neck","Head"):
                         weights[(y>1.48)&(np.abs(positions[:,0])<.18)] = 0
                     influences[selected,i] = weights[selected]
-        if slot in ("top_teal_woven","jersey_knit","jersey_binding"):
+        if slot in ("top_teal_woven","jersey_knit","jersey_binding","western_top"):
             # The rig has no clavicles. The shirt yoke follows the chest until it
             # crosses the shoulder; sleeves progressively pick up the arm joints.
             sleeve = smooth(.124,.240,np.abs(positions[:,0]))
@@ -237,7 +244,8 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
         vis,uis = np.array(list(keys)).T
         tex = uv[uis].copy()
         tex[:,1] = 1-tex[:,1]
-        ids,weights = skinning(verts[vis],"shoe" if slot.startswith("street_shoe") else "bottom_denim" if lower_only else slot)
+        footwear = ("street_shoe", "court_shoe", "zip_boot")
+        ids,weights = skinning(verts[vis],"shoe" if slot.startswith(footwear) else "bottom_denim" if lower_only else slot)
         if slot in ("bare_lower_skin","midriff_skin"):
             # Use torso skin weights at its shared ring, transitioning into the denim leg rig.
             coords = verts[vis]
@@ -268,13 +276,25 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             struct.pack("<4sIII4s",b"glTF",2,28+len(header)+len(binary),len(header),b"JSON")
             +header+struct.pack("<I4s",len(binary),b"BIN\0")+binary)
 
+    def add_western_panel(name, vertices, texcoords, polygons, normal_faces=None):
+        mats[name] = len(scene["materials"])
+        scene["materials"].append({"name":name,"doubleSided":True})
+        add_panel(name,vertices,texcoords,polygons,normal_faces=normal_faces)
+
     if lower_only:
         from resident_foundation import lower_foundation
+        if anatomy:
+            from resident_anatomy import fit_bare_skin
         mesh["primitives"] = []
-        for name, vertices, texcoords, polygons in lower_foundation(body, body_uv, body_faces):
+        skin_faces = [face for group,face in body_faces if group=="body"]
+        for name, vertices, texcoords, polygons in lower_foundation(body, body_uv, body_faces, western=bool(western), preset=foundation):
             mats[name] = len(scene["materials"])
             scene["materials"].append({"name":name,"doubleSided":True})
-            body_normals = [f for g,f in body_faces if g=="body"] if name in ("bare_lower_skin","midriff_skin") or name.startswith("foot_skin") else None
+            skin_slots = ("bare_lower_skin", "midriff_skin", "leg_skin", "shorts_skin", "trunk_skin", "foot_skin")
+            body_normals = skin_faces if name.startswith(skin_slots) else None
+            if anatomy and name == "bare_lower_skin":
+                vertices, texcoords, polygons, body_normals = fit_bare_skin(
+                    foundation, anatomy, vertices, texcoords, polygons, skin_faces, read_obj, fit, surface_normals)
             add_panel(name,vertices,texcoords,polygons,normal_faces=body_normals)
         shoe = system/"clothes"/SHOES
         verts,tex,shoe_faces = read_obj(shoe/(SHOES+".obj"))
@@ -288,6 +308,9 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             scene["materials"].append({"name":name})
             faces=[f for _,f in shoe_faces if components_by_vertex[f[0][0]] in leather and fitted[f[0][0],0]*sign>0]
             add_panel(name,fitted,tex,faces)
+        if western:
+            for panel in western_panels(western, system, body, read_obj, fit, components):
+                add_western_panel(*panel)
         write_mesh("SK_"+foundation.title()+"LowerBody")
         return
 
@@ -333,6 +356,9 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             write_textures(asset,name,uv,panels,output)
 
     body_polygons = [f for group,f in body_faces if group=="body"]
+    if western_top:
+        for panel in western_panels(western, system, body, read_obj, fit, components):
+            add_western_panel(*panel)
     tee_mask = set()
     if tee:
         name = "male_casualsuit06"
@@ -367,11 +393,13 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             normal.thumbnail((1024,1024),Image.Resampling.LANCZOS)
             r,g,b=normal.split()
             Image.merge("RGB",(r,g.point(lambda value:255-value),b)).save(output/"T_JerseyKnit_N.png")
-    if foundation:
+    if foundation and not western_top:
         # Overlap the inside of the original waistband. The cut stays inside the jeans
         # when the hips flex and does not change the visible abdomen above the belt.
-        from resident_foundation import shape_chest
+        from resident_foundation import refine_upper_anatomy, shape_chest
         shape_chest(body,foundation)
+        if western and not tee:
+            refine_upper_anatomy(body,foundation)
         waist = 1-smooth(.45,1.72,body[:,1])
         body[:,0] *= 1-.105*waist
         body[:,2] = .13+(body[:,2]-.13)*(1-.19*waist)
@@ -395,19 +423,24 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             sleeve_skin=abs(x)>1.82 and y<4.45+.40*(abs(x)-2.40)
             if (not neck_skin and not sleeve_skin) or all(i in tee_mask for i in indices):
                 continue
-        if foundation and y < .42:
+        if foundation and not western_top and y < .42:
             continue
-        if not foundation and ((y<6.30 and not collar and not cuff) or all(i in hidden for i in indices)):
+        if western_top:
+            neck = y > 5.59 and abs(x) < .69
+            wrist = abs(x) > 3.90 and y < 3.70
+            if y < 6.22 and not (neck or wrist):
+                continue
+        elif not foundation and ((y<6.30 and not collar and not cuff) or all(i in hidden for i in indices)):
             continue
         if abs(x)<.39 and 6.50<y<6.65 and z>1.10:
             continue  # The existing lips use their own material.
         if y>7.92+.55*max(-1,min(1,z-.5)):
             continue  # Scalp is already part of the original hair section.
         exposed.append(face)
-    if foundation == "female" and not tee:
+    if (foundation == "female" and not tee and not western_top) or western == "TankFoundation":
         from resident_foundation import cut_bralette
         normals = surface_normals(body,body_polygons)
-        body, body_uv, normals, panels = cut_bralette(body,body_uv,normals,exposed)
+        body, body_uv, normals, panels = cut_bralette(body,body_uv,normals,exposed,tank=western=="TankFoundation")
         for name, polygons in panels.items():
             if name!="skin":
                 mats[name] = len(scene["materials"])
@@ -415,7 +448,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
             add_panel(name,body,body_uv,polygons,normals=normals)
     else:
         add_panel("skin",body,body_uv,exposed,body_polygons)
-    write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+("CrewTee" if tee else "Foundation"))
+    write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+(western or ("CrewTee" if tee else "Foundation")))
 
 
 if __name__ == "__main__":
