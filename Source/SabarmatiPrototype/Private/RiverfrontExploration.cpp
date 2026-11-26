@@ -8,6 +8,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "RiverfrontWorld.h"
 #include "RiverfrontLifeProfile.h"
+#include "RiverfrontNavigation.h"
 #include "Dom/JsonObject.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -161,20 +162,12 @@ FVector ARiverfrontPlayerController::NextWaypoint() const
     if (Checkpoints.IsValidIndex(NextCheckpoint)) return Checkpoints[NextCheckpoint];
     const auto* Site=Destination(); if (!Site || !GetPawn()) return FVector::ZeroVector;
     const FVector Here=GetPawn()->GetActorLocation(), End=Site->Point;
-    // The west and east bank driveways connect only at these three road bridges.
-    const bool OtherBank=(Here.Y< -16000. && End.Y>2000.) || (Here.Y>2000. && End.Y< -16000.);
-    if (!bCitySites && OtherBank && Cast<ARiverfrontCar>(GetPawn()))
-    {
-        double Best=TNumericLimits<double>::Max(),Bridge=3150.;
-        for (double X:{-64400.,3150.,59310.})
-        {
-            const double Travel=FMath::Abs(Here.X-X)+FMath::Abs(End.X-X);
-            if (Travel<Best) { Best=Travel;Bridge=X; }
-        }
-        const double Entry=Here.Y>0?4090.:-26010.;
-        return FVector(Bridge,FMath::Abs(Here.X-Bridge)>550.?Entry:(Here.Y>0?-26010.:4090.),90.);
-    }
-    return End;
+    if (bCitySites) return End;
+    const auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
+    if (Walker && Walker->GetCharacterMovement()->IsSwimming()) return End;
+    const bool Driving=Cast<ARiverfrontCar>(GetPawn())!=nullptr;
+    const double Height=Walker?Walker->GetCapsuleComponent()->GetScaledCapsuleHalfHeight():68.;
+    return RiverfrontNavigation::Waypoint(Here,End,Driving,Height);
 }
 FString ARiverfrontPlayerController::NavigationText() const
 {
@@ -182,7 +175,8 @@ FString ARiverfrontPlayerController::NavigationText() const
     const bool Challenge=Checkpoints.IsValidIndex(NextCheckpoint);
     if (!Challenge && !Destination()) return FString();
     const double M=FVector::Dist2D(GetPawn()->GetActorLocation(),NextWaypoint())/100.;
-    const FString Name=Challenge?FString::Printf(TEXT("Gate %d/%d"),NextCheckpoint+1,Checkpoints.Num()):Destination()->Name;
+    FString Name=Challenge?FString::Printf(TEXT("Gate %d/%d"),NextCheckpoint+1,Checkpoints.Num()):Destination()->Name;
+    if (!Challenge && !NextWaypoint().Equals(Destination()->Point,1.)) Name+=TEXT(" · via bridge");
     return FString::Printf(TEXT("%s   %.0f m"),*Name,M);
 }
 FString ARiverfrontPlayerController::ActivityText() const

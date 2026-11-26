@@ -143,6 +143,7 @@ private:
     void RunAwarenessReview();
     void RunErrandReview();
     void RunTrafficFlowReview();
+    void RunNavigationReview();
     void RunRenderingBenchmark();
     void RunDistrictReview();
     void RunGaitReview();
