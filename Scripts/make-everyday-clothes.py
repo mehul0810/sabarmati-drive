@@ -387,8 +387,14 @@ def build(base, reference, system, output, foundation=None, lower_only=False, te
         # Keep the full neck above the collar and only its inner faces beneath it.
         collar = y>5.84 or (y>4.20 and max(abs(body[i,0]) for i in indices)<.65)
         cuff = abs(x)>3.05 and y<3.90
-        if tee and all(i in tee_mask for i in indices):
-            continue
+        if tee and y<6.2:
+            # The MakeClothes mask leaves some deltoid polygons above a relaxed arm.
+            # The sewn collar has a 6.9 cm half-width, with cuffs near y=4.2.
+            # Keep skin inside these two openings, including an underlap when the arm bends.
+            neck_skin=y>5.39 and abs(x)<.79
+            sleeve_skin=abs(x)>1.82 and y<4.45+.40*(abs(x)-2.40)
+            if (not neck_skin and not sleeve_skin) or all(i in tee_mask for i in indices):
+                continue
         if foundation and y < .42:
             continue
         if not foundation and ((y<6.30 and not collar and not cuff) or all(i in hidden for i in indices)):
