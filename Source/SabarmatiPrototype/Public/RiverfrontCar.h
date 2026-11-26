@@ -35,6 +35,7 @@ public:
     const TCHAR* GetVehicleLabel() const;
     void UseTrafficBody(ARiverfrontRoadAgent& Agent);
     FVector GetCollisionExtents() const;
+    FVector GetTravelVelocity() const;
 
     virtual void NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimitiveComponent* OtherComp,
         bool bSelfMoved,FVector HitLocation,FVector HitNormal,FVector NormalImpulse,const FHitResult& Hit) override;

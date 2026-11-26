@@ -62,6 +62,7 @@ struct FSabarmatiLane
 #if !UE_BUILD_SHIPPING
     double LastDiagnosticAt=-100.;
     bool bRecordedPass=false;
+    bool bRecordedPlayerYield=false;
 #endif
 };
 
@@ -85,6 +86,9 @@ public:
     FVector RoadVelocity(const ARiverfrontRoadAgent* Agent) const;
     bool RemoveCrashedAgent(ARiverfrontRoadAgent* Agent);
     bool EnterVehicle(ARiverfrontCharacter& Character);
+#if !UE_BUILD_SHIPPING
+    bool CheckPlayerPathPrediction(ARiverfrontCar& Car, FString& Details) const;
+#endif
 private:
     UPROPERTY() TArray<TObjectPtr<USplineComponent>> Routes;
     UPROPERTY() TArray<TObjectPtr<ARiverfrontRoadAgent>> Agents;
@@ -103,6 +107,8 @@ private:
     bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant, bool ParkAtKerb=false);
     FTransform RoadPose(const USplineComponent& Route, double Distance, double Offset,
         double Radius, double Wheelbase, bool bSampleRoad) const;
+    double PlayerPathGap(const ARiverfrontRoadAgent& Agent, const FSabarmatiLane& Driver,
+        const USplineComponent& Route, const ARiverfrontCar& PlayerCar) const;
     void SetUpSignals();
     void UpdateJunctionClearance(FSabarmatiLane& Driver, const ARiverfrontRoadAgent& Agent, const FVector& Heading, int32 Signal);
     int32 Phase() const;

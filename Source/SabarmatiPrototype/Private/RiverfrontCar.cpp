@@ -319,6 +319,13 @@ FVector ARiverfrontCar::GetCollisionExtents() const
     return Body->GetScaledBoxExtent();
 }
 
+FVector ARiverfrontCar::GetTravelVelocity() const
+{
+    const auto* Root=Cast<UPrimitiveComponent>(GetRootComponent());
+    return Root && Root->IsSimulatingPhysics() ? Root->GetPhysicsLinearVelocity()
+        : FRotator(0.,TravelYaw,0.).Vector()*Speed;
+}
+
 void ARiverfrontCar::BeginPlay()
 {
     Super::BeginPlay();

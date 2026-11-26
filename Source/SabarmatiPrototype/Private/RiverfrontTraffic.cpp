@@ -456,6 +456,54 @@ FTransform ARiverfrontTraffic::RoadPose(const USplineComponent& Route,double Dis
     return FTransform(Facing,Centre);
 }
 
+double ARiverfrontTraffic::PlayerPathGap(const ARiverfrontRoadAgent& Agent,const FSabarmatiLane& Driver,
+    const USplineComponent& Route,const ARiverfrontCar& PlayerCar) const
+{
+    constexpr double NoConflict=1.e7;
+    if (bCity) return NoConflict;
+    auto* PlayerBody=Cast<UPrimitiveComponent>(PlayerCar.GetRootComponent());
+    if (!PlayerBody) return NoConflict;
+    const double Horizon=FMath::Clamp(FMath::Square(Driver.Speed)/(2.*440.)+600.,900.,2200.);
+    if (FVector::DistSquared2D(Agent.GetActorLocation(),PlayerCar.GetActorLocation())
+        >FMath::Square(Horizon+Agent.HalfLength+450.)) return NoConflict;
+
+    FVector PlayerVelocity=PlayerCar.GetTravelVelocity();
+    PlayerVelocity.Z=0.;
+    const double RouteLength=Route.GetSplineLength();
+    const double PredictSpeed=FMath::Max(Driver.Speed,350.);
+    const FCollisionShape Footprint=FCollisionShape::MakeBox(FVector(
+        Agent.HalfLength+60.,Agent.HalfWidth+25.,Agent.TyreRadius*.85+12.));
+    const auto Pose=[&](double Ahead)
+    {
+        const double At=Route.IsClosedLoop()?FMath::Fmod(Driver.At+Ahead,RouteLength)
+            :FMath::Min(Driver.At+Ahead,RouteLength);
+        return RoadPose(Route,At,Driver.Offset,Agent.TyreRadius,Agent.Wheelbase,false);
+    };
+    FTransform Start=Pose(0.);
+    for (double From=0.;From<Horizon;From+=300.)
+    {
+        const double To=FMath::Min(From+300.,Horizon);
+        const FTransform End=Pose(To);
+        if (FVector::DistSquared(Start.GetLocation(),End.GetLocation())<1.) break;
+        const FQuat Rotation=FQuat::Slerp(Start.GetRotation(),End.GetRotation(),.5).GetNormalized();
+        FHitResult Stationary,Moving;
+        bool bHit=PlayerBody->SweepComponent(Stationary,Start.GetLocation(),End.GetLocation(),Rotation,Footprint);
+        double HitTime=bHit?Stationary.Time:1.;
+        if (PlayerVelocity.SizeSquared2D()>FMath::Square(25.))
+        {
+            const FVector RelativeStart=Start.GetLocation()-PlayerVelocity*FMath::Min(From/PredictSpeed,2.5);
+            const FVector RelativeEnd=End.GetLocation()-PlayerVelocity*FMath::Min(To/PredictSpeed,2.5);
+            if (PlayerBody->SweepComponent(Moving,RelativeStart,RelativeEnd,Rotation,Footprint))
+            {
+                bHit=true;HitTime=FMath::Min(HitTime,double(Moving.Time));
+            }
+        }
+        if (bHit) return FMath::Max(0.,From+(To-From)*HitTime-75.);
+        Start=End;
+    }
+    return NoConflict;
+}
+
 bool ARiverfrontTraffic::SpawnVehicle(int32 Route,double Distance,int32 Style,int32 Variant,bool ParkAtKerb)
 {
     const auto& Shape=Bodies[Style];
@@ -828,7 +876,39 @@ void ARiverfrontTraffic::Tick(float Dt)
 #else
         FString* Diagnostic=nullptr;
 #endif
-        const float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,PassingOffset,I,CrossingWalkers,Diagnostic);
+        float Gap=StopDistance(A->GetActorLocation(),D,A->HalfLength,ParkedAhead,PassingOffset,I,CrossingWalkers,Diagnostic);
+#if !UE_BUILD_SHIPPING
+        bool bPlayerOnPath=false;
+        // Allow matched benchmark runs to isolate the prediction cost.
+        static const bool bUsePlayerPrediction=!FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNoPlayerPrediction"));
+#else
+        constexpr bool bUsePlayerPrediction=true;
+#endif
+        if (const auto* PlayerCar=bUsePlayerPrediction?Cast<ARiverfrontCar>(PC->GetPawn()):nullptr)
+        {
+            const double PlayerGap=PlayerPathGap(*A,L,*R,*PlayerCar);
+#if !UE_BUILD_SHIPPING
+            bPlayerOnPath=PlayerGap<1.e7;
+#endif
+            if (PlayerGap<Gap)
+            {
+                Gap=PlayerGap;
+                if (Diagnostic) *Diagnostic=TEXT("player_on_predicted_path");
+            }
+        }
+#if !UE_BUILD_SHIPPING
+        if (bTrafficTrace && bPlayerOnPath && !L.bRecordedPlayerYield)
+        {
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s saw the player on its route at %s, speed %.1f km/h."),
+                *A->GetName(),*A->GetActorLocation().ToCompactString(),L.Speed*.036);
+            L.bRecordedPlayerYield=true;
+        }
+        if (bTrafficTrace && !bPlayerOnPath && L.bRecordedPlayerYield)
+        {
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati traffic trace: %s no longer has the player on its route."),*A->GetName());
+            L.bRecordedPlayerYield=false;
+        }
+#endif
         // Pull toward the road centre only on a wide bank lane with enough oncoming clearance.
         bool Passing=ParkedAhead;
         const bool bWithinLane=PassingOffset<=FMath::Max(0.,222.-A->HalfWidth-22.);
