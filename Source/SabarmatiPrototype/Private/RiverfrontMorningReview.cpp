@@ -517,7 +517,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto* Saved = RiverfrontLife::Load(ProfileSlot);
                 if (!Saved || Saved->AvatarGender != Gender || !WearingResidentBody(*Walker,Gender)
                     || Saved->CashRupees != 100000 || Saved->BankRupees != 500000
-                    || Saved->EquippedOutfit != TEXT("cotton-sand") || (Saved->OwnedItems.Num()!=4 || !Saved->OwnedItems.Contains(RiverfrontLife::StarterBottom)))
+                    || Saved->EquippedOutfit != TEXT("cotton-sand") || (Saved->OwnedItems.Num()!=6 || !Saved->OwnedItems.Contains(RiverfrontLife::StarterBottom)))
                     return Fail(TEXT("wardrobe body, wallet or ownership after avatar change"));
                 if (Age < .6) return true;
                 const TCHAR* Picture = bMale ? TEXT("02-gender-male") : TEXT("02-gender-female");
@@ -778,6 +778,12 @@ void ARiverfrontPlayerController::RunMorningReview()
                     {TEXT("shirt-indigo"),EAction::TakeOff,&P::EquippedOutfit},
                     {RiverfrontLife::SportsBra,EAction::TakeOff,&P::EquippedInnerTop},
                     {RiverfrontLife::Briefs,EAction::TakeOff,&P::EquippedInnerBottom},
+                    {RiverfrontLife::StreetShoes,EAction::TakeOff,&P::EquippedShoes},
+                    {RiverfrontLife::CottonSocks,EAction::TakeOff,&P::EquippedSocks},
+                    {RiverfrontLife::CottonSocks,EAction::Take,&P::EquippedSocks},
+                    {RiverfrontLife::CottonSocks,EAction::PutOn,&P::EquippedSocks},
+                    {RiverfrontLife::StreetShoes,EAction::Take,&P::EquippedShoes},
+                    {RiverfrontLife::StreetShoes,EAction::PutOn,&P::EquippedShoes},
                     {RiverfrontLife::Briefs,EAction::Take,&P::EquippedInnerBottom},
                     {RiverfrontLife::Briefs,EAction::PutOn,&P::EquippedInnerBottom},
                     {TEXT("shirt-indigo"),EAction::Take,&P::EquippedOutfit},
@@ -810,6 +816,8 @@ void ARiverfrontPlayerController::RunMorningReview()
                         }
                         if (!PressMorningButton(Overlay,FName(*(TEXT("LifeItem.")+Action.Item.ToString()))))
                             return Fail(TEXT("select dressing item ")+Action.Item.ToString());
+                        if (Action.Item==RiverfrontLife::CottonSocks && Action.Action==EAction::TakeOff)
+                            if (!PressMorningButton(Overlay,TEXT("LifeTailoring")) || FittingView!=EFittingView::Feet) return Fail(TEXT("inspect feet"));
                         State->bInnerSelected=true;
                         return true;
                     }
@@ -854,13 +862,32 @@ void ARiverfrontPlayerController::RunMorningReview()
                             else return Fail(TEXT("both layers removed"));
                         }
                     }
-                    if (State->InnerAction==7 && !Saved->EquippedInnerTop.IsNone()) return Fail(TEXT("shirt silently restored a bra"));
+                    if (Action.Item==RiverfrontLife::CottonSocks && Action.Action!=EAction::Take)
+                    {
+                        TInlineComponentArray<USkeletalMeshComponent*> Parts(Walker);
+                        bool bChecked=false;
+                        for (auto* Part : Parts)
+                        {
+                            if (!Part->IsVisible() || Part->GetMaterialIndex(TEXT("foot_skin_l"))==INDEX_NONE) continue;
+                            for (FName Side : {FName(TEXT("l")),FName(TEXT("r"))})
+                            {
+                                const FName Skin(*(TEXT("foot_skin_")+Side.ToString())),Sock(*(TEXT("cotton_sock_")+Side.ToString()));
+                                if (Part->IsMaterialSectionShown(Part->GetMaterialIndex(Skin),0)!=Saved->EquippedSocks.IsNone() ||
+                                    Part->IsMaterialSectionShown(Part->GetMaterialIndex(Sock),0)==Saved->EquippedSocks.IsNone()) return Fail(TEXT("foot layer state"));
+                            }
+                            bChecked=true;
+                        }
+                        if (!bChecked) return Fail(TEXT("feet missing"));
+                        Shot(Action.Action==EAction::TakeOff ? TEXT("06-bare-feet") : TEXT("06-cotton-socks"),true);
+                    }
+                    if (Action.Item==TEXT("shirt-indigo") && Action.Action==EAction::TakeOff && State->InnerAction>0 && !Saved->EquippedInnerTop.IsNone())
+                        return Fail(TEXT("shirt silently restored a bra"));
                     ++State->InnerAction;
                     State->bInnerSelected=false;
                     State->bInnerActionStarted=false;
                     return true;
                 }
-                UE_LOG(LogTemp,Display,TEXT("Sabarmati innerwear review: 12 wardrobe actions, both inner layers removed and re-equipped, skin verified, covered action blocked, shirt worn over skin."));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati innerwear review: 18 wardrobe actions, torso, legs and feet removed and re-dressed to skin, covered action blocked, shirt worn over skin."));
                 if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("leave in boxer briefs"));
                 InteractWithPlace();
                 if (!PressMorningButton(Overlay,TEXT("LifeGenderMale")) || Walker->GetWardrobeBottom()!=RiverfrontLife::Underwear)
