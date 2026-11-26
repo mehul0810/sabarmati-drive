@@ -220,7 +220,8 @@ public:
                         const auto Error=RiverfrontLife::KeepFittingOutfit(Slot,*Entered.Get(),*Trial.Get());
                         if (!Error.IsEmpty()) { Feedback=Error; return FReply::Handled(); }
                         return Close();
-                    })[Label(Copy(TEXT("Wear this outfit out")),13,Paper,true)]
+                    })[SNew(STextBlock).Text(Copy(TEXT("Wear this outfit out"))).ColorAndOpacity(Paper)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold",13))]
             ];
         if (bTrial || Page==ERiverfrontLifeMenu::Shop)
             Actions->AddSlot().AutoHeight().Padding(0,4)[Label(Copy(bTrial
@@ -482,7 +483,7 @@ private:
                 [
                     SNew(STextBlock).ColorAndOpacity(Muted).Font(FCoreStyle::GetDefaultFontStyle("Regular",14))
                     .Text_Lambda([this,Id,Price=Entry.PriceRupees]{
-                        return Copy(Wearing(Id) ? TEXT("Wearing") : Held==Id ? TEXT("In hand") : Owned.Contains(Id) ? TEXT("Owned") : Page==ERiverfrontLifeMenu::Wardrobe ? FString(TEXT("At Sutra · "))+Rupees(Price) : Rupees(Price));
+                        return Copy(Wearing(Id) ? (Trial.IsValid() && !Owned.Contains(Id) ? TEXT("Trying on") : TEXT("Wearing")) : Held==Id ? TEXT("In hand") : Owned.Contains(Id) ? TEXT("Owned") : Page==ERiverfrontLifeMenu::Wardrobe ? FString(TEXT("At Sutra · "))+Rupees(Price) : Rupees(Price));
                     })
                 ]
             ];
@@ -500,13 +501,12 @@ private:
                 return Complete(Error, FString(), true);
             })
             [
-                SNew(STextBlock).AutoWrapText(true).ColorAndOpacity(bBank ? Paper : Panel)
+                SNew(STextBlock).ColorAndOpacity(bBank ? Paper : Panel)
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold",14))
                 .Text_Lambda([this,bBank]() -> FText {
                     const auto* Chosen = Item(Selected);
                     if (!Chosen) return FText::GetEmpty();
-                    return Copy(FString::Printf(TEXT("Pay %s %s"), *Rupees(Chosen->PriceRupees),
-                        bBank ? TEXT("from bank") : TEXT("cash")));
+                    return Copy(FString::Printf(TEXT("%s · %s"), bBank ? TEXT("Bank") : TEXT("Cash"), *Rupees(Chosen->PriceRupees)));
                 })
             ];
     }
