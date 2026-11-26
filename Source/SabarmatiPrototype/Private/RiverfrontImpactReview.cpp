@@ -19,6 +19,7 @@ void ARiverfrontPlayerController::RunImpactReview()
     auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
     auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool Chaos=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiHatchImpact"));
+    const bool Minor=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiMinorImpact"));
     struct FRun
     {
         int32 Step=0;
@@ -40,7 +41,7 @@ void ARiverfrontPlayerController::RunImpactReview()
         if (It->Tags.Contains(TEXT("Kerbside")) && It->IsSport()) {Run->Sport=*It;break;}
     if (!Run->Sport.IsValid()) {Fail(TEXT("parked sport coupe"));return;}
     Run->Since=GetWorld()->GetTimeSeconds();
-    FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,[this,Walker,Mode,Run,Fail,Chaos](float)
+    FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,[this,Walker,Mode,Run,Fail,Chaos,Minor](float)
     {
         const double Now=GetWorld()->GetTimeSeconds();
         const double Age=Now-Run->Since;
@@ -90,12 +91,13 @@ void ARiverfrontPlayerController::RunImpactReview()
                     const FVector P=Tree.GetLocation();
                     if (P.X < -33500. || P.X > -8500. || FMath::Abs(P.Y-3423.)>55.) continue;
                     const FVector D=FVector(2200.,-820.,0).GetSafeNormal();
-                    const FVector Start=FVector(P.X,P.Y,78.)-D*2500.;
+                    const FVector Approach=FVector(P.X,P.Y,78.)-D*2500.;
                     const FRotator Heading=D.Rotation();
-                    if (GetWorld()->SweepTestByChannel(Start,Start+D*2000.,Heading.Quaternion(),ECC_Pawn,FCollisionShape::MakeBox(FVector(210,96,47)))) continue;
+                    if (GetWorld()->SweepTestByChannel(Approach,Approach+D*2000.,Heading.Quaternion(),ECC_Pawn,FCollisionShape::MakeBox(FVector(210,96,47)))) continue;
                     FHitResult First;
-                    if (!GetWorld()->SweepSingleByChannel(First,Start,FVector(P.X,P.Y,78),Heading.Quaternion(),ECC_Pawn,
+                    if (!GetWorld()->SweepSingleByChannel(First,Approach,FVector(P.X,P.Y,78),Heading.Quaternion(),ECC_Pawn,
                         FCollisionShape::MakeBox(FVector(215,98,50))) || First.GetComponent()!=Trees || First.Item!=I) continue;
+                    const FVector Start=Minor ? FVector(P.X,P.Y,78.)-D*700. : Approach;
                     FVector Door;
                     if (Chaos)
                     {
@@ -125,6 +127,20 @@ void ARiverfrontPlayerController::RunImpactReview()
         }
         else if (Run->Step==4)
         {
+            if (Minor)
+            {
+                if (!Run->Car.IsValid()) return Fail(TEXT("minor impact destroyed the car"));
+                Run->TopKph=FMath::Max(Run->TopKph,double(Run->Car->GetSpeedKph()));
+                if (Run->Car->GetCondition()>=1.f) return true;
+                Key(EKeys::W,IE_Released);
+                if (GetPawn()!=Run->Car.Get() || !Run->Trees.IsValid() || Run->Trees->GetInstanceCount()!=Run->Count || Run->TopKph>=39.6)
+                    return Fail(TEXT("minor impact driver, tree or impact speed"));
+                FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("collision-minor.png")),false,false);
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati minor impact: %s peak %.1f km/h, condition %.0f%%, driver and tree retained."),
+                    Chaos?TEXT("Chaos hatch"):TEXT("parked coupe"),Run->TopKph,100.f*Run->Car->GetCondition());
+                Next();
+                return true;
+            }
             if (Run->Car.IsValid()) {Run->TopKph=FMath::Max(Run->TopKph,double(Run->Car->GetSpeedKph()));return true;}
             Key(EKeys::W,IE_Released);
             UE_LOG(LogTemp,Display,TEXT("Sabarmati impact review: pawn=%s hidden=%d tree=%s count=%d expected=%d"),

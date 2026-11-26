@@ -737,9 +737,26 @@ void ARiverfrontCar::NotifyHit(UPrimitiveComponent* MyComp,AActor* Other,UPrimit
     }
 }
 
-bool ARiverfrontCar::Wreck(const FHitResult& Hit,float ImpactSpeed)
+bool ARiverfrontCar::HandleImpact(const FHitResult& Hit,float ImpactSpeed)
 {
     if (bWrecked || ImpactSpeed<150.f || !Hit.GetComponent()) return false;
+    // Closing speed is in cm/s. Minor impacts damage the car without removing
+    // the driver or scenery; a hard impact or accumulated damage wrecks it.
+    constexpr float SevereImpactSpeed=1100.f;
+    if (ImpactSpeed<SevereImpactSpeed)
+    {
+        if (HitSoundDelay<=0.f)
+        {
+            Condition=FMath::Max(0.f,Condition-FMath::Clamp(ImpactSpeed/8000.f,.02f,.14f));
+            HitSoundDelay=.45f;
+            if (ImpactSound)
+                UGameplayStatics::PlaySoundAtLocation(this,ImpactSound,Hit.ImpactPoint,FMath::Clamp(ImpactSpeed/1700.f,.17f,.8f));
+            SetHint(TEXT("Vehicle damaged. Repair it at River Motor Works."));
+            UE_LOG(LogTemp,Display,TEXT("Sabarmati collision: %s damaged at %.1f km/h; condition %.0f%%."),
+                GetVehicleLabel(),ImpactSpeed*.036f,Condition*100.f);
+        }
+        if (Condition>0.f) return false;
+    }
     bWrecked=true;
     Condition=0.f;
     auto* Object=Hit.GetComponent()->GetOwner();
@@ -821,7 +838,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
     {
         const float Closing=PhysicsImpactSpeed;
         PhysicsImpactSpeed=0.f;
-        if (Closing>0.f && Wreck(PhysicsImpact,Closing)) return;
+        if (Closing>0.f && HandleImpact(PhysicsImpact,Closing)) return;
         TickHatchbackPhysics(DeltaSeconds);
         return;
     }
@@ -899,7 +916,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         if (GetWorld()->SweepSingleByProfile(Obstacle,Here,Desired,Facing.Quaternion(),Body->GetCollisionProfileName(),
             FCollisionShape::MakeBox(Body->GetScaledBoxExtent()),Query))
         {
-            if (FMath::Abs(Obstacle.ImpactNormal.Z)<.65 && Wreck(Obstacle,ClosingSpeed(Obstacle.GetComponent(),Obstacle.ImpactNormal))) return;
+            if (FMath::Abs(Obstacle.ImpactNormal.Z)<.65 && HandleImpact(Obstacle,ClosingSpeed(Obstacle.GetComponent(),Obstacle.ImpactNormal))) return;
             Speed=0;
             break;
         }
@@ -907,7 +924,7 @@ void ARiverfrontCar::Tick(float DeltaSeconds)
         SetActorLocationAndRotation(Desired,Facing,true,&Hit);
         if (Hit.bBlockingHit)
         {
-            if (FMath::Abs(Hit.ImpactNormal.Z)<.65 && Wreck(Hit,ClosingSpeed(Hit.GetComponent(),Hit.ImpactNormal))) return;
+            if (FMath::Abs(Hit.ImpactNormal.Z)<.65 && HandleImpact(Hit,ClosingSpeed(Hit.GetComponent(),Hit.ImpactNormal))) return;
             Speed=0;
             break;
         }

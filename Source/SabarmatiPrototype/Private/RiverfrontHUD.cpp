@@ -300,6 +300,10 @@ void DriveCluster(FInstruments& Draw,const ARiverfrontCar& Car)
     const int32 Gear = Car.GetGear();
     const FString GearLabel = Gear<0 ? TEXT("R") : FString::Printf(TEXT("D%d"),Gear);
     const float Fuel = FMath::Clamp(Car.GetFuel(),0.f,1.f);
+    const float Condition=FMath::Clamp(Car.GetCondition(),0.f,1.f);
+    if (Condition<.99f)
+        Draw.Label(FString::Printf(TEXT("CONDITION %.0f%%"),Condition*100.f),Centre+FVector2D(0,-96),
+            12,TEXT("Bold"),Condition<.35f?Warning:Gold,true);
     Draw.Label(GearLabel,Centre+FVector2D(-36,46),15,TEXT("BoldCondensed"),Gold,true);
     Draw.Stroke(Centre+FVector2D(-14,37),Centre+FVector2D(-14,55),1.f,Silver);
     Draw.Label(FString::Printf(TEXT("%.0f%% fuel"),100.f*Fuel),Centre+FVector2D(-4,46),

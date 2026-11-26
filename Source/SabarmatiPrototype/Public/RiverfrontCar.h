@@ -122,7 +122,7 @@ private:
     UPROPERTY() TObjectPtr<USoundWave> ImpactSound;
     float ClosingSpeed(const UPrimitiveComponent* Other,const FVector& Normal) const;
     FVector ChassisVelocityBeforeImpact=FVector::ZeroVector;
-    bool Wreck(const FHitResult& Hit,float ImpactSpeed);
+    bool HandleImpact(const FHitResult& Hit,float ImpactSpeed);
     bool bWrecked=false;
     FHitResult PhysicsImpact;
     float PhysicsImpactSpeed=0.f;
