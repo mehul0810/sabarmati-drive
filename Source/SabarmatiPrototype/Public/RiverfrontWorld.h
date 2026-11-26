@@ -9,6 +9,7 @@ class ARiverfrontPlayerController;
 class UDirectionalLightComponent;
 class USkyLightComponent;
 class UExponentialHeightFogComponent;
+class APostProcessVolume;
 class USpotLightComponent;
 class UAudioComponent;
 class UMaterialInstanceDynamic;
@@ -157,6 +158,7 @@ private:
     UPROPERTY() TObjectPtr<UDirectionalLightComponent> Sun;
     UPROPERTY() TObjectPtr<USkyLightComponent> Sky;
     UPROPERTY() TObjectPtr<UExponentialHeightFogComponent> Haze;
+    UPROPERTY() TObjectPtr<APostProcessVolume> DistrictPostProcess;
     UPROPERTY() TObjectPtr<UMaterialInterface> NightWindows;
     UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> LensInstances;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> LampMaterial;

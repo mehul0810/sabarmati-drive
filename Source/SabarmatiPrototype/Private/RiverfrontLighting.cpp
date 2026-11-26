@@ -27,7 +27,9 @@ struct FDistrictSky
 constexpr int32 MaxPracticalLights = 14;
 const FDistrictSky DayLighting = {FRotator(-46, 128, 0), 4.35f, 5620.f, .78f, .0048f, FLinearColor(.35,.41,.49)};
 const FDistrictSky GoldenLighting = {FRotator(-18, 112, 0), 3.95f, 4670.f, .76f, .0075f, FLinearColor(.42,.31,.22)};
-const FDistrictSky NightLighting = {FRotator(-31, -61, 0), .24f, 7350.f, .43f, .0038f, FLinearColor(.009,.015,.033)};
+// A restrained cool fill keeps pedestrians and building silhouettes readable
+// between lamps without adding more dynamic lights to the Air's scene.
+const FDistrictSky NightLighting = {FRotator(-31, -61, 0), .34f, 7350.f, .62f, .0038f, FLinearColor(.009,.015,.033)};
 }
 
 const TCHAR* ARiverfrontWorld::TimeName() const
@@ -126,6 +128,7 @@ void ARiverfrontWorld::BuildLighting()
 #endif
     if (auto* Post = World->SpawnActor<APostProcessVolume>())
     {
+        DistrictPostProcess = Post;
         Post->bUnbound = true;
         auto& Settings = Post->Settings;
         Settings.bOverride_BloomIntensity = true;
@@ -159,6 +162,12 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
     TimeOfDay = Time;
     const bool AtNight = Time == ERiverfrontTime::Night;
     const FDistrictSky& Lighting = AtNight ? NightLighting : Time == ERiverfrontTime::Day ? DayLighting : GoldenLighting;
+    if (DistrictPostProcess)
+    {
+        // Lift deep shadows at night without washing out headlamps and shop lights.
+        DistrictPostProcess->Settings.bOverride_ColorGammaShadows = AtNight;
+        DistrictPostProcess->Settings.ColorGammaShadows = FVector4(1., 1., 1., 1.28);
+    }
     if (Sun)
     {
         Sun->SetWorldRotation(Lighting.Direction);
@@ -175,7 +184,7 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
     if (Sky)
     {
         Sky->SetIntensity(Lighting.SkyIntensity);
-        Sky->SetLowerHemisphereColor(AtNight ? FLinearColor(.004,.006,.010) : FLinearColor(.085,.067,.047));
+        Sky->SetLowerHemisphereColor(AtNight ? FLinearColor(.014,.017,.023) : FLinearColor(.085,.067,.047));
         Sky->SetCaptureIsDirty();
     }
     if (LampMaterial)

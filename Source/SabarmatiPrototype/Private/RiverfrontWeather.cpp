@@ -170,7 +170,7 @@ void ARiverfrontWorld::UpdateWeather(float Dt)
         if (TimeOfDay!=Band) ApplyTimeOfDay(Band);
         const float Day=FMath::Max(0.f,FMath::Sin((Hour-5.5f)*PI/14.f));
         const float Warm=FMath::Clamp(Day/.52f,0.f,1.f);
-        DrySunIntensity=FMath::Lerp(.23f,5.1f,FMath::SmoothStep(.0f,.53f,Day));
+        DrySunIntensity=FMath::Lerp(.34f,5.1f,FMath::SmoothStep(.0f,.53f,Day));
         DryFogDensity=FMath::Lerp(.006f,.009f,Day);
         if (Sun)
         {
@@ -227,7 +227,7 @@ void ARiverfrontWorld::UpdatePhotoSky()
         Night=1.f-FMath::SmoothStep(-.09f,.095f,Solar);
     }
     const FLinearColor Clear=FMath::Lerp(FLinearColor(1.42f,1.32f,1.21f),FLinearColor(1.63f,1.66f,1.69f),Day);
-    const FLinearColor SkyLight=FMath::Lerp(Clear,FLinearColor(.020f,.033f,.073f),Night);
+    const FLinearColor SkyLight=FMath::Lerp(Clear,FLinearColor(.040f,.052f,.090f),Night);
     PhotoSky->SetScalarParameterValue(TEXT("DayMix"),FMath::Lerp(Day,.92f,RainAmount));
     PhotoSky->SetVectorParameterValue(TEXT("SkyTint"),SkyLight*FMath::Lerp(Weather==1?.88f:1.f,.48f,RainAmount));
 }
