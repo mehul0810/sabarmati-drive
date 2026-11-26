@@ -109,7 +109,13 @@ FText Update(const FString& Slot, TFunctionRef<FText(URiverfrontLocalProfile&)> 
     return Storage.Write(*Profile) ? FText::GetEmpty() : LOCTEXT("CouldNotWrite", "Could not save these changes.");
 }
 
-const FRiverfrontWearable* FindItem(FName Id)
+FText Price(int32 Rupees)
+{
+    return FText::AsNumber(Rupees, nullptr, FInternationalization::Get().GetCulture(TEXT("en-IN")));
+}
+}
+
+const FRiverfrontWearable* RiverfrontLife::FindItem(FName Id)
 {
     return RiverfrontLife::Catalog().FindByPredicate([Id](const FRiverfrontWearable& Item)
     {
@@ -117,10 +123,10 @@ const FRiverfrontWearable* FindItem(FName Id)
     });
 }
 
-FText Price(int32 Rupees)
+bool RiverfrontLife::IsPullover(FName Id)
 {
-    return FText::AsNumber(Rupees, nullptr, FInternationalization::Get().GetCulture(TEXT("en-IN")));
-}
+    const auto* Item=FindItem(Id);
+    return Item && (Item->Cut==ERiverfrontGarmentCut::Kurta || Item->Cut==ERiverfrontGarmentCut::CrewTee);
 }
 
 const TArray<FRiverfrontWearable>& RiverfrontLife::Catalog()

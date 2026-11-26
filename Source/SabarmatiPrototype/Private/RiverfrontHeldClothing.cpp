@@ -10,7 +10,7 @@
 namespace
 {
 // A folded top pinched at the shoulder. Two thicknesses turn around the lower hem.
-void MakeFoldedTop(UProceduralMeshComponent& Cloth, bool bKurta)
+void MakeFoldedTop(UProceduralMeshComponent& Cloth, bool bKurta,bool bTee)
 {
     constexpr int32 Columns=13, Rows=9;
     TArray<FVector> Points, Normals;
@@ -61,6 +61,18 @@ void MakeFoldedTop(UProceduralMeshComponent& Cloth, bool bKurta)
         Points.Add(Surface(U,V,1)+FVector(Rise,0,0));
         UVs.Emplace(U,V);
     };
+    if (bTee)
+    {
+        for (int32 I=0; I<=12; ++I)
+        {
+            const double U=.22+.56*I/12.;
+            const double V=.14+.10*FMath::Sin(PI*I/12.);
+            Stitch(U,V,.32); Stitch(U,V+.028,.35);
+            if (I) Quad(2*I-2,2*I-1,2*I+1,2*I);
+        }
+        FinishSection(1);
+        return;
+    }
     const double End=bKurta?.50:.94;
     for (int32 Row=0;Row<=8;++Row)
     {
@@ -145,7 +157,7 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
     else
     {
         auto* Cloth=NewObject<UProceduralMeshComponent>(this);
-        MakeFoldedTop(*Cloth,Id==TEXT("kurta"));
+        MakeFoldedTop(*Cloth,Item->Cut==ERiverfrontGarmentCut::Kurta,Item->Cut==ERiverfrontGarmentCut::CrewTee);
         if (auto* Fabric=CottonMaterial ? UMaterialInstanceDynamic::Create(CottonMaterial,Cloth) : nullptr)
         {
             Fabric->SetVectorParameterValue(TEXT("BaseColorFactor"),Item->Tint);

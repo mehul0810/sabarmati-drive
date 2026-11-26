@@ -8,6 +8,9 @@
 UENUM()
 enum class ERiverfrontWearSlot : uint8 { Top, Bottom, Accessory, InnerTop, InnerBottom, Shoes, Socks };
 
+UENUM()
+enum class ERiverfrontGarmentCut : uint8 { Standard, Kurta, CrewTee, Chino };
+
 USTRUCT()
 struct FRiverfrontWearable
 {
@@ -17,6 +20,7 @@ struct FRiverfrontWearable
     UPROPERTY(EditAnywhere) FString Label;
     UPROPERTY(EditAnywhere) int32 PriceRupees = 0;
     UPROPERTY(EditAnywhere) ERiverfrontWearSlot Slot = ERiverfrontWearSlot::Top;
+    UPROPERTY(EditAnywhere) ERiverfrontGarmentCut Cut = ERiverfrontGarmentCut::Standard;
     UPROPERTY(EditAnywhere) FLinearColor Tint = FLinearColor::White;
 };
 
@@ -33,6 +37,8 @@ public:
 namespace RiverfrontLife
 {
     const TArray<FRiverfrontWearable>& Catalog();
+    const FRiverfrontWearable* FindItem(FName Id);
+    bool IsPullover(FName Id);
     bool Exists(const FString& Slot);
     URiverfrontLocalProfile* Load(const FString& Slot);
     bool Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender = ERiverfrontGender::Male);

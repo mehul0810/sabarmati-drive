@@ -538,7 +538,7 @@ private:
     EActiveTimerReturnType AdvanceDressing(double Now,float)
     {
         auto* Walker=Resident();
-        const float Time=FMath::Clamp(float((Now-DressStageStart)/((bChangingBottom || bChangingFeet) ? 3.25 : PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
+        const float Time=FMath::Clamp(float((Now-DressStageStart)/((bChangingBottom || bChangingFeet) ? 3.25 : RiverfrontLife::IsPullover(PendingItem) ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
             if (bChangingBottom || bChangingFeet || PendingItem==RiverfrontLife::SportsBra)
@@ -560,7 +560,7 @@ private:
             const float Lift=FMath::SmoothStep(0.f,.42f,Time)*(1.f-FMath::SmoothStep(.58f,1.f,Time));
             const float SleeveTime=PendingAction==EAction::TakeOff ? Time : 1.f-Time;
             const float SleevePass=FMath::Sin(2.f*PI*SleeveTime);
-            Walker->PoseChangingSleeves(Lift,PendingItem==TEXT("kurta") ? 1.f : 0.f,SleevePass);
+            Walker->PoseChangingSleeves(Lift,RiverfrontLife::IsPullover(PendingItem) ? 1.f : 0.f,SleevePass);
             if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
             return EActiveTimerReturnType::Continue;
         }

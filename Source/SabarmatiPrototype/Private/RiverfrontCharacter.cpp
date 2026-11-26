@@ -451,7 +451,11 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
 
     const bool bBaseLayer = WardrobeOutfit == TEXT("fitting-base");
     const bool bIndigo = WardrobeOutfit == TEXT("shirt-indigo");
-    const bool bKurta = WardrobeOutfit == TEXT("kurta");
+    const auto* Top=RiverfrontLife::FindItem(WardrobeOutfit);
+    const auto* Bottom=RiverfrontLife::FindItem(WardrobeBottom);
+    const bool bKurta=Top && Top->Cut==ERiverfrontGarmentCut::Kurta;
+    const bool bTee=Top && Top->Cut==ERiverfrontGarmentCut::CrewTee;
+    const bool bChino=Bottom && Bottom->Cut==ERiverfrontGarmentCut::Chino;
     const bool bPublic = DefaultAvatarMesh->GetPathName().StartsWith(TEXT("/Game/Sabarmati/Riverfront/People/"));
     USkeletalMesh* Model = DefaultAvatarMesh;
     bool bUsingKurtaRig = false;
@@ -461,6 +465,13 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
             ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_FemaleFoundation.SK_FemaleFoundation")
             : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Foundation/SK_MaleFoundation.SK_MaleFoundation");
         if (auto* Foundation = LoadObject<USkeletalMesh>(nullptr, BaseMesh)) Model = Foundation;
+    }
+    else if (bPublic && bTee)
+    {
+        const TCHAR* Jersey=AvatarGender==ERiverfrontGender::Female
+            ? TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Jersey/SK_FemaleCrewTee.SK_FemaleCrewTee")
+            : TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Jersey/SK_MaleCrewTee.SK_MaleCrewTee");
+        if (auto* Fitted=LoadObject<USkeletalMesh>(nullptr,Jersey)) Model=Fitted;
     }
     else if (bPublic && (bKurta || AvatarGender == ERiverfrontGender::Female))
     {
@@ -478,9 +489,10 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     UseWardrobeMesh(Model, bUsingKurtaRig);
 
     // The fabric is UV-mapped on the garment and moves with the animated body.
-    const FColor Shirt = bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
-    const FColor Trim = bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
-    const FColor Trousers = WardrobeBottom==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73);
+    const bool bNewDye=bTee || (bKurta && WardrobeOutfit!=TEXT("kurta"));
+    const FColor Shirt = bNewDye ? Top->Tint.ToFColorSRGB() : bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
+    const FColor Trim = bNewDye ? (Top->Tint*.73f).ToFColorSRGB() : bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
+    const FColor Trousers = bChino ? Bottom->Tint.ToFColorSRGB() : WardrobeBottom==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
@@ -512,7 +524,12 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         Cloth = TailoredCloth ? TailoredCloth.Get() : CottonMaterial.Get();
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
-    SetSurface(TEXT("bottom_denim"), Cloth, Trousers);
+    SetSurface(TEXT("bottom_denim"), bChino ? CottonMaterial.Get() : Cloth, Trousers);
+    if (bTee)
+    {
+        SetSurface(TEXT("jersey_knit"),CottonMaterial,Shirt);
+        SetSurface(TEXT("jersey_binding"),CottonMaterial,Trim);
+    }
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)
     {

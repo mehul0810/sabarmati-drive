@@ -113,7 +113,7 @@ def smooth(edge0, edge1, value):
     return t*t*(3-2*t)
 
 
-def build(base, reference, system, output, foundation=None, lower_only=False):
+def build(base, reference, system, output, foundation=None, lower_only=False, tee=False):
     io = runpy.run_path(str(SCRIPTS/"prepare-riverfront-hatch.py"))
     scene, raw = io["read_glb"](reference)
     binary = bytearray(raw)
@@ -353,6 +353,8 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         # Keep the full neck above the collar and only its inner faces beneath it.
         collar = y>5.84 or (y>4.20 and max(abs(body[i,0]) for i in indices)<.65)
         cuff = abs(x)>3.05 and y<3.90
+        if tee and min(body[i,1] for i in indices)>.66 and max(abs(body[i,0]) for i in indices)<2.48 and max(body[i,1] for i in indices)<5.16:
+            continue
         if foundation and y < .42:
             continue
         if not foundation and ((y<6.30 and not collar and not cuff) or all(i in hidden for i in indices)):
@@ -362,7 +364,7 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
         if y>7.92+.55*max(-1,min(1,z-.5)):
             continue  # Scalp is already part of the original hair section.
         exposed.append(face)
-    if foundation == "female":
+    if foundation == "female" and not tee:
         from resident_foundation import cut_bralette
         normals = surface_normals(body,body_polygons)
         body, body_uv, normals, panels = cut_bralette(body,body_uv,normals,exposed)
@@ -373,7 +375,13 @@ def build(base, reference, system, output, foundation=None, lower_only=False):
             add_panel(name,body,body_uv,polygons,normals=normals)
     else:
         add_panel("skin",body,body_uv,exposed,body_polygons)
-    write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+"Foundation")
+    if tee:
+        from resident_foundation import jersey_panels
+        for slot,points,coords,polys in jersey_panels(read_obj(base)[0],body_uv,body_faces):
+            mats[slot]=len(scene["materials"])
+            scene["materials"].append({"name":slot,"doubleSided":True})
+            add_panel(slot,points,coords,polys)
+    write_mesh("SK_RiverEveryday" if not foundation else "SK_"+foundation.title()+("CrewTee" if tee else "Foundation"))
 
 
 if __name__ == "__main__":
