@@ -138,6 +138,8 @@ void ARiverfrontPlayerController::RefreshLifeAppearance()
         if (const auto* Profile = RiverfrontLife::Load(ProfileSlot))
         {
             Walker->ApplyProfileAppearance(*Profile);
+            Walker->PoseHeldWardrobeItem();
+            RefreshWardrobeMirror();
         }
 }
 
@@ -231,22 +233,15 @@ void ARiverfrontPlayerController::OpenLifeMenu(ERiverfrontLifeMenu Page)
     if (bWaking) FinishWakeup();
     SaveLifeCheckpoint();
     if (Page == ERiverfrontLifeMenu::Shop || (Page == ERiverfrontLifeMenu::Wardrobe && !OpenWardrobeMirror())) PrepareFittingCamera();
+    if (LifeCamera.IsValid())
+        if (auto* Walker=Cast<ARiverfrontCharacter>(GetPawn())) Walker->PoseHeldWardrobeItem();
     Screen = EScreen::Life;
     SetPause(true);
     FlushPressedKeys();
     bShowMouseCursor = true;
     TSharedRef<SWidget> Menu = MakeRiverfrontLifeMenu(*GetWorld(), Page, ProfileSlot,
         FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::RefreshLifeAppearance),
-        FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::CloseLifeMenu),
-        [Weak = TWeakObjectPtr<ARiverfrontPlayerController>(this)](FName Outfit, FName Accessory, FName Tone)
-        {
-            if (Weak.IsValid())
-                if (auto* Walker = Cast<ARiverfrontCharacter>(Weak->GetPawn()))
-                {
-                    Walker->ApplyWardrobeLook(Outfit, Accessory, Tone);
-                    Weak->RefreshWardrobeMirror();
-                }
-        });
+        FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::CloseLifeMenu));
     Overlay = Menu;
     GetWorld()->GetGameViewport()->AddViewportWidgetContent(Menu, 20);
     FInputModeUIOnly Input;

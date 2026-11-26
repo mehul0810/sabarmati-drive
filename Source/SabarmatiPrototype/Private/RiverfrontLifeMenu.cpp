@@ -65,15 +65,14 @@ public:
     SLATE_END_ARGS()
 
     void Construct(const FArguments& Args, ERiverfrontLifeMenu InPage, const FString& InSlot,
-        FSimpleDelegate InChanged, FSimpleDelegate InClose, TFunction<void(FName,FName,FName)> InPreview)
+        FSimpleDelegate InChanged, FSimpleDelegate InClose)
     {
         Page = InPage;
         Slot = InSlot;
         OnChanged = MoveTemp(InChanged);
         OnClose = MoveTemp(InClose);
-        Preview = MoveTemp(InPreview);
         Reload();
-        Selected = Outfit;
+        Selected = !Held.IsNone() ? Held : Item(Outfit) ? Outfit : FName(TEXT("cotton-sand"));
         AudioWorld = Args._AudioWorld;
         if (bAvailable && Page != ERiverfrontLifeMenu::Wallet)
         {
@@ -126,22 +125,24 @@ public:
                 + SHorizontalBox::Slot().FillWidth(1.f).Padding(3,0,0,0)
                 [ PayButton(true) ]
             ];
-            Body->AddSlot().AutoHeight()
+            Body->AddSlot().AutoHeight().Padding(0,3)
             [
-                SNew(SButton).Tag(TEXT("LifeEquip")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
-                .ContentPadding(FMargin(10,8)).HAlign(HAlign_Center)
-                .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected) && !Wearing(Selected)); })
-                .OnClicked(this,&SRiverfrontLifeMenu::WearSelected)
-                [SNew(STextBlock).ColorAndOpacity(Panel).Font(FCoreStyle::GetDefaultFontStyle("Bold",13))
-                    .Text_Lambda([this]{ return Copy(DressingTimer.IsValid()?TEXT("Changing top…"):TEXT("Wear now")); })]
+                SNew(SButton).Tag(TEXT("LifeDress")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
+                .ContentPadding(FMargin(8,8)).HAlign(HAlign_Center)
+                .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected)); })
+                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid() && (Held.IsNone() || Held==Selected); })
+                .OnClicked(this,&SRiverfrontLifeMenu::DressSelected)
+                [SNew(STextBlock).Tag(TEXT("LifeDressAction")).ColorAndOpacity(Panel)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold",13)).Text_Lambda([this]{ return ActionText(); })]
             ];
             Body->AddSlot().AutoHeight().Padding(0,3)
             [
-                SNew(SButton).Tag(TEXT("LifeRemoveAccessory")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
-                .ContentPadding(FMargin(9,7)).HAlign(HAlign_Center)
-                .Visibility_Lambda([this]{ return Show(!Accessory.IsNone() && Selected == Accessory); })
-                .OnClicked_Lambda([this]{ return Complete(RiverfrontLife::Equip(Slot,NAME_None),TEXT("Accessory removed.")); })
-                [Label(Copy(TEXT("Remove accessory")),13,Paper)]
+                SNew(SButton).Tag(TEXT("LifePutBack")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
+                .Visibility_Lambda([this]{ return Show(!Held.IsNone()); })
+                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid(); })
+                .ContentPadding(FMargin(8,7)).HAlign(HAlign_Center)
+                .OnClicked_Lambda([this]{ return FinishAction(EAction::PutBack,Held); })
+                [SNew(STextBlock).ColorAndOpacity(Paper).Text_Lambda([this]{return Copy(TEXT("Put back ")+ItemLabel(Held));})]
             ];
             if (bWardrobe)
             {
@@ -276,12 +277,12 @@ private:
     ERiverfrontLifeMenu Page = ERiverfrontLifeMenu::Wallet;
     FString Slot, LastReceipt;
     FSimpleDelegate OnChanged, OnClose;
-    TFunction<void(FName,FName,FName)> Preview;
+    using EAction=RiverfrontLife::EDressingAction;
     FButtonStyle ButtonStyle;
     TSharedPtr<SButton> CloseButton;
     TMap<FName,TSharedPtr<SButton>> Rows;
     TArray<FName> Owned;
-    FName Selected, Outfit, Accessory, Tone;
+    FName Selected, Outfit, Accessory, Held, Tone;
     ERiverfrontGender Gender = ERiverfrontGender::Male;
     int64 Cash = 0, Bank = 0;
     int32 Deliveries = 0;
@@ -292,7 +293,9 @@ private:
     TWeakObjectPtr<UWorld> AudioWorld;
     TWeakPtr<FActiveTimerHandle> DressingTimer;
     double DressStageStart=0.;
-    int32 DressStage=0;
+    EAction PendingAction=EAction::Take;
+    FName PendingItem;
+    bool bTransferred=false;
     TStrongObjectPtr<USoundBase> SelectionTick, CounterBell;
 
     float PanelScale() const
@@ -325,9 +328,10 @@ private:
         Cash = Saved->CashRupees;
         Bank = Saved->BankRupees;
         Owned = Saved->OwnedItems;
-        Outfit = Saved->EquippedOutfit;
+        Outfit = Saved->EquippedOutfit.IsNone() ? FName(TEXT("cotton-sand")) : Saved->EquippedOutfit;
         Accessory = Saved->EquippedAccessory;
         Tone = Saved->AppearanceTone;
+        Held = Saved->HeldWardrobeItem;
         Gender = Saved->AvatarGender;
         bCroppedHair = Saved->bCroppedHair;
         LastReceipt = Saved->LastReceipt;
@@ -389,7 +393,7 @@ private:
                 [
                     SNew(STextBlock).ColorAndOpacity(Muted).Font(FCoreStyle::GetDefaultFontStyle("Regular",14))
                     .Text_Lambda([this,Id,Price=Entry.PriceRupees]{
-                        return Copy(Wearing(Id) ? TEXT("Wearing") : Owned.Contains(Id) ? TEXT("Owned") : Page==ERiverfrontLifeMenu::Wardrobe ? FString(TEXT("At Sutra · "))+Rupees(Price) : Rupees(Price));
+                        return Copy(Wearing(Id) ? TEXT("Wearing") : Held==Id ? TEXT("In hand") : Owned.Contains(Id) ? TEXT("Owned") : Page==ERiverfrontLifeMenu::Wardrobe ? FString(TEXT("At Sutra · "))+Rupees(Price) : Rupees(Price));
                     })
                 ]
             ];
@@ -403,7 +407,7 @@ private:
             .ButtonColorAndOpacity(bBank ? Row : Amber).ContentPadding(FMargin(5,8)).HAlign(HAlign_Center)
             .Visibility_Lambda([this]{ return Show(Page == ERiverfrontLifeMenu::Shop && !Selected.IsNone() && !Owned.Contains(Selected)); })
             .OnClicked_Lambda([this,bBank]{
-                const FText Error = RiverfrontLife::BuyAndEquip(Slot,Selected,bBank);
+                const FText Error = RiverfrontLife::Buy(Slot,Selected,bBank);
                 return Complete(Error, FString(), true);
             })
             [
@@ -453,49 +457,85 @@ private:
         if (auto* Walker=Resident()) Walker->EndChangingPose();
     }
 
+    static FString ItemLabel(FName Id)
+    {
+        const auto* Choice=Item(Id);
+        return Choice ? Choice->Label : FString();
+    }
+
+    FName WornInSlot() const
+    {
+        const auto* Choice=Item(Selected);
+        return Choice && Choice->bAccessory ? Accessory : Outfit;
+    }
+
+    EAction NextAction() const
+    {
+        if (Held==Selected && !Held.IsNone()) return EAction::PutOn;
+        return Item(WornInSlot()) ? EAction::TakeOff : EAction::Take;
+    }
+
+    FText ActionText() const
+    {
+        if (DressingTimer.IsValid()) return Copy(PendingAction==EAction::TakeOff ? TEXT("Taking off…") : TEXT("Putting on…"));
+        if (!Held.IsNone() && Held!=Selected) return Copy(TEXT("Put the held item back first"));
+        switch (NextAction())
+        {
+        case EAction::TakeOff: return Copy(TEXT("Take off ")+ItemLabel(WornInSlot()));
+        case EAction::Take: return Copy(Page==ERiverfrontLifeMenu::Shop ? TEXT("Take from shelf") : TEXT("Take from wardrobe"));
+        default: return Copy(TEXT("Put on ")+ItemLabel(Held));
+        }
+    }
+
+    FReply FinishAction(EAction Action,FName Id)
+    {
+        const FString Name=ItemLabel(Id);
+        const FText Error=RiverfrontLife::Dress(Slot,Action,Id);
+        const FString Message=Action==EAction::Take ? Name+TEXT(" in hand.") :
+            Action==EAction::PutOn ? TEXT("Wearing ")+Name+TEXT(".") : Name+TEXT(" returned to the shelf.");
+        return Complete(Error,Message);
+    }
+
     EActiveTimerReturnType AdvanceDressing(double Now,float)
     {
         auto* Walker=Resident();
-        if (!Walker || !Preview) { DressingTimer.Reset(); return EActiveTimerReturnType::Stop; }
-        constexpr double Seconds[]={.35,.45,.4};
-        const float Alpha=FMath::Clamp(float((Now-DressStageStart)/Seconds[DressStage]),0.f,1.f);
-        const float Ease=FMath::SmoothStep(0.f,1.f,Alpha);
-        const float OldPullover=Outfit==TEXT("kurta") ? 1.f : 0.f;
-        const float NewPullover=Selected==TEXT("kurta") ? 1.f : 0.f;
-        if (DressStage!=1 || OldPullover!=NewPullover)
+        const float Time=FMath::Clamp(float((Now-DressStageStart)/1.1),0.f,1.f);
+        if (Walker && Time<1.f)
         {
-            const float Style=DressStage==0 ? OldPullover : DressStage==2 ? NewPullover : FMath::Lerp(OldPullover,NewPullover,Ease);
-            Walker->PoseChangingSleeves(DressStage==0?Ease:DressStage==1?1.f:1.f-Ease,Style);
+            if (!bTransferred && Time>=.5f)
+            {
+                const bool bRemoving=PendingAction==EAction::TakeOff;
+                Walker->ApplyWardrobeLook(bRemoving ? RiverfrontLife::BaseLayer : PendingItem,Accessory,Tone);
+                Walker->ShowHeldWardrobeItem(bRemoving ? PendingItem : NAME_None);
+                bTransferred=true;
+            }
+            const float Lift=FMath::SmoothStep(0.f,.42f,Time)*(1.f-FMath::SmoothStep(.58f,1.f,Time));
+            Walker->PoseChangingSleeves(Lift,PendingItem==TEXT("kurta") ? 1.f : 0.f);
             if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
+            return EActiveTimerReturnType::Continue;
         }
-        if (Alpha<1.f) return EActiveTimerReturnType::Continue;
-        ++DressStage;
-        DressStageStart=Now;
-        if (DressStage==1) Preview(TEXT("fitting-base"),Accessory,Tone);
-        else if (DressStage==2) Preview(Selected,Accessory,Tone);
-        else
+        DressingTimer.Reset();
+        if (Walker)
         {
             Walker->EndChangingPose();
-            DressingTimer.Reset();
-            const auto Error=RiverfrontLife::Equip(Slot,Selected);
-            if (!Error.IsEmpty()) Preview(Outfit,Accessory,Tone);
-            Complete(Error,TEXT("Outfit updated."));
-            return EActiveTimerReturnType::Stop;
+            FinishAction(PendingAction,PendingItem);
         }
-        Walker->PoseChangingSleeves(1.f,DressStage==1?OldPullover:NewPullover);
-        return EActiveTimerReturnType::Continue;
+        return EActiveTimerReturnType::Stop;
     }
 
-    FReply WearSelected()
+    FReply DressSelected()
     {
-        const auto* Choice=Item(Selected);
+        if (DressingTimer.IsValid() || !Owned.Contains(Selected) || (!Held.IsNone() && Selected!=Held))
+            return FReply::Handled();
+        const auto Action=NextAction();
+        const FName Id=Action==EAction::TakeOff ? WornInSlot() : Selected;
+        const auto* Choice=Item(Id);
         auto* Walker=Resident();
-        if (Page!=ERiverfrontLifeMenu::Wardrobe || !Choice || Choice->bAccessory || !Walker ||
-            !Walker->SupportsClothingChange() || !Preview)
-            return Complete(RiverfrontLife::Equip(Slot,Selected),TEXT("Outfit updated."));
-        if (!Owned.Contains(Selected) || Wearing(Selected) || DressingTimer.IsValid()) return FReply::Handled();
-        Preview(Outfit,Accessory,Tone);
-        DressStage=0;
+        if (Action==EAction::Take || !Choice || Choice->bAccessory || !Walker || !Walker->SupportsClothingChange())
+            return FinishAction(Action,Id);
+        bTransferred=false;
+        PendingAction=Action;
+        PendingItem=Id;
         DressStageStart=FSlateApplication::Get().GetCurrentTime();
         DressingTimer=RegisterActiveTimer(1.f/30.f,FWidgetActiveTimerDelegate::CreateSP(this,&SRiverfrontLifeMenu::AdvanceDressing));
         return FReply::Handled();
@@ -503,11 +543,9 @@ private:
 
     FReply Select(FName Id)
     {
-        if (Selected != Id) PlayFeedback(SelectionTick.Get(),.13f,1.40f);
-        StopDressing();
+        if (DressingTimer.IsValid()) return FReply::Handled();
+        if (Selected!=Id) PlayFeedback(SelectionTick.Get(),.13f,1.40f);
         Selected=Id;
-        if (const auto* Choice=Item(Id); Choice && Preview)
-            Preview(Choice->bAccessory ? Outfit : Id,Choice->bAccessory ? Id : Accessory,Tone);
         Feedback=FText::GetEmpty();
         return FReply::Handled();
     }
@@ -521,24 +559,20 @@ private:
 
     FReply Complete(const FText& Error, const FString& Success, bool bReceipt=false)
     {
-        if (!Error.IsEmpty()) { Feedback = Error; return FReply::Handled(); }
         StopDressing();
         const int64 CashBefore = Cash, BankBefore = Bank;
         Reload();
         if (!bAvailable) { Feedback = Copy(TEXT("The saved profile could not be reopened.")); return FReply::Handled(); }
-        Selected = Wearing(Selected) ? Selected : Outfit;
-        Feedback = Copy(bReceipt ? LastReceipt : Success);
+        Feedback = Error.IsEmpty() ? Copy(bReceipt ? LastReceipt : Success) : Error;
         if (bReceipt && (Cash < CashBefore || Bank < BankBefore))
             PlayFeedback(CounterBell.Get(),.19f,.96f);
         OnChanged.ExecuteIfBound();
-        if (Preview) Preview(Outfit,Accessory,Tone);
         return ReturnFocus();
     }
 
     FReply Close()
     {
         StopDressing();
-        if (bAvailable && Preview && Page != ERiverfrontLifeMenu::Wallet) Preview(Outfit,Accessory,Tone);
         OnClose.ExecuteIfBound();
         return FReply::Handled();
     }
@@ -546,8 +580,8 @@ private:
 }
 
 TSharedRef<SWidget> MakeRiverfrontLifeMenu(UWorld& World, ERiverfrontLifeMenu Page, const FString& ProfileSlot,
-    FSimpleDelegate OnChanged, FSimpleDelegate OnClose, TFunction<void(FName,FName,FName)> Preview)
+    FSimpleDelegate OnChanged, FSimpleDelegate OnClose)
 {
-    return SNew(RiverfrontFittingUI::SRiverfrontLifeMenu,Page,ProfileSlot,MoveTemp(OnChanged),MoveTemp(OnClose),MoveTemp(Preview))
+    return SNew(RiverfrontFittingUI::SRiverfrontLifeMenu,Page,ProfileSlot,MoveTemp(OnChanged),MoveTemp(OnClose))
         .AudioWorld(&World);
 }

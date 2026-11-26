@@ -80,12 +80,6 @@ const FRiverfrontWearable* FindItem(FName Id)
     });
 }
 
-void Wear(URiverfrontLocalProfile& Profile, const FRiverfrontWearable& Item)
-{
-    FName& Equipped = Item.bAccessory ? Profile.EquippedAccessory : Profile.EquippedOutfit;
-    Equipped = Item.Id;
-}
-
 FText Price(int32 Rupees)
 {
     return FText::AsNumber(Rupees, nullptr, FInternationalization::Get().GetCulture(TEXT("en-IN")));
@@ -230,7 +224,7 @@ bool RiverfrontLife::MergeExploration(const FString& Slot, const FString& Displa
     }).IsEmpty();
 }
 
-FText RiverfrontLife::BuyAndEquip(const FString& Slot, FName Id, bool bPayFromBank)
+FText RiverfrontLife::Buy(const FString& Slot, FName Id, bool bPayFromBank)
 {
     const FRiverfrontWearable* Item = FindItem(Id);
     if (!Item) return LOCTEXT("UnknownItem", "This item is unavailable.");
@@ -250,26 +244,43 @@ FText RiverfrontLife::BuyAndEquip(const FString& Slot, FName Id, bool bPayFromBa
                 : LOCTEXT("CashPurchase", "{0} · ₹{1} paid in cash");
             Profile.LastReceipt = FText::Format(Format, FText::FromString(Item->Label), Price(Item->PriceRupees)).ToString();
         }
-        Wear(Profile, *Item);
         return FText::GetEmpty();
     });
 }
 
-FText RiverfrontLife::Equip(const FString& Slot, FName Id)
+FText RiverfrontLife::Dress(const FString& Slot, EDressingAction Action, FName Id)
 {
-    return Update(Slot, [Id](URiverfrontLocalProfile& Profile)
+    const auto* Item = FindItem(Id);
+    if (!Item) return LOCTEXT("UnknownItem", "This item is unavailable.");
+    return Update(Slot, [&](URiverfrontLocalProfile& Profile)
     {
-        if (Id.IsNone())
+        if (!Profile.OwnedItems.Contains(Id)) return LOCTEXT("NotOwned", "Purchase this item first.");
+        FName& Worn = Item->bAccessory ? Profile.EquippedAccessory : Profile.EquippedOutfit;
+        // A missing outfit in an older save was displayed as the starter shirt.
+        if (!Item->bAccessory && Worn.IsNone()) Worn=StarterOutfit;
+        const FName Empty = Item->bAccessory ? NAME_None : BaseLayer;
+        switch (Action)
         {
-            Profile.EquippedAccessory = NAME_None;
-            return FText::GetEmpty();
+        case EDressingAction::TakeOff:
+            if (Worn != Id) return LOCTEXT("NotWorn", "Select the item you are wearing.");
+            Worn = Empty;
+            break;
+        case EDressingAction::Take:
+            if (!Profile.HeldWardrobeItem.IsNone()) return LOCTEXT("HandsFull", "Put the item in your hand back first.");
+            if (Worn != Empty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
+            Profile.HeldWardrobeItem = Id;
+            break;
+        case EDressingAction::PutOn:
+            if (Profile.HeldWardrobeItem != Id) return LOCTEXT("NotHeld", "Take the item into your hand first.");
+            if (Worn != Empty) return LOCTEXT("SlotOccupied", "Take off the item you are wearing first.");
+            Worn = Id;
+            Profile.HeldWardrobeItem = NAME_None;
+            break;
+        case EDressingAction::PutBack:
+            if (Profile.HeldWardrobeItem != Id) return LOCTEXT("NotHeld", "Take the item into your hand first.");
+            Profile.HeldWardrobeItem = NAME_None;
+            break;
         }
-        const FRiverfrontWearable* Item = FindItem(Id);
-        if (!Item || !Profile.OwnedItems.Contains(Id))
-        {
-            return LOCTEXT("NotOwned", "Purchase this item first.");
-        }
-        Wear(Profile, *Item);
         return FText::GetEmpty();
     });
 }

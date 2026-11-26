@@ -34,8 +34,10 @@ namespace RiverfrontLife
     URiverfrontLocalProfile* Load(const FString& Slot);
     bool Create(const FString& Slot, const FString& DisplayName, ERiverfrontGender Gender = ERiverfrontGender::Male);
     bool MergeExploration(const FString& Slot, const FString& DisplayName, const TArray<FName>& Visits, float BestTime);
-    FText BuyAndEquip(const FString& Slot, FName Item, bool bPayFromBank);
-    FText Equip(const FString& Slot, FName Item);
+    inline const FName BaseLayer(TEXT("fitting-base"));
+    enum class EDressingAction : uint8 { TakeOff, Take, PutOn, PutBack };
+    FText Buy(const FString& Slot, FName Item, bool bPayFromBank);
+    FText Dress(const FString& Slot, EDressingAction Action, FName Item);
     FText SetAvatarGender(const FString& Slot, ERiverfrontGender Gender);
     FText SetAppearanceTone(const FString& Slot, FName Tone);
     FText SetCroppedHair(const FString& Slot, bool bCropped);

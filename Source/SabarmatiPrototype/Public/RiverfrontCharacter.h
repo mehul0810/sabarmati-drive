@@ -63,6 +63,9 @@ public:
     FName GetWardrobeAccessory() const { return WardrobeAccessory; }
     bool GetWardrobeShirtColor(FLinearColor& Out) const;
     bool HasWristwatchVisible() const;
+    void ShowHeldWardrobeItem(FName Id);
+    void PoseHeldWardrobeItem();
+    bool HasHeldWardrobeProp(FName Id) const;
     USkeletalMeshComponent* GetAvatarMesh() const;
     float GetTraversalHandContact(bool bRight, FVector& OutPalm, FVector& OutElbow) const;
 
@@ -186,6 +189,8 @@ private:
     FName WardrobeOutfit = TEXT("cotton-sand");
     FName WardrobeAccessory;
     FName WardrobeTone;
+    UPROPERTY(Transient) TObjectPtr<class UPrimitiveComponent> HeldProp;
+    FName HeldPropItem;
     void UseWardrobeMesh(USkeletalMesh* Model, bool bKurta);
     void UpdateWatchAttachment();
     bool bCroppedHair = false;

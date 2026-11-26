@@ -15,6 +15,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSabarmatiOfflineLife,
 
 bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
 {
+    using RiverfrontLife::Dress;
+    using EAction=RiverfrontLife::EDressingAction;
     const FString Slot = TEXT("SabarmatiQA-Life-") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
     const FString Fresh = Slot + TEXT("-New");
     const FString PendingFile = FPaths::ProjectSavedDir() / TEXT("SaveGames") / (Slot + TEXT(".pending.sav"));
@@ -46,27 +48,39 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestEqual(TEXT("existing profile retains the original avatar"), Profile->AvatarGender, ERiverfrontGender::Male);
     TestFalse(TEXT("wake pending"), Profile->bFirstMorningSeen);
     TestTrue(TEXT("reference catalogue"), RiverfrontLife::Catalog().Num() >= 4);
-    TestTrue(TEXT("unowned watch cannot be equipped"), !RiverfrontLife::Equip(Slot, TEXT("watch")).IsEmpty());
+    TestTrue(TEXT("unowned watch cannot be equipped"), !Dress(Slot, EAction::Take, TEXT("watch")).IsEmpty());
 
-    TestTrue(TEXT("buy indigo shirt for cash"), RiverfrontLife::BuyAndEquip(Slot, TEXT("shirt-indigo"), false).IsEmpty());
-    TestTrue(TEXT("repeat request"), RiverfrontLife::BuyAndEquip(Slot, TEXT("shirt-indigo"), false).IsEmpty());
+    TestTrue(TEXT("buy indigo shirt for cash"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
+    TestTrue(TEXT("repeat request"), RiverfrontLife::Buy(Slot, TEXT("shirt-indigo"), false).IsEmpty());
     Profile = RiverfrontLife::Load(Slot);
     if (!TestNotNull(TEXT("reload purchase"), Profile)) return false;
     TestEqual(TEXT("cash debited once"), Profile->CashRupees, int64(98750));
     TestEqual(TEXT("bank untouched"), Profile->BankRupees, int64(500000));
-    TestEqual(TEXT("shirt equipped"), Profile->EquippedOutfit, FName(TEXT("shirt-indigo")));
+    TestEqual(TEXT("purchase retains the worn shirt"), Profile->EquippedOutfit, FName(TEXT("cotton-sand")));
+    TestFalse(TEXT("cannot take another top before removing this one"), Dress(Slot,EAction::Take,TEXT("shirt-indigo")).IsEmpty());
+    TestTrue(TEXT("remove starter top"), Dress(Slot,EAction::TakeOff,TEXT("cotton-sand")).IsEmpty());
+    TestEqual(TEXT("base layer persists"), RiverfrontLife::Load(Slot)->EquippedOutfit,RiverfrontLife::BaseLayer);
+    TestFalse(TEXT("cannot wear straight from the shelf"), Dress(Slot,EAction::PutOn,TEXT("shirt-indigo")).IsEmpty());
+    TestTrue(TEXT("take indigo from the shelf"), Dress(Slot,EAction::Take,TEXT("shirt-indigo")).IsEmpty());
+    TestTrue(TEXT("put indigo back"), Dress(Slot,EAction::PutBack,TEXT("shirt-indigo")).IsEmpty());
+    TestTrue(TEXT("select and take it again"), Dress(Slot,EAction::Take,TEXT("shirt-indigo")).IsEmpty());
+    TestFalse(TEXT("cannot wear another item from the same slot"), Dress(Slot,EAction::PutOn,TEXT("cotton-sand")).IsEmpty());
+    TestEqual(TEXT("held top survives reopening"), RiverfrontLife::Load(Slot)->HeldWardrobeItem,FName(TEXT("shirt-indigo")));
+    TestTrue(TEXT("put on the held shirt"), Dress(Slot,EAction::PutOn,TEXT("shirt-indigo")).IsEmpty());
     TestTrue(TEXT("receipt"), Profile->LastReceipt.Contains(TEXT("1,250")));
 
     // Force the stage-file write to fail inside our own unique slot.
     if (!TestTrue(TEXT("create intentionally unavailable staging destination"), Files.CreateDirectory(*PendingFile))) return false;
-    TestTrue(TEXT("failed purchase reported"), !RiverfrontLife::BuyAndEquip(Slot, TEXT("watch"), true).IsEmpty());
+    TestTrue(TEXT("failed purchase reported"), !RiverfrontLife::Buy(Slot, TEXT("watch"), true).IsEmpty());
     Files.DeleteDirectory(*PendingFile);
     Profile = RiverfrontLife::Load(Slot);
     if (!TestNotNull(TEXT("old save survives failed purchase"), Profile)) return false;
     TestEqual(TEXT("failed purchase did not debit bank"), Profile->BankRupees, int64(500000));
     TestFalse(TEXT("failed purchase did not grant watch"), Profile->OwnedItems.Contains(TEXT("watch")));
 
-    TestTrue(TEXT("retry bank purchase"), RiverfrontLife::BuyAndEquip(Slot, TEXT("watch"), true).IsEmpty());
+    TestTrue(TEXT("retry bank purchase"), RiverfrontLife::Buy(Slot, TEXT("watch"), true).IsEmpty());
+    TestTrue(TEXT("pick up watch"), Dress(Slot,EAction::Take,TEXT("watch")).IsEmpty());
+    TestTrue(TEXT("put on watch"), Dress(Slot,EAction::PutOn,TEXT("watch")).IsEmpty());
     TestTrue(TEXT("set complexion"), RiverfrontLife::SetAppearanceTone(Slot, TEXT("umber")).IsEmpty());
     TestTrue(TEXT("change avatar in an existing profile"), RiverfrontLife::SetAvatarGender(Slot, ERiverfrontGender::Female).IsEmpty());
     TestTrue(TEXT("choose cropped haircut"), RiverfrontLife::SetCroppedHair(Slot, true).IsEmpty());
@@ -103,7 +117,7 @@ bool FSabarmatiOfflineLife::RunTest(const FString& Parameters)
     TestEqual(TEXT("new player bank"), Profile->BankRupees, int64(500000));
     Profile->CashRupees = 30;
     TestTrue(TEXT("low funds fixture"), UGameplayStatics::SaveGameToSlot(Profile, Fresh, 0));
-    TestTrue(TEXT("insufficient balance fails purchase"), !RiverfrontLife::BuyAndEquip(Fresh, TEXT("shirt-indigo"), false).IsEmpty());
+    TestTrue(TEXT("insufficient balance fails purchase"), !RiverfrontLife::Buy(Fresh, TEXT("shirt-indigo"), false).IsEmpty());
     Profile = RiverfrontLife::Load(Fresh);
     if (!TestNotNull(TEXT("low funds remain readable"), Profile)) return false;
     TestEqual(TEXT("exact funds retained on refusal"), Profile->CashRupees, int64(30));

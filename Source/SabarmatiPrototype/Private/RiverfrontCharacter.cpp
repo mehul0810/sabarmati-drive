@@ -426,6 +426,7 @@ void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile&
     AvatarGender = Profile.AvatarGender;
     bCroppedHair = Profile.bCroppedHair;
     ApplyWardrobeLook(Profile.EquippedOutfit, Profile.EquippedAccessory, Profile.AppearanceTone);
+    ShowHeldWardrobeItem(Profile.HeldWardrobeItem);
 }
 
 void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FName Tone)
@@ -541,6 +542,8 @@ void ARiverfrontCharacter::EndChangingPose()
     for (auto* Part : { Hair.Get(), Wristwatch.Get() })
         if (Part && Part->GetAttachParent()==ChangingMesh)
             Part->AttachToComponent(GetMesh(),FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
+    if (HeldProp && HeldProp->GetAttachParent()==ChangingMesh)
+        HeldProp->AttachToComponent(GetMesh(),FAttachmentTransformRules::KeepRelativeTransform,HeldProp->GetAttachSocketName());
     GetMesh()->SetVisibility(true);
     ChangingMesh->DestroyComponent();
     ChangingMesh=nullptr;
@@ -574,6 +577,8 @@ bool ARiverfrontCharacter::PreparePosedMesh()
         for (auto* Part : { Hair.Get(), Wristwatch.Get() })
             if (Part && Part->GetAttachParent()==Source)
                 Part->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
+        if (HeldProp && HeldProp->GetAttachParent()==Source)
+            HeldProp->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,HeldProp->GetAttachSocketName());
         Source->SetVisibility(false);
     }
     return true;

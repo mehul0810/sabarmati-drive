@@ -26,6 +26,7 @@ public:
     UPROPERTY(SaveGame) TArray<FName> OwnedItems;
     UPROPERTY(SaveGame) FName EquippedOutfit;
     UPROPERTY(SaveGame) FName EquippedAccessory;
+    UPROPERTY(SaveGame) FName HeldWardrobeItem;
     // Tagged saves written before the avatar selector inherit the original resident.
     UPROPERTY(SaveGame) ERiverfrontGender AvatarGender = ERiverfrontGender::Male;
     UPROPERTY(SaveGame) FName AppearanceTone;
