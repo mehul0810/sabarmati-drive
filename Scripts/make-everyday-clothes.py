@@ -184,6 +184,17 @@ def build(base, reference, system, output, foundation=None):
                 influences[:,rank["Chest"]] += chest*transferred
                 influences[:,rank["Spine"]] += (1-chest)*transferred
                 influences[:,i] = retained
+        if foundation and slot in ("skin","foundation_knit","foundation_elastic"):
+            # A bare pectoral belongs to the rib cage. The nearest-arm weighting
+            # of an A-pose pulls the lateral chest into the armpit at rest.
+            core = (1-smooth(.145,.235,np.abs(positions[:,0])))*smooth(.87,.99,y)*(1-smooth(1.355,1.43,y))
+            influences /= np.maximum(influences.sum(axis=1,keepdims=True),1.e-12)
+            influences *= 1-core[:,None]
+            chest = smooth(1.04,1.24,y)
+            waist = 1-smooth(.93,1.08,y)
+            influences[:,rank["Chest"]] += core*chest
+            influences[:,rank["Pelvis"]] += core*(1-chest)*waist
+            influences[:,rank["Spine"]] += core*(1-chest)*(1-waist)
         ids = np.argsort(-influences,axis=1,kind="stable")[:,:4]
         vals = np.take_along_axis(influences,ids,axis=1)
         if slot not in ("shoe","bottom_denim"):
@@ -204,16 +215,22 @@ def build(base, reference, system, output, foundation=None):
         scene["accessors"].append(field)
         return len(scene["accessors"])-1
 
-    def add_panel(slot, source_vertices, uv, faces, normal_faces=None):
-        verts = (source_vertices+origin)*.102
+    def triangles(polygons):
+        return [(f[0],f[i],f[i+1]) for f in polygons for i in range(1,len(f)-1)]
+
+    def surface_normals(verts, faces):
         normals = np.zeros_like(verts)
-        triangles = lambda polygons: [(f[0],f[i],f[i+1]) for f in polygons for i in range(1,len(f)-1)]
-        normal_triangles = np.array([[v for v,_ in tri] for tri in triangles(normal_faces or faces)])
-        a,b,c = verts[normal_triangles].transpose((1,0,2))
+        indices = np.array([[v for v,_ in tri] for tri in triangles(faces)])
+        a,b,c = verts[indices].transpose((1,0,2))
         products = np.cross(b-a,c-a)
         for i in range(3):
-            np.add.at(normals,normal_triangles[:,i],products)
-        normals /= np.maximum(np.linalg.norm(normals,axis=1,keepdims=True),1e-12)
+            np.add.at(normals,indices[:,i],products)
+        return normals/np.maximum(np.linalg.norm(normals,axis=1,keepdims=True),1e-12)
+
+    def add_panel(slot, source_vertices, uv, faces, normal_faces=None, normals=None):
+        verts = (source_vertices+origin)*.102
+        if normals is None:
+            normals = surface_normals(verts,normal_faces or faces)
         tris = triangles(faces)
         unique = dict.fromkeys(k for tri in tris for k in tri)
         keys = {k:i for i,k in enumerate(unique)}
@@ -255,7 +272,7 @@ def build(base, reference, system, output, foundation=None):
             # Tuck the waistband beneath the untucked shirt as the hip flexes.
             # Leave the visible pockets, thigh and knee silhouettes at their authored width.
             jeans = np.array([parts[i]=="bottom_denim" for i in comps])
-            waist = smooth(.40,1.30,fitted[:,1])*jeans
+            waist = smooth(.40,1.30,fitted[:,1])*jeans*(0. if foundation else 1.)
             fitted[:,0] *= 1-.07*waist
             fitted[:,2] = .13+(fitted[:,2]-.13)*(1-.16*waist)
         else:
@@ -274,6 +291,8 @@ def build(base, reference, system, output, foundation=None):
     if foundation:
         # Overlap the inside of the original waistband. The cut stays inside the jeans
         # when the hips flex and does not change the visible abdomen above the belt.
+        from resident_foundation import shape_chest
+        shape_chest(body,foundation)
         waist = 1-smooth(.45,1.72,body[:,1])
         body[:,0] *= 1-.105*waist
         body[:,2] = .13+(body[:,2]-.13)*(1-.19*waist)
@@ -299,14 +318,16 @@ def build(base, reference, system, output, foundation=None):
             continue  # Scalp is already part of the original hair section.
         exposed.append(face)
     if foundation == "female":
-        from resident_foundation import make_bralette
-        covered, panels = make_bralette(body, exposed)
-        exposed = [face for i,face in enumerate(exposed) if i not in covered]
-        for name, (vertices, texcoords, polygons) in panels.items():
-            mats[name] = len(scene["materials"])
-            scene["materials"].append({"name":name, "doubleSided":True})
-            add_panel(name,vertices,texcoords,polygons)
-    add_panel("skin",body,body_uv,exposed,body_polygons)
+        from resident_foundation import cut_bralette
+        normals = surface_normals(body,body_polygons)
+        body, body_uv, normals, panels = cut_bralette(body,body_uv,normals,exposed)
+        for name, polygons in panels.items():
+            if name!="skin":
+                mats[name] = len(scene["materials"])
+                scene["materials"].append({"name":name,"doubleSided":True})
+            add_panel(name,body,body_uv,polygons,normals=normals)
+    else:
+        add_panel("skin",body,body_uv,exposed,body_polygons)
     binary.extend(bytes(-len(binary)%4))
     scene["buffers"] = [dict(byteLength=len(binary))]
     header = json.dumps(scene,separators=(",",":")).encode()
