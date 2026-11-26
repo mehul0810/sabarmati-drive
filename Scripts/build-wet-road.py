@@ -7,6 +7,25 @@ assets=ue.EditorAssetLibrary
 lib=ue.MaterialEditingLibrary
 source=root+"/M_Asphalt"
 dest=root+"/M_DistrictRoad"
+puddle_code="""
+float2 p=P.xy/225.;
+float2 i=floor(p), f=frac(p); f=f*f*(3.-2.*f);
+// Hash the same integer grid corner identically from either neighbouring cell.
+// Adding floating-point offsets after the dot product made shared corners
+// disagree at distant world coordinates, leaving rectangular wetness seams.
+int2 cell=(int2)i;
+uint4 x=uint(cell.x)+uint4(0u,1u,0u,1u);
+uint4 y=uint(cell.y)+uint4(0u,0u,1u,1u);
+uint4 bits=(x*0x9e3779b9u)^(y*0x85ebca6bu);
+bits^=bits>>16; bits*=0x7feb352du; bits^=bits>>15;
+bits*=0x846ca68bu; bits^=bits>>16;
+float4 h=float4(bits & 0x00ffffffu)*(1.0/16777215.0);
+float n=lerp(lerp(h.x,h.y,f.x),lerp(h.z,h.w,f.x),f.y);
+// Damp asphalt keeps some aggregate texture; shallow, softly edged patches
+// become smoother without making whole sections mirror-flat.
+float pool=smoothstep(.40,.78,n+.045*sin(P.x*.021+P.y*.009));
+return saturate(W)*(.28+.44*pool);
+"""
 if assets.does_asset_exist(dest):
     mat=assets.load_asset(dest)
 else:
@@ -22,13 +41,7 @@ if not already:
         if not lib.connect_material_expressions(a,out,b,pin): raise RuntimeError(pin)
     wet=new("ScalarParameter",parameter_name="Wetness",default_value=0.)
     pos=new("WorldPosition")
-    puddle=new("Custom",output_type=ue.CustomMaterialOutputType.CMOT_FLOAT1,code="""
-float2 p=P.xy/225.;
-float2 i=floor(p), f=frac(p); f=f*f*(3.-2.*f);
-float4 h=frac(sin(dot(i,float2(127.1,311.7))+float4(0.,127.1,311.7,438.8))*43758.54);
-float n=lerp(lerp(h.x,h.y,f.x),lerp(h.z,h.w,f.x),f.y);
-return W*(.34+.66*smoothstep(.44,.73,n+.06*sin(P.x*.021+P.y*.009)));
-""")
+    puddle=new("Custom",output_type=ue.CustomMaterialOutputType.CMOT_FLOAT1,code=puddle_code)
     pins=[]
     for name in ("P","W"):
         v=ue.CustomInput(); v.set_editor_property("input_name",name); pins.append(v)
@@ -47,6 +60,16 @@ return W*(.34+.66*smoothstep(.44,.73,n+.06*sin(P.x*.021+P.y*.009)));
         if not lib.connect_material_property(blend,"",prop): raise RuntimeError(prop_name)
     mat.set_editor_property("used_with_instanced_static_meshes",True)
     lib.layout_material_expressions(mat); lib.recompile_material(mat)
+    if not assets.save_loaded_asset(mat,False): raise RuntimeError(dest)
+# Update the rain mask on existing materials too; rerunning this script should
+# preserve the material graph and change only the moisture response.
+puddles=[n for n in lib.get_material_expressions(mat)
+         if isinstance(n,ue.MaterialExpressionCustom) and
+         [str(pin.get_editor_property("input_name")) for pin in n.get_editor_property("inputs")]==["P","W"]]
+if len(puddles)!=1: raise RuntimeError("Expected one wetness mask in "+dest)
+if puddles[0].get_editor_property("code")!=puddle_code:
+    puddles[0].set_editor_property("code",puddle_code)
+    lib.recompile_material(mat)
     if not assets.save_loaded_asset(mat,False): raise RuntimeError(dest)
 # Tar-filled transverse cuts, eroded edges and small aggregate variation survive close ground-level views.
 # The pattern is filtered as it recedes. It follows world scale across adjacent road sections.

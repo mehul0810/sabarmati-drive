@@ -130,6 +130,8 @@ The phone users, bench occupants and traffic passengers use seated and standing 
 
 The original service elevations add shaded stair lights, stone sills, rear service doors and rainwater pipes to the existing building footprints. The three masonry materials keep their credited scan maps. A world-space moisture mask changes colour and roughness close to ground level. The road blends the credited Asphalt 033 and 019 materials, with worn wheel tracks, dusty shoulders and irregular resurfacing cuts at metre scale. The two new fixed camera views capture a public side lane and a low view over a cast access cover. The editor can rebuild these adjustments with `Scripts/build-wet-road.py` and `Scripts/build-facade-weathering.py`.
 
+The wet-road mask hashes shared grid corners consistently to avoid square seams at distant world coordinates. Damp asphalt retains some surface texture and the zero-wetness material remains unchanged.
+
 ## Playable resident hair
 
 The swept and cropped wardrobe cuts use the MakeHuman system hairstyles `short01` and `short04`. The swept style uses outward-facing volume normals and temporal coverage of the source strand mask at the hairline. Their CC0 mesh bindings fit the existing hm08 head, and the original 2048-pixel strand masks retain the shape of the hairline. The restored scalp uses the wearer's current skin material. Run `Scripts/make-resident-hair.py` with the hm08 OBJ, the extracted system pack and an output directory. Set `SABARMATI_RESIDENT_HAIR_SOURCE` to that directory for `Scripts/import-resident-hair.py`. [MakeHuman system assets and CC0 credits](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html)
