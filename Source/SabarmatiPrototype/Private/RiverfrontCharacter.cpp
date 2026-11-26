@@ -4,6 +4,7 @@
 #include "SabarmatiDistrict.h"
 #include "RiverfrontAvatarMotion.h"
 #include "RiverfrontLocalProfile.h"
+#include "RiverfrontLifeProfile.h"
 #include "RiverfrontLocomotionInstance.h"
 #include "RiverfrontResidentOrientation.h"
 #include "Sound/SoundWave.h"
@@ -423,6 +424,7 @@ void ARiverfrontCharacter::UpdateHair()
 
 void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile& Profile)
 {
+    WardrobeBottom = Profile.EquippedBottom.IsNone() ? RiverfrontLife::StarterBottom : Profile.EquippedBottom;
     AvatarGender = Profile.AvatarGender;
     bCroppedHair = Profile.bCroppedHair;
     ApplyWardrobeLook(Profile.EquippedOutfit, Profile.EquippedAccessory, Profile.AppearanceTone);
@@ -474,7 +476,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     // The fabric is UV-mapped on the garment and moves with the animated body.
     const FColor Shirt = bIndigo ? FColor(60, 85, 132) : bKurta ? FColor(135, 63, 48) : FColor(202, 183, 150);
     const FColor Trim = bIndigo ? FColor(39, 54, 79) : bKurta ? FColor(98, 44, 42) : FColor(144, 125, 99);
-    const FColor Trousers(53,62,73);
+    const FColor Trousers = WardrobeBottom==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73);
     const FColor Skin = Tone == TEXT("umber") ? FColor(141, 91, 66) : Tone == TEXT("warm") ?
         FColor(205, 150, 107) : FColor(180, 133, 105);
 
@@ -540,6 +542,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         else
             SetSurface(SkinSlot, nullptr, Skin);
     }
+    SetLowerBodyVisible(bPublic && WardrobeBottom==RiverfrontLife::Underwear);
     UpdateHair();
     UpdateWatchAttachment();
     if (bInFittingPose) SetFittingPose(true);
@@ -547,7 +550,14 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
 
 void ARiverfrontCharacter::EndChangingPose()
 {
+    if (MovingJeans)
+    {
+        MovingJeans->DestroyComponent();
+        MovingJeans=nullptr;
+        SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
+    }
     if (!ChangingMesh) return;
+    if (LowerBody) LowerBody->SetLeaderPoseComponent(GetMesh());
     for (auto* Part : { Hair.Get(), Wristwatch.Get() })
         if (Part && Part->GetAttachParent()==ChangingMesh)
             Part->AttachToComponent(GetMesh(),FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
@@ -579,10 +589,11 @@ bool ARiverfrontCharacter::PreparePosedMesh()
         for (int32 I=0;I<Source->GetNumMaterials();++I) ChangingMesh->SetMaterial(I,Source->GetMaterial(I));
         ChangingMesh->RegisterComponent();
         // Keep the original scalp hidden beneath the fitted haircut on the posing mesh.
-        const int32 Scalp=Source->GetMaterialIndex(TEXT("hair"));
-        for (int32 LOD=0;Scalp!=INDEX_NONE && LOD<Source->GetNumLODs();++LOD)
-            if (!Source->IsMaterialSectionShown(Scalp,LOD))
-                ChangingMesh->ShowMaterialSection(Scalp,INDEX_NONE,false,LOD);
+        for (int32 Slot=0;Slot<Source->GetNumMaterials();++Slot)
+            for (int32 LOD=0;LOD<Source->GetNumLODs();++LOD)
+                if (!Source->IsMaterialSectionShown(Slot,LOD))
+                    ChangingMesh->ShowMaterialSection(Slot,INDEX_NONE,false,LOD);
+        if (LowerBody) LowerBody->SetLeaderPoseComponent(ChangingMesh);
         for (auto* Part : { Hair.Get(), Wristwatch.Get() })
             if (Part && Part->GetAttachParent()==Source)
                 Part->AttachToComponent(ChangingMesh,FAttachmentTransformRules::KeepRelativeTransform,Part->GetAttachSocketName());
@@ -596,6 +607,14 @@ bool ARiverfrontCharacter::PreparePosedMesh()
 void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight,float SleevePass)
 {
     if (!PreparePosedMesh()) return;
+    ApplySleevePose(Lift,PulloverWeight,SleevePass);
+    // The fitting room pauses the world; publish the pose on Slate's active timer.
+    ChangingMesh->RefreshBoneTransforms();
+    ChangingMesh->RefreshFollowerComponents();
+}
+
+void ARiverfrontCharacter::ApplySleevePose(float Lift,float PulloverWeight,float SleevePass)
+{
     auto* Source=GetMesh();
     ChangingMesh->CopyPoseFromSkeletalComponent(Source);
     for (int32 Index=0;Index<2;++Index)
@@ -622,9 +641,6 @@ void ARiverfrontCharacter::PoseChangingSleeves(float Lift,float PulloverWeight,f
         Aim(TEXT("Shoulder"),TEXT("Elbow"),FMath::Lerp(ShirtUpper,FVector(.52,.59*Sign,.61),PulloverWeight));
         Aim(TEXT("Elbow"),TEXT("Hand"),FMath::Lerp(ShirtForearm,FVector(-.10,-.69*Sign,.78),PulloverWeight));
     }
-    // The fitting room pauses the world; publish the pose on Slate's active timer.
-    ChangingMesh->RefreshBoneTransforms();
-    ChangingMesh->MarkRenderDynamicDataDirty();
 }
 
 bool ARiverfrontCharacter::LieOnBed(const FVector& Pillow)
@@ -712,7 +728,7 @@ void ARiverfrontCharacter::UpdateBedPose()
     Reach(TEXT("Shoulderl"),TEXT("Elbowl"),TEXT("Handl"),Palm,Palm+FVector(-20,-55,40),
         Ease(1.35f,2.18f)*(1.f-Ease(3.f,3.65f)));
     ChangingMesh->RefreshBoneTransforms();
-    ChangingMesh->MarkRenderDynamicDataDirty();
+    ChangingMesh->RefreshFollowerComponents();
 }
 
 void ARiverfrontCharacter::LeaveBed()

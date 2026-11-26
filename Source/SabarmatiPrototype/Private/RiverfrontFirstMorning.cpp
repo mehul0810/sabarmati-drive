@@ -191,9 +191,10 @@ bool ARiverfrontPlayerController::SetFittingView(EFittingView Mode)
     {
         const bool bFace = Mode == EFittingView::Face;
         const USkeletalMeshComponent* Body = Walker->GetAvatarMesh();
-        const FName FocusBone = bFace ? FName(TEXT("Head")) : FName(TEXT("Neck"));
+        const bool bLegs=Mode==EFittingView::Trousers;
+        const FName FocusBone = bFace ? FName(TEXT("Head")) : bLegs ? FName(TEXT("Pelvis")) : FName(TEXT("Neck"));
         const FVector Focus = Body && Body->DoesSocketExist(FocusBone)
-            ? Body->GetSocketLocation(FocusBone) + FVector(0,0,bFace ? 2. : -15.)
+            ? Body->GetSocketLocation(FocusBone) + FVector(0,0,bFace ? 2. : bLegs ? -33. : -15.)
             : Walker->GetPawnViewLocation() - FVector(0,0,bFace ? 0. : 18.);
         const FVector Forward = Walker->GetActorForwardVector().RotateAngleAxis(bFace ? 0. : -36., FVector::UpVector);
         const FVector Right = FVector::CrossProduct(FVector::UpVector, -Forward);
@@ -207,7 +208,7 @@ bool ARiverfrontPlayerController::SetFittingView(EFittingView Mode)
         const double Distance = FVector::Distance(Focus, Eye);
         // Leave the right-hand side clear for the wardrobe controls.
         View->SetActorLocationAndRotation(Eye, (Focus + Right * (Distance * (bFace ? .105 : .20)) - Eye).Rotation());
-        View->GetCameraComponent()->SetFieldOfView(bFace ? 46.f : 64.f);
+        View->GetCameraComponent()->SetFieldOfView(bFace ? 46.f : bLegs ? 76.f : 64.f);
     }
     else
     {

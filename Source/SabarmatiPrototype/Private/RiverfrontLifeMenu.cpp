@@ -297,6 +297,7 @@ private:
     EAction PendingAction=EAction::Take;
     FName PendingItem;
     bool bTransferred=false;
+    bool bChangingBottom=false;
     TStrongObjectPtr<USoundBase> SelectionTick, CounterBell;
 
     float PanelScale() const
@@ -426,18 +427,24 @@ private:
 
     TSharedRef<SWidget> ViewButton(EFittingView Mode, FName Tag, FString LabelText)
     {
+        const auto Target=[this,Mode]
+        {
+            const auto* Choice=Item(Selected);
+            return Mode==EFittingView::Tailoring && Choice && Choice->Slot==ERiverfrontWearSlot::Bottom
+                ? EFittingView::Trousers : Mode;
+        };
         return SNew(SButton).Tag(Tag).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
             .ContentPadding(FMargin(8,7)).HAlign(HAlign_Center)
-            .OnClicked_Lambda([this,Mode]
+            .OnClicked_Lambda([this,Target]
             {
-                const EFittingView Next = Mode==ViewMode ? EFittingView::Full : Mode;
+                const EFittingView Next=Target()==ViewMode ? EFittingView::Full : Target();
                 auto* Controller = Cast<ARiverfrontPlayerController>(UGameplayStatics::GetPlayerController(AudioWorld.Get(),0));
                 if (Controller && Controller->SetFittingView(Next)) ViewMode=Next;
                 else Feedback=Copy(TEXT("There isn't room for a close-up here."));
                 return FReply::Handled();
             })
             [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",13))
-                .Text_Lambda([this,Mode,LabelText]{ return Copy(Mode==ViewMode ? FString(TEXT("Full outfit")) : LabelText); })];
+                .Text_Lambda([this,Target,LabelText]{ return Copy(Target()==ViewMode ? FString(TEXT("Full outfit")) : LabelText); })];
     }
 
     TSharedRef<SWidget> ToneButton(FName Choice, const FString& Name)
@@ -518,9 +525,15 @@ private:
     EActiveTimerReturnType AdvanceDressing(double Now,float)
     {
         auto* Walker=Resident();
-        const float Time=FMath::Clamp(float((Now-DressStageStart)/(PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
+        const float Time=FMath::Clamp(float((Now-DressStageStart)/(bChangingBottom ? 3.25 : PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
+            if (bChangingBottom)
+            {
+                Walker->PoseChangingTrousers(PendingItem,PendingAction==EAction::TakeOff ? Time : 1.f-Time);
+                if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
+                return EActiveTimerReturnType::Continue;
+            }
             if (!bTransferred && Time>=.5f)
             {
                 const bool bRemoving=PendingAction==EAction::TakeOff;
@@ -554,6 +567,7 @@ private:
         auto* Walker=Resident();
         if (Action==EAction::Take || !Choice || Choice->Slot==ERiverfrontWearSlot::Accessory || !Walker || !Walker->SupportsClothingChange())
             return FinishAction(Action,Id);
+        bChangingBottom=Choice->Slot==ERiverfrontWearSlot::Bottom;
         bTransferred=false;
         PendingAction=Action;
         PendingItem=Id;

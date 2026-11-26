@@ -52,6 +52,8 @@ public:
     bool SupportsClothingChange() const;
     void PoseChangingSleeves(float Lift,float PulloverWeight,float SleevePass=0.f);
     void EndChangingPose();
+    void PoseChangingTrousers(FName Item, float Undress);
+    FName GetWardrobeBottom() const { return WardrobeBottom; }
     bool IsLyingOnBed() const { return bLyingOnBed; }
     bool SupportsPublicHaircut() const;
     void SetCroppedHair(bool bCropped);
@@ -175,6 +177,7 @@ private:
     float BedTime=0.f;
     void UpdateBedPose();
     bool PreparePosedMesh();
+    void ApplySleevePose(float Lift,float PulloverWeight,float SleevePass);
     bool bInFittingPose = false;
     bool bOrientBeforeFitting = true;
     UPROPERTY() TObjectPtr<USkeletalMesh> DefaultAvatarMesh;
@@ -187,6 +190,13 @@ private:
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Hair;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Wristwatch;
     FName WardrobeOutfit = TEXT("cotton-sand");
+    FName WardrobeBottom = TEXT("denim-dark");
+    UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> LowerBody;
+    UPROPERTY(Transient) TObjectPtr<class UPoseableMeshComponent> MovingJeans;
+    void SetLowerBodyVisible(bool bVisible);
+    UPoseableMeshComponent* CreateJeansDisplay(FName Item);
+    FTransform FoldedJeansTransform(const USkinnedMeshComponent& Wearer) const;
+    void PlaceHeldJeans();
     FName WardrobeAccessory;
     FName WardrobeTone;
     UPROPERTY(Transient) TObjectPtr<class UPrimitiveComponent> HeldProp;
