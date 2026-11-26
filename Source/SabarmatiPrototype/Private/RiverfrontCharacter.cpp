@@ -424,6 +424,8 @@ void ARiverfrontCharacter::UpdateHair()
 
 void ARiverfrontCharacter::ApplyProfileAppearance(const URiverfrontLocalProfile& Profile)
 {
+    bWearingBra = Profile.EquippedInnerTop==RiverfrontLife::SportsBra;
+    bWearingBriefs = Profile.EquippedInnerBottom==RiverfrontLife::Briefs;
     WardrobeBottom = Profile.EquippedBottom.IsNone() ? RiverfrontLife::StarterBottom : Profile.EquippedBottom;
     AvatarGender = Profile.AvatarGender;
     bCroppedHair = Profile.bCroppedHair;
@@ -509,8 +511,6 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
     SetSurface(TEXT("top_teal_woven"), Cloth, Shirt);
     SetSurface(TEXT("top_seams"), Cloth, Trim);
     SetSurface(TEXT("bottom_denim"), Cloth, Trousers);
-    SetSurface(TEXT("foundation_knit"), CottonMaterial, FColor(47, 60, 68));
-    SetSurface(TEXT("foundation_elastic"), CottonMaterial, FColor(32, 42, 46));
     SetSurface(TEXT("scarf"), CottonMaterial, FColor(195, 149, 91));
     if (bPublic)
     {
@@ -542,6 +542,7 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
         else
             SetSurface(SkinSlot, nullptr, Skin);
     }
+    SetBraFabricVisible(bWearingBra);
     SetLowerBodyVisible(bPublic && WardrobeBottom==RiverfrontLife::Underwear);
     UpdateHair();
     UpdateWatchAttachment();
@@ -550,10 +551,11 @@ void ARiverfrontCharacter::ApplyWardrobeLook(FName Outfit, FName Accessory, FNam
 
 void ARiverfrontCharacter::EndChangingPose()
 {
-    if (MovingJeans)
+    if (MovingGarment)
     {
-        MovingJeans->DestroyComponent();
-        MovingJeans=nullptr;
+        MovingGarment->DestroyComponent();
+        MovingGarment=nullptr;
+        SetBraFabricVisible(bWearingBra);
         SetLowerBodyVisible(WardrobeBottom==RiverfrontLife::Underwear);
     }
     if (!ChangingMesh) return;

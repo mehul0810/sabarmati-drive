@@ -110,20 +110,13 @@ public:
                     })
                 ];
             }
-            for (auto WearSlot : {ERiverfrontWearSlot::Top,ERiverfrontWearSlot::Bottom,ERiverfrontWearSlot::Accessory})
+            for (auto WearSlot : {ERiverfrontWearSlot::Top,ERiverfrontWearSlot::Bottom,ERiverfrontWearSlot::InnerTop,
+                ERiverfrontWearSlot::InnerBottom,ERiverfrontWearSlot::Accessory})
             {
-                AddCaption(Body, WearSlot==ERiverfrontWearSlot::Top ? TEXT("Tops") : WearSlot==ERiverfrontWearSlot::Bottom ? TEXT("Bottoms") : TEXT("Accessories"));
-                if (WearSlot==ERiverfrontWearSlot::Top)
-                    Body->AddSlot().AutoHeight().Padding(0,0,0,4)
-                    [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",12))
-                        .Visibility_Lambda([this]{ return Show(Outfit==RiverfrontLife::BaseLayer); })
-                        .Text_Lambda([this]{ return Copy(Gender==ERiverfrontGender::Female
-                            ? TEXT("Base layer · Sports bra") : TEXT("No top worn")); })];
-                if (WearSlot==ERiverfrontWearSlot::Bottom)
-                    Body->AddSlot().AutoHeight().Padding(0,0,0,4)
-                    [SNew(STextBlock).ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Regular",12))
-                        .Visibility_Lambda([this]{ return Show(Bottom==RiverfrontLife::Underwear); })
-                        .Text(Copy(TEXT("Base layer · Boxer briefs")))];
+                if (WearSlot==ERiverfrontWearSlot::Top) AddCaption(Body,TEXT("Tops"));
+                if (WearSlot==ERiverfrontWearSlot::Bottom) AddCaption(Body,TEXT("Bottoms"));
+                if (WearSlot==ERiverfrontWearSlot::InnerTop) AddCaption(Body,TEXT("Innerwear"));
+                if (WearSlot==ERiverfrontWearSlot::Accessory) AddCaption(Body,TEXT("Accessories"));
                 for (const auto& Entry : RiverfrontLife::Catalog())
                     if (Entry.Slot==WearSlot)
                         Body->AddSlot().AutoHeight().Padding(0,0,0,4)[ItemRow(Entry)];
@@ -141,7 +134,7 @@ public:
                 SNew(SButton).Tag(TEXT("LifeDress")).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Amber)
                 .ContentPadding(FMargin(8,8)).HAlign(HAlign_Center)
                 .Visibility_Lambda([this]{ return Show(Owned.Contains(Selected)); })
-                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid() && (Held.IsNone() || Held==Selected); })
+                .IsEnabled_Lambda([this]{ return !DressingTimer.IsValid() && (Held.IsNone() || Held==Selected) && Cover().IsNone(); })
                 .OnClicked(this,&SRiverfrontLifeMenu::DressSelected)
                 [SNew(STextBlock).Tag(TEXT("LifeDressAction")).ColorAndOpacity(Panel)
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold",13)).Text_Lambda([this]{ return ActionText(); })]
@@ -283,7 +276,7 @@ private:
     TSharedPtr<SButton> CloseButton;
     TMap<FName,TSharedPtr<SButton>> Rows;
     TArray<FName> Owned;
-    FName Selected, Outfit, Bottom, Accessory, Held, Tone;
+    FName Selected, Outfit, Bottom, InnerTop, InnerBottom, Accessory, Held, Tone;
     ERiverfrontGender Gender = ERiverfrontGender::Male;
     int64 Cash = 0, Bank = 0;
     int32 Deliveries = 0;
@@ -332,10 +325,13 @@ private:
         Owned = Saved->OwnedItems;
         Outfit = Saved->EquippedOutfit.IsNone() ? FName(TEXT("cotton-sand")) : Saved->EquippedOutfit;
         Bottom = Saved->EquippedBottom;
+        InnerTop = Saved->EquippedInnerTop;
+        InnerBottom = Saved->EquippedInnerBottom;
         Accessory = Saved->EquippedAccessory;
         Tone = Saved->AppearanceTone;
         Held = Saved->HeldWardrobeItem;
         Gender = Saved->AvatarGender;
+        if (Selected==RiverfrontLife::SportsBra && Gender==ERiverfrontGender::Male) Selected=RiverfrontLife::Briefs;
         bCroppedHair = Saved->bCroppedHair;
         LastReceipt = Saved->LastReceipt;
         bDeliveryActive = Saved->bPrintDeliveryActive;
@@ -374,7 +370,7 @@ private:
             ];
     }
 
-    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id == Accessory); }
+    bool Wearing(FName Id) const { return !Id.IsNone() && (Id == Outfit || Id == Bottom || Id == InnerBottom || (Id == InnerTop && Gender==ERiverfrontGender::Female) || Id == Accessory); }
 
     TSharedRef<SWidget> ItemRow(const FRiverfrontWearable& Entry)
     {
@@ -383,6 +379,7 @@ private:
         SAssignNew(RowButton,SButton).Tag(FName(*(TEXT("LifeItem.")+Id.ToString()))).ButtonStyle(&ButtonStyle)
             .ContentPadding(FMargin(10,6)).HAlign(HAlign_Fill)
             .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected == Id ? Amber.CopyWithNewOpacity(.15f) : Row); })
+            .Visibility_Lambda([this,Id]{ return Show(Id!=RiverfrontLife::SportsBra || Gender==ERiverfrontGender::Female); })
             .OnClicked_Lambda([this,Id]{ return Select(Id); })
             [
                 SNew(SHorizontalBox)
@@ -430,7 +427,7 @@ private:
         const auto Target=[this,Mode]
         {
             const auto* Choice=Item(Selected);
-            return Mode==EFittingView::Tailoring && Choice && Choice->Slot==ERiverfrontWearSlot::Bottom
+            return Mode==EFittingView::Tailoring && Choice && (Choice->Slot==ERiverfrontWearSlot::Bottom || Choice->Slot==ERiverfrontWearSlot::InnerBottom)
                 ? EFittingView::Trousers : Mode;
         };
         return SNew(SButton).Tag(Tag).ButtonStyle(&ButtonStyle).ButtonColorAndOpacity(Row)
@@ -488,9 +485,17 @@ private:
         return Choice ? Choice->Label : FString();
     }
 
+    FName Cover() const
+    {
+        const auto* Choice=Item(Selected);
+        return Choice ? RiverfrontLife::CoveringItem(Choice->Slot,Outfit,Bottom) : NAME_None;
+    }
+
     FName WornInSlot() const
     {
         const auto* Choice=Item(Selected);
+        if (Choice && Choice->Slot==ERiverfrontWearSlot::InnerTop) return InnerTop;
+        if (Choice && Choice->Slot==ERiverfrontWearSlot::InnerBottom) return InnerBottom;
         if (Choice && Choice->Slot==ERiverfrontWearSlot::Bottom) return Bottom;
         return Choice && Choice->Slot==ERiverfrontWearSlot::Accessory ? Accessory : Outfit;
     }
@@ -505,6 +510,7 @@ private:
     {
         if (DressingTimer.IsValid()) return Copy(PendingAction==EAction::TakeOff ? TEXT("Taking off…") : TEXT("Putting on…"));
         if (!Held.IsNone() && Held!=Selected) return Copy(TEXT("Put the held item back first"));
+        if (const FName Outer=Cover(); !Outer.IsNone()) return Copy(TEXT("Take off ")+ItemLabel(Outer)+TEXT(" first"));
         switch (NextAction())
         {
         case EAction::TakeOff: return Copy(TEXT("Take off ")+ItemLabel(WornInSlot()));
@@ -528,9 +534,11 @@ private:
         const float Time=FMath::Clamp(float((Now-DressStageStart)/(bChangingBottom ? 3.25 : PendingItem==TEXT("kurta") ? 1.65 : 1.85)),0.f,1.f);
         if (Walker && Time<1.f)
         {
-            if (bChangingBottom)
+            if (bChangingBottom || PendingItem==RiverfrontLife::SportsBra)
             {
-                Walker->PoseChangingTrousers(PendingItem,PendingAction==EAction::TakeOff ? Time : 1.f-Time);
+                const float Undress=PendingAction==EAction::TakeOff ? Time : 1.f-Time;
+                if (bChangingBottom) Walker->PoseChangingTrousers(PendingItem,Undress);
+                else Walker->PoseChangingSportsBra(Undress);
                 if (auto* Controller=Cast<ARiverfrontPlayerController>(Walker->GetController())) Controller->RefreshWardrobeMirror();
                 return EActiveTimerReturnType::Continue;
             }
@@ -559,7 +567,7 @@ private:
 
     FReply DressSelected()
     {
-        if (DressingTimer.IsValid() || !Owned.Contains(Selected) || (!Held.IsNone() && Selected!=Held))
+        if (DressingTimer.IsValid() || !Cover().IsNone() || !Owned.Contains(Selected) || (!Held.IsNone() && Selected!=Held))
             return FReply::Handled();
         const auto Action=NextAction();
         const FName Id=Action==EAction::TakeOff ? WornInSlot() : Selected;
@@ -567,7 +575,7 @@ private:
         auto* Walker=Resident();
         if (Action==EAction::Take || !Choice || Choice->Slot==ERiverfrontWearSlot::Accessory || !Walker || !Walker->SupportsClothingChange())
             return FinishAction(Action,Id);
-        bChangingBottom=Choice->Slot==ERiverfrontWearSlot::Bottom;
+        bChangingBottom=Choice->Slot==ERiverfrontWearSlot::Bottom || Choice->Slot==ERiverfrontWearSlot::InnerBottom;
         bTransferred=false;
         PendingAction=Action;
         PendingItem=Id;

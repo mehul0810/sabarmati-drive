@@ -1,4 +1,5 @@
 #include "RiverfrontCharacter.h"
+#include "RiverfrontLifeProfile.h"
 #include "Components/PoseableMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -16,7 +17,31 @@ void ShowSection(USkinnedMeshComponent& Mesh, FName Name, bool bShow)
 }
 }
 
-void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible)
+void ARiverfrontCharacter::SetBraFabricVisible(bool bVisible)
+{
+    auto* Body=GetMesh();
+    const int32 Skin=Body->GetMaterialIndex(TEXT("skin"));
+    if (Skin==INDEX_NONE) return;
+    // The bra panels share the original torso topology, normals and skin UV seams.
+    for (FName Name : {FName(TEXT("foundation_knit")),FName(TEXT("foundation_elastic"))})
+    {
+        const int32 Slot=Body->GetMaterialIndex(Name);
+        if (Slot==INDEX_NONE) continue;
+        UMaterialInterface* Surface=Body->GetMaterial(Skin);
+        if (bVisible)
+        {
+            auto* Fabric=Cast<UMaterialInstanceDynamic>(Body->GetMaterial(Slot));
+            if (!Fabric || Fabric->Parent!=CottonMaterial.Get()) Fabric=Body->CreateDynamicMaterialInstance(Slot,CottonMaterial);
+            if (!Fabric) continue;
+            Fabric->SetVectorParameterValue(TEXT("BaseColorFactor"),FLinearColor(Name==TEXT("foundation_knit") ? FColor(47,60,68) : FColor(32,42,46)));
+            Surface=Fabric;
+        }
+        Body->SetMaterial(Slot,Surface);
+        if (ChangingMesh) ChangingMesh->SetMaterial(Slot,Surface);
+    }
+}
+
+void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible,bool bMovingBriefs)
 {
     auto* Body=GetMesh();
     if (bVisible)
@@ -44,7 +69,13 @@ void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible)
                     Material->SetVectorParameterValue(TEXT("BaseColorFactor"),
                         FLinearColor(Slot==TEXT("underwear_band") ? FColor(41,47,52) : FColor(61,73,81)));
         }
-        LowerBody->SetMaterialByName(TEXT("leg_skin"),Body->GetMaterial(Body->GetMaterialIndex(TEXT("skin"))));
+        const bool bBriefs=bWearingBriefs && !bMovingBriefs;
+        for (FName Name : {FName(TEXT("leg_skin")),FName(TEXT("bare_lower_skin")),FName(TEXT("midriff_skin"))})
+            LowerBody->SetMaterialByName(Name,Body->GetMaterial(Body->GetMaterialIndex(TEXT("skin"))));
+        for (FName Name : {FName(TEXT("leg_skin")),FName(TEXT("underwear_knit")),FName(TEXT("underwear_band"))})
+            ShowSection(*LowerBody,Name,bBriefs);
+        ShowSection(*LowerBody,TEXT("bare_lower_skin"),!bBriefs);
+        ShowSection(*LowerBody,TEXT("midriff_skin"),!bBriefs && WardrobeOutfit!=RiverfrontLife::BaseLayer);
         LowerBody->SetLeaderPoseComponent(ChangingMesh ? static_cast<USkinnedMeshComponent*>(ChangingMesh.Get()) : Body);
     }
     ShowSection(*Body,TEXT("bottom_denim"),!bVisible);
@@ -52,11 +83,15 @@ void ARiverfrontCharacter::SetLowerBodyVisible(bool bVisible)
     if (LowerBody) LowerBody->SetVisibility(bVisible);
 }
 
-UPoseableMeshComponent* ARiverfrontCharacter::CreateJeansDisplay(FName Item)
+UPoseableMeshComponent* ARiverfrontCharacter::CreateGarmentDisplay(FName Item)
 {
-    auto* Source=GetMesh();
-    const int32 Denim=Source->GetMaterialIndex(TEXT("bottom_denim"));
-    if (Denim==INDEX_NONE || !Source->GetSkeletalMeshAsset()) return nullptr;
+    const bool bBriefs=Item==RiverfrontLife::Briefs, bBra=Item==RiverfrontLife::SportsBra;
+    auto* Source=bBriefs ? LowerBody.Get() : GetMesh();
+    if (!Source || !Source->GetSkeletalMeshAsset()) return nullptr;
+    const FName Panel=bBra ? TEXT("foundation_knit") : bBriefs ? TEXT("underwear_knit") : TEXT("bottom_denim");
+    const FName Band=bBra ? FName(TEXT("foundation_elastic")) : bBriefs ? FName(TEXT("underwear_band")) : FName();
+    const int32 MainSlot=Source->GetMaterialIndex(Panel);
+    if (MainSlot==INDEX_NONE) return nullptr;
     auto* Garment=NewObject<UPoseableMeshComponent>(this);
     AddInstanceComponent(Garment);
     Garment->SetupAttachment(Source);
@@ -65,50 +100,65 @@ UPoseableMeshComponent* ARiverfrontCharacter::CreateJeansDisplay(FName Item)
     Garment->SetCanEverAffectNavigation(false);
     Garment->RegisterComponent();
     for (int32 Slot=0;Slot<Source->GetNumMaterials();++Slot)
-        if (Slot!=Denim)
-            for (int32 LOD=0;LOD<Source->GetNumLODs();++LOD)
-                Garment->ShowMaterialSection(Slot,INDEX_NONE,false,LOD);
-    auto* Worn=Source->GetMaterial(Denim);
-    auto* Instance=Cast<UMaterialInstanceDynamic>(Worn);
-    if (auto* Material=Garment->CreateDynamicMaterialInstance(Denim,Instance ? Instance->Parent.Get() : Worn))
     {
-        const FLinearColor Dye(Item==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73));
-        Material->SetVectorParameterValue(TEXT("BaseColorFactor"),Dye);
-        Material->SetVectorParameterValue(TEXT("TrouserDye"),Dye);
+        const FName Name=Source->GetSkeletalMeshAsset()->GetMaterials()[Slot].MaterialSlotName;
+        if (Name!=Panel && (Band.IsNone() || Name!=Band))
+        {
+            for (int32 LOD=0;LOD<Source->GetNumLODs();++LOD) Garment->ShowMaterialSection(Slot,INDEX_NONE,false,LOD);
+            continue;
+        }
+        if (bBriefs || bBra)
+        {
+            const FColor Color=bBra ? (Name==Band ? FColor(32,42,46) : FColor(47,60,68))
+                : (Name==Band ? FColor(41,47,52) : FColor(61,73,81));
+            if (auto* Fabric=Garment->CreateDynamicMaterialInstance(Slot,CottonMaterial))
+                Fabric->SetVectorParameterValue(TEXT("BaseColorFactor"),FLinearColor(Color));
+        }
+        else
+        {
+            auto* Worn=Source->GetMaterial(Slot);
+            auto* Instance=Cast<UMaterialInstanceDynamic>(Worn);
+            if (auto* Material=Garment->CreateDynamicMaterialInstance(Slot,Instance ? Instance->Parent.Get() : Worn))
+            {
+                const FLinearColor Dye(Item==TEXT("denim-washed") ? FColor(121,149,173) : FColor(53,62,73));
+                Material->SetVectorParameterValue(TEXT("BaseColorFactor"),Dye);
+                Material->SetVectorParameterValue(TEXT("TrouserDye"),Dye);
+            }
+        }
     }
-    Garment->CopyPoseFromSkeletalComponent(Source);
+    Garment->CopyPoseFromSkeletalComponent(GetMesh());
     Garment->RefreshBoneTransforms();
     return Garment;
 }
 
-FTransform ARiverfrontCharacter::FoldedJeansTransform(const USkinnedMeshComponent& Wearer) const
+FTransform ARiverfrontCharacter::FoldedGarmentTransform(const USkinnedMeshComponent& Wearer,FName Item) const
 {
     auto* Body=GetMesh();
     const FVector Palm=Wearer.GetSocketLocation(TEXT("Handr"));
     const FVector Grip=Palm+(Palm-Wearer.GetSocketLocation(TEXT("Elbowr"))).GetSafeNormal()*7.;
-    const FVector Waist=Body->GetSocketTransform(TEXT("Pelvis"),RTS_Component).GetLocation();
+    const FVector Anchor=Body->GetSocketTransform(Item==RiverfrontLife::SportsBra ? TEXT("Chest") : TEXT("Pelvis"),RTS_Component).GetLocation();
     FTransform Fold(Body->GetComponentQuat(),FVector::ZeroVector,Body->GetComponentScale()*FVector(.40,.43,.32));
-    Fold.SetLocation(Grip-Fold.TransformVector(Waist));
+    Fold.SetLocation(Grip-Fold.TransformVector(Anchor));
     return Fold;
 }
 
-void ARiverfrontCharacter::PlaceHeldJeans()
+void ARiverfrontCharacter::PlaceHeldGarment()
 {
     if (!HeldProp) return;
     const USkinnedMeshComponent* Wearer=ChangingMesh ? static_cast<USkinnedMeshComponent*>(ChangingMesh.Get()) : GetMesh();
-    HeldProp->SetWorldTransform(FoldedJeansTransform(*Wearer));
+    HeldProp->SetWorldTransform(FoldedGarmentTransform(*Wearer,HeldPropItem));
 }
 
 void ARiverfrontCharacter::PoseChangingTrousers(FName Item,float Undress)
 {
     auto* Body=GetMesh();
     if (!PreparePosedMesh()) return;
-    if (!MovingJeans)
+    if (!MovingGarment)
     {
-        MovingJeans=CreateJeansDisplay(Item);
-        if (!MovingJeans) return;
-        MovingJeans->ComponentTags.Add(TEXT("WardrobeMovingJeans"));
-        SetLowerBodyVisible(true);
+        MovingGarment=CreateGarmentDisplay(Item);
+        if (!MovingGarment) return;
+        MovingGarment->ComponentTags.Add(TEXT("WardrobeMovingJeans"));
+        SetLowerBodyVisible(true,Item==RiverfrontLife::Briefs);
         ShowHeldWardrobeItem(NAME_None);
     }
     const auto Ease=[Undress](float A,float B){ return FMath::SmoothStep(A,B,Undress); };
@@ -198,15 +248,42 @@ void ARiverfrontCharacter::PoseChangingTrousers(FName Item,float Undress)
             const FVector Seam=Joint==TEXT("Pelvis") ? (LeftSeam+RightSeam)*.5 : bRight ? RightSeam : LeftSeam;
             ClothBone.AddToTranslation((Seam-Gathered).ProjectOnToNormal(Forward)*FollowLeg/GatherScale.X);
         }
-        MovingJeans->SetBoneTransformByName(Joint,ClothBone,EBoneSpaces::ComponentSpace);
+        MovingGarment->SetBoneTransformByName(Joint,ClothBone,EBoneSpaces::ComponentSpace);
     }
-    MovingJeans->RefreshBoneTransforms();
-    MovingJeans->MarkRenderDynamicDataDirty();
+    MovingGarment->RefreshBoneTransforms();
+    MovingGarment->MarkRenderDynamicDataDirty();
     const FTransform Standing=Body->GetComponentTransform();
     FTransform Bunched=Standing;
     Bunched.SetScale3D(Standing.GetScale3D()*GatherScale);
     Bunched.SetLocation(Standing.TransformPosition(Ankle)-Bunched.TransformVector(Ankle));
     FTransform Placed;
-    Placed.Blend(Bunched,FoldedJeansTransform(*ChangingMesh),Pickup);
-    MovingJeans->SetWorldTransform(Placed);
+    Placed.Blend(Bunched,FoldedGarmentTransform(*ChangingMesh,Item),Pickup);
+    MovingGarment->SetWorldTransform(Placed);
+}
+
+void ARiverfrontCharacter::PoseChangingSportsBra(float Undress)
+{
+    if (!PreparePosedMesh()) return;
+    if (!MovingGarment)
+    {
+        MovingGarment=CreateGarmentDisplay(RiverfrontLife::SportsBra);
+        if (!MovingGarment) return;
+        MovingGarment->ComponentTags.Add(TEXT("WardrobeMovingBra"));
+        ShowHeldWardrobeItem(NAME_None);
+        SetBraFabricVisible(false);
+    }
+    const float Overhead=FMath::SmoothStep(0.f,.56f,Undress)*(1.f-FMath::SmoothStep(.65f,.98f,Undress));
+    const float Hand=FMath::SmoothStep(.59f,1.f,Undress);
+    PoseChangingSleeves(FMath::Lerp(Overhead,.69f,Hand),1.f-Hand);
+    const FTransform Worn=GetMesh()->GetComponentTransform();
+    FTransform Lifted=Worn;
+    const FVector Center=GetMesh()->GetSocketTransform(TEXT("Chest"),RTS_Component).GetLocation();
+    const float Rise=FMath::SmoothStep(.04f,.65f,Undress);
+    const FVector Scale(1.+.12*Overhead,1.+.16*Overhead,1.-.51*Rise);
+    Lifted.SetScale3D(Worn.GetScale3D()*Scale);
+    Lifted.SetLocation(Worn.TransformPosition(Center)-Lifted.TransformVector(Center)
+        +FVector::UpVector*Rise*56.+GetActorForwardVector()*Rise*10.);
+    FTransform Placed;
+    Placed.Blend(Lifted,FoldedGarmentTransform(*ChangingMesh,RiverfrontLife::SportsBra),Hand);
+    MovingGarment->SetWorldTransform(Placed);
 }

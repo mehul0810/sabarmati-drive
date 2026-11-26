@@ -107,7 +107,7 @@ void ARiverfrontCharacter::PoseHeldWardrobeItem()
     if (!HeldProp || !bInFittingPose) return;
     PoseChangingSleeves(.69f,0.f);
     // Gravity pulls the loose ends down while the hand lifts the folded item into view.
-    if (Cast<UPoseableMeshComponent>(HeldProp.Get())) PlaceHeldJeans();
+    if (Cast<UPoseableMeshComponent>(HeldProp.Get())) PlaceHeldGarment();
     else HeldProp->SetWorldRotation(GetActorRotation());
 }
 
@@ -122,15 +122,15 @@ void ARiverfrontCharacter::ShowHeldWardrobeItem(FName Id)
     if (!Body->DoesSocketExist(Hand)) return;
     const auto* Item=RiverfrontLife::Catalog().FindByPredicate([Id](const auto& Entry){return Entry.Id==Id;});
     if (!Item) return;
-    if (Item->Slot==ERiverfrontWearSlot::Bottom)
+    if (Item->Slot==ERiverfrontWearSlot::Bottom || Item->Slot==ERiverfrontWearSlot::InnerBottom || Item->Slot==ERiverfrontWearSlot::InnerTop)
     {
-        HeldProp=CreateJeansDisplay(Id);
+        HeldProp=CreateGarmentDisplay(Id);
         if (HeldProp)
         {
             HeldProp->AttachToComponent(ChangingMesh ? static_cast<USkinnedMeshComponent*>(ChangingMesh.Get()) : Body,
                 FAttachmentTransformRules::KeepWorldTransform,Hand);
             HeldPropItem=Id;
-            PlaceHeldJeans();
+            PlaceHeldGarment();
         }
         return;
     }
