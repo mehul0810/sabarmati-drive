@@ -1,4 +1,5 @@
 #include "RiverfrontLifeMenu.h"
+#include "RiverfrontInterfaceStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "RiverfrontGenderSelector.h"
 #include "RiverfrontPlayerController.h"
@@ -17,7 +18,6 @@
 #include "Internationalization/Internationalization.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Colors/SSimpleGradient.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SDPIScaler.h"
@@ -29,12 +29,13 @@
 
 namespace RiverfrontFittingUI
 {
-const FLinearColor Paper(.97f,.94f,.87f);
-const FLinearColor Muted(.66f,.70f,.69f);
-const FLinearColor Amber(.99f,.66f,.28f);
-const FLinearColor Panel(.012f,.020f,.024f,.95f);
-const FLinearColor Row(1.f,1.f,1.f,.065f);
-constexpr float PanelWidth = 404.f;
+const FLinearColor& Paper=RiverfrontInterface::Text;
+const FLinearColor& Muted=RiverfrontInterface::Muted;
+const FLinearColor& Amber=RiverfrontInterface::Accent;
+const FLinearColor Panel=RiverfrontInterface::Ink.CopyWithNewOpacity(.965f);
+const FLinearColor Row=RiverfrontInterface::Surface;
+const FSlateRoundedBoxBrush PanelBrush(FLinearColor::White,4.f,RiverfrontInterface::Line,1.2f);
+constexpr float PanelWidth=420.f;
 
 FText Copy(const FString& Text) { return FText::FromString(Text); }
 EVisibility Show(bool bVisible) { return bVisible ? EVisibility::Visible : EVisibility::Collapsed; }
@@ -244,26 +245,11 @@ public:
             SNew(SDPIScaler).DPIScale(this,&SRiverfrontLifeMenu::PanelScale)
             [
                 SNew(SOverlay)
-                + SOverlay::Slot().HAlign(HAlign_Right)
+                + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(FMargin(0,20,23,20))
                 [
-                    SNew(SHorizontalBox).Visibility(EVisibility::HitTestInvisible)
-                    + SHorizontalBox::Slot().AutoWidth()
+                    SNew(SBox).Tag(TEXT("LifePanel")).WidthOverride(PanelWidth).MaxDesiredHeight(683.f)
                     [
-                        SNew(SBox).WidthOverride(80.f)
-                        [ SNew(SSimpleGradient).Orientation(Orient_Horizontal)
-                            .StartColor(Panel.CopyWithNewOpacity(0.f)).EndColor(Panel) ]
-                    ]
-                    + SHorizontalBox::Slot().AutoWidth()
-                    [
-                        SNew(SBox).WidthOverride(PanelWidth + 14.f)
-                        [ SNew(SBorder).Padding(0).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Panel) ]
-                    ]
-                ]
-                + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(FMargin(0,12,14,12))
-                [
-                    SNew(SBox).Tag(TEXT("LifePanel")).WidthOverride(PanelWidth).MaxDesiredHeight(650.f)
-                    [
-                        SNew(SBox).Padding(FMargin(16,8,14,8))
+                        SNew(SBorder).BorderImage(&PanelBrush).BorderBackgroundColor(Panel).Padding(FMargin(18,13,18,13))
                         [
                             SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,7)
@@ -278,7 +264,17 @@ public:
                                         .Font(FCoreStyle::GetDefaultFontStyle("Medium",11))]
                                 ]
                             ]
-                            + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,14)[Label(Copy(Title),32,Paper,true)]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,9)
+                            [
+                                SNew(STextBlock).Text(Copy(Title)).ColorAndOpacity(Paper)
+                                    .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed",35))
+                            ]
+                            + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,11)
+                            [
+                                SNew(SBox).HeightOverride(1)
+                                [SNew(SBorder).Padding(0).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                                    .BorderBackgroundColor(RiverfrontInterface::Line)]
+                            ]
                             + SVerticalBox::Slot().AutoHeight()
                             [
                                 SNew(SHorizontalBox).Visibility(Show(bAvailable))
@@ -303,7 +299,7 @@ public:
     FReply OnFocusReceived(const FGeometry&, const FFocusEvent&) override { return ReturnFocus(); }
     FReply OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Key) override
     {
-        if (Key.GetKey() == EKeys::Escape) return Close();
+        if (Key.GetKey()==EKeys::Escape || Key.GetKey()==EKeys::Gamepad_FaceButton_Right) return Close();
         return SCompoundWidget::OnPreviewKeyDown(Geometry,Key);
     }
 
@@ -449,16 +445,22 @@ private:
 
     TSharedRef<SWidget> Balance(bool bBank)
     {
+        const bool bWallet = Page == ERiverfrontLifeMenu::Wallet;
+        const auto Name = Label(Copy(bBank ? TEXT("BANK") : TEXT("CASH")),11,Muted);
+        const auto Amount = SNew(STextBlock).Tag(bBank ? TEXT("LifeBankBalance") : TEXT("LifeCashBalance"))
+            .Text_Lambda([this,bBank]{ return Copy(Rupees(bBank ? Bank : Cash)); })
+            .ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Bold",bWallet ? 19 : 14));
+        if (!bWallet)
+        {
+            return SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,8,8)[Name]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,0,8)[Amount];
+        }
         return SNew(SBox).Padding(FMargin(0,2,4,5))
             [
                 SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()[Label(Copy(bBank ? TEXT("BANK") : TEXT("CASH")),11,Muted)]
-                + SVerticalBox::Slot().AutoHeight().Padding(0,2,0,0)
-                [
-                    SNew(STextBlock).Tag(bBank ? TEXT("LifeBankBalance") : TEXT("LifeCashBalance"))
-                    .Text_Lambda([this,bBank]{ return Copy(Rupees(bBank ? Bank : Cash)); })
-                    .ColorAndOpacity(Paper).Font(FCoreStyle::GetDefaultFontStyle("Bold",19))
-                ]
+                + SVerticalBox::Slot().AutoHeight()[Name]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,2,0,0)[Amount]
             ];
     }
 
@@ -470,7 +472,7 @@ private:
         TSharedPtr<SButton> RowButton;
         SAssignNew(RowButton,SButton).Tag(FName(*(TEXT("LifeItem.")+Id.ToString()))).ButtonStyle(&ButtonStyle)
             .ContentPadding(FMargin(10,6)).HAlign(HAlign_Fill)
-            .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected == Id ? Amber.CopyWithNewOpacity(.15f) : Row); })
+            .ButtonColorAndOpacity_Lambda([this,Id]{ return FSlateColor(Selected==Id ? RiverfrontInterface::Selection : Row); })
             .Visibility_Lambda([this,Id]{ return Show(!RiverfrontLife::FittedItem(Id,Gender).IsNone()); })
             .OnClicked_Lambda([this,Id]{ return Select(Id); })
             [

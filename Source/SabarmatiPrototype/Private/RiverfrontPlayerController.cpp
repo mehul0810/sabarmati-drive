@@ -1,4 +1,5 @@
 #include "RiverfrontPlayerController.h"
+#include "RiverfrontInterfaceStyle.h"
 #include "RiverfrontGenderSelector.h"
 #include "AudioDevice.h"
 #include "GameFramework/GameUserSettings.h"
@@ -159,21 +160,23 @@ DECLARE_DELEGATE_RetVal_TwoParams(FText, FCreateLocalProfile, const FString&, ER
 
 DECLARE_DELEGATE_OneParam(FSabarmatiQuality,int32);
 
-const FLinearColor MenuInk(FColor(17, 25, 22));
-const FLinearColor MenuGold(FColor(243, 187, 114));
-const FLinearColor MenuIvory(FColor(246, 241, 232));
+const FLinearColor& MenuInk=RiverfrontInterface::Ink;
+const FLinearColor& MenuGold=RiverfrontInterface::Accent;
+const FLinearColor& MenuIvory=RiverfrontInterface::Text;
 
 class SRiverfrontMenuAction : public SButton
 {
 public:
-    SLATE_BEGIN_ARGS(SRiverfrontMenuAction) : _ClickMethod(EButtonClickMethod::DownAndUp) {}
+    SLATE_BEGIN_ARGS(SRiverfrontMenuAction) : _ClickMethod(EButtonClickMethod::DownAndUp), _Primary(false) {}
         SLATE_ATTRIBUTE(FText, Label)
         SLATE_ARGUMENT(EButtonClickMethod::Type, ClickMethod)
+        SLATE_ARGUMENT(bool, Primary)
         SLATE_EVENT(FOnClicked, OnClicked)
     SLATE_END_ARGS()
 
     void Construct(const FArguments& Args)
     {
+        bPrimary=Args._Primary;
         SButton::Construct(SButton::FArguments()
             .ButtonStyle(FCoreStyle::Get(), "NoBorder")
             .HAlign(HAlign_Fill).ContentPadding(0)
@@ -183,28 +186,33 @@ public:
                 SNew(SOverlay)
                 + SOverlay::Slot()
                 [
-                    SNew(SComplexGradient).Orientation(Orient_Vertical)
-                    .GradientColors(TArray<FLinearColor>{MenuGold.CopyWithNewOpacity(.20f), MenuGold.CopyWithNewOpacity(0.f)})
-                    .Visibility_Lambda([this]{ return IsSelected() ? EVisibility::HitTestInvisible : EVisibility::Hidden; })
+                    SNew(SImage).Image(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                    .Visibility(EVisibility::HitTestInvisible)
+                    .ColorAndOpacity_Lambda([this]
+                    {
+                        if (bPrimary) return FSlateColor(IsSelected() ? MenuGold : MenuGold.CopyWithNewOpacity(.88f));
+                        return FSlateColor(IsSelected() ? RiverfrontInterface::Selection : RiverfrontInterface::Surface.CopyWithNewOpacity(.30f));
+                    })
                 ]
                 + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
                 [
                     SNew(SBox).WidthOverride(3.f).HeightOverride(21.f)
                     [
                         SNew(SImage).Image(FCoreStyle::Get().GetBrush("WhiteBrush")).ColorAndOpacity(MenuGold)
-                        .Visibility_Lambda([this]{ return IsSelected() ? EVisibility::HitTestInvisible : EVisibility::Hidden; })
+                        .Visibility_Lambda([this]{ return IsSelected() && !bPrimary ? EVisibility::HitTestInvisible : EVisibility::Hidden; })
                     ]
                 ]
-                + SOverlay::Slot().VAlign(VAlign_Center).Padding(16.f, 6.f, 8.f, 6.f)
+                + SOverlay::Slot().VAlign(VAlign_Center).Padding(16.f, 8.f, 8.f, 8.f)
                 [
                     SNew(STextBlock).Text(Args._Label)
                     .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 19))
-                    .ColorAndOpacity_Lambda([this]{ return FSlateColor(IsSelected() ? MenuGold : MenuIvory); })
+                    .ColorAndOpacity_Lambda([this]{ return FSlateColor(bPrimary ? MenuInk : MenuIvory); })
                 ]
             ]);
     }
 private:
-    bool IsSelected() const { return IsHovered() || HasKeyboardFocus(); }
+    bool bPrimary=false;
+    bool IsSelected() const { return IsHovered() || HasAnyUserFocus().IsSet(); }
 };
 
 class SRiverfrontMenu : public SCompoundWidget
@@ -250,7 +258,7 @@ public:
         }
         SensitivityChanged = Args._OnSensitivity;
         const FLinearColor Paper = MenuIvory;
-        const FLinearColor Muted(FColor(205, 211, 200));
+        const FLinearColor Muted=RiverfrontInterface::Muted;
         const FLinearColor Accent = MenuGold;
         FSlateFontInfo PlaceFont = FCoreStyle::GetDefaultFontStyle("Bold", 11);
         PlaceFont.LetterSpacing = 125;
@@ -358,6 +366,7 @@ public:
                                 [
                                     SNew(SRiverfrontMenuAction)
                                     .Tag(TEXT("MorningCreateProfile"))
+                                    .Primary(true)
                                     .IsEnabled(!bUnreadableProfile)
                                     .Label(LOCTEXT("CreateProfileButton", "Create profile"))
                                     .OnClicked(this, &SRiverfrontMenu::OnCreateClicked)
@@ -373,6 +382,7 @@ public:
                             + SVerticalBox::Slot().AutoHeight()
                             [
                                 SAssignNew(PrimaryButton, SRiverfrontMenuAction).Tag(TEXT("MorningStart"))
+                                .Primary(true)
                                 .Visibility_Lambda([this]() { return NeedsProfile() ? EVisibility::Collapsed : EVisibility::Visible; })
                                 .Label(bIsPause ? LOCTEXT("Resume", "Resume") : Args._HasCheckpoint ? LOCTEXT("ContinueHome", "Continue") : LOCTEXT("Start", "Start"))
                                 .ClickMethod(EButtonClickMethod::MouseDown)
@@ -500,7 +510,7 @@ public:
 
     FReply OnKeyDown(const FGeometry&, const FKeyEvent& Event) override
     {
-        if (Event.GetKey() == EKeys::Escape)
+        if (Event.GetKey()==EKeys::Escape || Event.GetKey()==EKeys::Gamepad_FaceButton_Right)
         {
             if (bIsPause && !Event.IsRepeat())
             {
