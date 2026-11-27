@@ -25,6 +25,7 @@ public:
     ARiverfrontTraffic* GetTraffic() const;
     const ARiverfrontWorld* GetDistrict() const { return District.Get(); }
     bool IsCityMode() const { return bCityBuilt; }
+    bool IsGrandCity() const { return bCityBuilt && bGrandCityRequested; }
     bool CityFailed() const { return bCityRequested && !bCityBuilt; }
     FVector GetWalkSpawn() const { return WalkSpawn; }
     double GetSpawnYaw() const { return SpawnYaw; }
@@ -38,6 +39,7 @@ private:
     double SpawnYaw = 0.0;
     bool bCityRequested = false;
     bool bCityBuilt = false;
+    bool bGrandCityRequested = false;
 
     UPROPERTY() TObjectPtr<ARiverfrontTraffic> Traffic;
     UPROPERTY() TObjectPtr<ARiverfrontWorld> District;

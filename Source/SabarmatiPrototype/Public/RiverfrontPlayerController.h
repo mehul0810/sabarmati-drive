@@ -177,6 +177,7 @@ private:
     void RunDistrictReview();
     void RunGaitReview();
     void RunSystemsReview();
+    void RunGrandCityReview();
     void RunRiverReview();
     void RunImpactReview();
     void RunNeighbourhoodReview();

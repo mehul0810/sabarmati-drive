@@ -103,6 +103,8 @@ private:
     int32 Stops=0, Turns=0, LastPhase=-1;
     TWeakObjectPtr<ARiverfrontWorld> District;
     bool bCity=false;
+    bool bGrandCity=false;
+    bool JunctionReserved(int32 Junction) const;
     void AddDistrictRoute(const TArray<FVector>& Nodes, bool Closed=true);
     void Lane(const TArray<FVector>& Nodes, bool Reverse, bool bClosed=true);
     bool SpawnVehicle(int32 Route, double Distance, int32 Style, int32 Variant, bool ParkAtKerb=false);

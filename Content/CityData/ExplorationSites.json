@@ -1,4 +1,12 @@
 {
+  "grand-city": [
+    {"id":"gc-cafe","name":"Nadi Chai · Canal Market","action":"Order a cup of chai","note":"Nadi Chai at Canal Market added to your notebook.","kind":"Tea","location":"tea","reach_cm":170},
+    {"id":"gc-print","name":"Kagaz Press · Canal Market","action":"Collect a city postcard","note":"The printer hands you a Grand City postcard.","kind":"Print","location":"press","reach_cm":165},
+    {"id":"gc-market","name":"Canal Market","action":"Explore the market","note":"Canal Market added to your notebook.","kind":"Visit","location":[-39500,32704,105],"reach_cm":360,"street_heading":0},
+    {"id":"gc-quay","name":"East Quay","action":"Look across the canal","note":"East Quay added to your notebook.","kind":"Visit","location":[4700,32704,105],"reach_cm":360,"street_heading":0},
+    {"id":"gc-park","name":"Juniper Park","action":"Visit the park","note":"Juniper Park added to your notebook.","kind":"Visit","location":[14400,32704,105],"reach_cm":430,"street_heading":0},
+    {"id":"gc-foundry","name":"Foundry Service","action":"Refuel and repair","note":"Foundry Service added to your notebook.","kind":"Service","location":[-33200,70340,68],"reach_cm":1100,"street_heading":0}
+  ],
   "riverfront": [
     {"id":"home-wardrobe","name":"Kesar Apartments · Flat 2B","action":"Open your wardrobe","note":"Your wardrobe at home.","kind":"Wardrobe","location":"wardrobe","reach_cm":128},
     {"id":"sutra-fitting","name":"Sutra · Fitting room","action":"Try on clothes","note":"The changing room at Sutra.","kind":"FittingRoom","location":"fitting-room","reach_cm":95},

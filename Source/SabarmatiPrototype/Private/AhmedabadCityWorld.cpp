@@ -2,6 +2,7 @@
 #include "SabarmatiDistrict.h"
 #include "DistrictLoadProgress.h"
 #include "AhmedabadFacadeDetail.h"
+#include "GrandCityLayout.h"
 #include "RiverfrontPedestrian.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
@@ -193,17 +194,97 @@ struct FAhmedabadCityState
     int32 MinX = 0, MinY = 0, MaxX = 0, MaxY = 0;
     uint32 Ways = 0;
     uint32 Strips = 0;
+    bool bGrandCity = false;
 
     uint32 BuildingCount = 0;
     TOptional<FCityBuilding> ArcadePlot;
     TArray<FVector> BridgeEnds;
     double BridgeHeight(const FVector& Point) const
     {
+        if (bGrandCity) return GrandCityLayout::BridgeHeight(Point.X);
         double Distance=6000.;
         for (const FVector& End:BridgeEnds) Distance=FMath::Min(Distance,FVector::Dist2D(Point,End));
         return FMath::Min(460.,Distance*.08);
     }
     TArray<FCityRoad> ApproachRoads;
+    void CreateGrandCity()
+    {
+        using namespace GrandCityLayout;
+        bGrandCity=true;
+        const FVector Centre=SabarmatiDistrict::Center(true);
+        MinX=Centre.X-SabarmatiDistrict::HalfWidth; MaxX=Centre.X+SabarmatiDistrict::HalfWidth;
+        MinY=Centre.Y-SabarmatiDistrict::HalfWidth; MaxY=Centre.Y+SabarmatiDistrict::HalfWidth;
+        Walk=FVector(StartX,WalkY,109.);
+        Car=FVector(StartX-440,CarY,68.);
+        const int32 Size=int32(TileSize);
+        const FIntPoint First=TileAt(FVector(MinX,MinY,0));
+        const FIntPoint Last=TileAt(FVector(MaxX-1,MaxY-1,0));
+        for (int32 X=First.X;X<=Last.X;++X)
+            for (int32 Y=First.Y;Y<=Last.Y;++Y)
+            {
+                FCityTile& Tile=Tiles.Add(FIntPoint(X,Y));
+                const int32 Low=FMath::Max(MinX,X*Size), High=FMath::Min(MaxX,(X+1)*Size);
+                const int32 South=FMath::Max(MinY,Y*Size), North=FMath::Min(MaxY,(Y+1)*Size);
+                for (const FIntPoint Band : {FIntPoint(MinX,CanalWest), FIntPoint(CanalWest,CanalEast), FIntPoint(CanalEast,MaxX)})
+                {
+                    const int32 A=FMath::Max(Low,Band.X), B=FMath::Min(High,Band.Y);
+                    if (A<B) Tile.Ground.Add({A,South,B,North,uint8(Band.X==CanalWest)});
+                }
+            }
+
+        const auto Road=[&](int32 From,int32 To,int32 Cross,bool bAlongX,int32 Width,bool bBridge=false)
+        {
+            for (int32 Start=From;Start<To;)
+            {
+                const int32 End=FMath::Min(To,(FMath::FloorToInt(Start/TileSize)+1)*Size);
+                const FIntPoint A=bAlongX ? FIntPoint(Start,Cross) : FIntPoint(Cross,Start);
+                const FIntPoint B=bAlongX ? FIntPoint(End,Cross) : FIntPoint(Cross,End);
+                Tiles.FindChecked(TileAt(FVector((A.X+B.X)*.5,(A.Y+B.Y)*.5,0))).Roads.Add(
+                    {A.X,A.Y,B.X,B.Y,uint16(Width),uint8(bBridge),1});
+                Start=End;
+            }
+        };
+        for (int32 Y:CrossStreets)
+        {
+            const bool bBridge=HasBridge(Y);
+            Road(WestStreets[0]-LocalWidth/2,bBridge ? WestAbutment : CanalWest-1700,Y,true,CrossWidth(Y));
+            if (bBridge) Road(WestAbutment,EastAbutment,Y,true,BoulevardWidth,true);
+            Road(bBridge ? EastAbutment : CanalEast+1700,EastStreets[2]+LocalWidth/2,Y,true,CrossWidth(Y));
+        }
+        // Boulevard asphalt spans each junction. Side streets meet its edges at grade.
+        for (const TConstArrayView<int32> Streets : {TConstArrayView<int32>(WestStreets),TConstArrayView<int32>(EastStreets)})
+            for (int32 X:Streets)
+                for (int32 I=0;I+1<UE_ARRAY_COUNT(CrossStreets);++I)
+                {
+                    const int32 A=CrossStreets[I], B=CrossStreets[I+1];
+                    Road(A+CrossWidth(A)/2,B-CrossWidth(B)/2,X,false,LocalWidth);
+                }
+
+        FRandomStream Lots(54129);
+        const auto PlaceBlocks=[&](TConstArrayView<int32> Streets,bool bEast)
+        {
+            for (int32 I=0;I+1<Streets.Num();++I)
+                for (int32 J=0;J+1<UE_ARRAY_COUNT(CrossStreets);++J)
+                {
+                    if (bEast && I==0 && J==1) continue; // Juniper Park
+                    for (const int32 Side : {0,1})
+                        for (int32 X=Streets[I]+3100;X<Streets[I+1]-2250;X+=Lots.RandRange(2800,3550))
+                        {
+                            const int32 Y=CrossStreets[J+Side]+(Side ? -1 : 1)*Lots.RandRange(1920,2210);
+                            if (!bEast && FMath::Abs(X-MarketX)<3250 && FMath::Abs(Y-MarketStreet-2600)<2250) continue;
+                            if (!bEast && FMath::Abs(X-FoundryX)<2550 && FMath::Abs(Y-FoundryStreet-1900)<2000) continue;
+                            const int32 Floors=J==0 ? Lots.RandRange(2,4) : J==3 ? Lots.RandRange(1,4) : Lots.RandRange(3,7);
+                            const FCityBuilding Building{X,Y,uint16(Lots.RandRange(1800,2390)),uint16(Lots.RandRange(1530,2260)),
+                                uint16(Floors*320+75),int16(Side ? 18000 : 0),uint8(Lots.RandRange(0,2))};
+                            Tiles.FindChecked(TileAt(FVector(X,Y,0))).Buildings.Add(Building);
+                        }
+                }
+        };
+        PlaceBlocks(WestStreets,false);
+        PlaceBlocks(EastStreets,true);
+        ArcadePlot=FCityBuilding{MarketX,MarketStreet+2690,2620,1660,1350,0,1};
+    }
+
     bool ReadBuildings(const TCHAR* Filename)
     {
         const FString Path = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("CityData"),
@@ -361,14 +442,20 @@ bool ARiverfrontWorld::HasCityData()
     return IFileManager::Get().FileExists(*DataPath());
 }
 
-bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw)
+bool ARiverfrontWorld::IsGrandCity() const
+{
+    return CityState && CityState->bGrandCity;
+}
+
+bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw, bool bGrandCity)
 {
     if (CityState.IsValid() || !Batches.IsEmpty())
     {
         return false;
     }
     const TSharedRef<FAhmedabadCityState> Parsed = MakeShared<FAhmedabadCityState>();
-    if (!Parsed->Read(DataPath()))
+    if (bGrandCity) Parsed->CreateGrandCity();
+    else if (!Parsed->Read(DataPath()))
     {
         UE_LOG(LogTemp, Warning, TEXT("Ahmedabad City: offline OpenStreetMap data missing or invalid."));
         return false;
@@ -393,7 +480,7 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
             }
         }
     }
-    bStreetDistricts=Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"));
+    bStreetDistricts=bGrandCity || Parsed->ReadBuildings(TEXT("AhmedabadBuildings.bin"));
     MatureTree=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Sabarmati/Riverfront/Foliage/Jacaranda/SM_Jacaranda.SM_Jacaranda"));
     LoadSurfaceMaterials();
     // Keep the offline survey intact and stream just the current playable district.
@@ -445,10 +532,15 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
             && Hit.GetActor() == this && FMath::Abs(Hit.ImpactPoint.Z) < 1.9;
     };
     const FVector Heading = FRotator(0, Parsed->Yaw, 0).Vector();
-    if (!RoadTrace(Parsed->Car) || !RoadTrace(Parsed->Walk)
+    FHitResult WalkFloor;
+    const bool bWalkFloor=bGrandCity ?
+        GetWorld()->LineTraceSingleByChannel(WalkFloor,Parsed->Walk+FVector(0,0,70),Parsed->Walk-FVector(0,0,135),ECC_Visibility)
+            && WalkFloor.GetComponent() && WalkFloor.GetComponent()->ComponentHasTag(TEXT("CityFootpath")) :
+        RoadTrace(Parsed->Walk);
+    if (!RoadTrace(Parsed->Car) || !bWalkFloor
         || !RoadTrace(Parsed->Car + Heading * 180) || !RoadTrace(Parsed->Car - Heading * 180))
     {
-        UE_LOG(LogTemp, Warning, TEXT("Ahmedabad City: route spawn floor validation failed; keeping riverfront."));
+        UE_LOG(LogTemp, Warning, TEXT("City: route spawn floor validation failed; keeping riverfront."));
         for (const auto& Tile : Parsed->Loaded)
         {
             for (const auto& Batch : Tile.Value)
@@ -459,6 +551,10 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
                 }
             }
         }
+        for (const auto& Tile : Parsed->Residents)
+            for (const auto& Walker : Tile.Value)
+                if (Walker.IsValid()) Walker->Destroy();
+        bStreetDistricts=false;
         CityState.Reset();
         return false;
     }
@@ -493,7 +589,41 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         }
     }
     if (Best<DBL_MAX) AddWaterAccess(Access,Inland,-6.);
-    for (const FVector Street:{FVector(10237,25487,1.8),FVector(20998,25504,-4.38),FVector(28570,65572,140.47)})
+    if (bGrandCity)
+    {
+        using namespace GrandCityLayout;
+        const double ParkY=(MarketStreet+CrossStreets[2])*.5;
+        Box(ETint::FoliageDark,FVector(ParkX,ParkY,-5.),FVector(10100,14600,2.));
+        Box(ETint::Paving,FVector(ParkX,ParkY,0.),FVector(320,16200,12.),true);
+        if (UStaticMesh* Tree=StreetTreeMesh())
+        {
+            FRandomStream ParkPlanting(8105);
+            for (const double Side : {-1.,1.})
+                for (int32 I=0;I<8;++I)
+                    PlaceStreetTree(*Tree,FVector(ParkX+Side*550.,MarketStreet+1800+I*2060,-6.),
+                        ParkPlanting.FRandRange(570,800),ParkPlanting);
+        }
+        for (const double Side:{-1.,1.})
+        {
+            const double X=(Side<0 ? CanalWest-450. : CanalEast+450.);
+            Box(ETint::Paving,FVector(X,50000,0),FVector(850,96600,12.),true);
+        }
+        AddMarketCart(FVector(MarketX-1500,MarketStreet+1320,-6.),0.,ECartStock::Produce);
+        AddMarketCart(FVector(MarketX+1500,MarketStreet+1330,-6.),0.,ECartStock::Chai);
+        for (const int32 X : {WestStreets[1],EastStreets[0]})
+            for (const int32 Y : {MarketStreet,FoundryStreet})
+                for (double Across=-470.;Across<=470.;Across+=104.)
+                    Box(ETint::RoadPaint,FVector(X+630,Y+Across,.65),FVector(218,44,.8));
+        const FVector Pump(FoundryX,FoundryStreet+1540,0);
+        Box(ETint::Paving,Pump+FVector(0,0,-3),FVector(2450,1380,12),true);
+        Box(ETint::BridgeSteel,Pump+FVector(0,0,430),FVector(2260,1100,34));
+        for (double X : {-960.,960.})
+        {
+            Box(ETint::Retaining,Pump+FVector(X,0,207),FVector(32,32,414),true);
+            Box(ETint::Clay,Pump+FVector(X*.29,0,66),FVector(62,46,132),true);
+        }
+    }
+    else for (const FVector Street:{FVector(10237,25487,1.8),FVector(20998,25504,-4.38),FVector(28570,65572,140.47)})
     {
         const FRotator R(0,Street.Z,0);
         const FVector Origin(Street.X,Street.Y,0.);
@@ -537,6 +667,12 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
     OutWalkStart = Parsed->Walk;
     OutCarStart = Parsed->Car;
     OutYaw = Parsed->Yaw;
+    if (bGrandCity)
+    {
+        UE_LOG(LogTemp, Display, TEXT("Grand City: 1.00 x 1.00 km, %u road segments, %u buildings, %d tiles; spawn probes=4/4."),
+            Parsed->Strips,Parsed->BuildingCount,Parsed->Loaded.Num());
+        return true;
+    }
     UE_LOG(LogTemp, Display,
         TEXT("Ahmedabad City: survey contains %u OSM roads; district has %u strips, %u exterior shells, %.2f x %.2f km, %d total tiles, %d active; spawn probes=4/4."),
         Parsed->Ways, Parsed->Strips, Parsed->BuildingCount, (Parsed->MaxX - Parsed->MinX) / 100000.0,
@@ -713,7 +849,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                     continue;
                 }
                 const auto Rotation = Vector.Rotation();
-                const double Join = FMath::Min(Width * .48, 570.0);
+                const double Join = State->bGrandCity ? 0. : FMath::Min(Width * .48, 570.0);
                 const FVector Middle = (A + B) * .5;
                 if (!Item.Bridge) AppendBox(Batch[Road], Middle + FVector(0, 0, -12), FVector(Length + Join, Width, 24), Rotation);
                 const FVector Forward = Vector / Length;
@@ -744,8 +880,15 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                 {
                     for (double Along = 490; Along < Length - 400; Along += 620)
                     {
-                        AppendBox(Batch[Markings], A + Forward * Along + FVector(0, 0, .6 + (Item.Bridge?State->BridgeHeight(A+Forward*Along):0.)),
-                            FVector(173, 9, .6), Rotation);
+                        const FVector Paint=A+Forward*Along;
+                        FRotator PaintFacing=Rotation;
+                        if (State->bGrandCity && Item.Bridge)
+                        {
+                            const FVector Ahead=Paint+Forward*86.5, Behind=Paint-Forward*86.5;
+                            PaintFacing=(Ahead-Behind+FVector(0,0,State->BridgeHeight(Ahead)-State->BridgeHeight(Behind))).Rotation();
+                        }
+                        AppendBox(Batch[Markings],Paint+FVector(0,0,.6+(Item.Bridge?State->BridgeHeight(Paint):0.)),
+                            FVector(173,9,.6),PaintFacing);
                     }
                 }
             }

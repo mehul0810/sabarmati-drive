@@ -1,4 +1,5 @@
 #include "RiverfrontHUD.h"
+#include "GrandCityLayout.h"
 
 #include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
@@ -213,27 +214,38 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
     };
     Draw.Disc(Centre,Radius+5,Graphite.CopyWithNewOpacity(.9f),Graphite.CopyWithNewOpacity(0));
     Draw.Disc(Centre,Radius,Graphite.CopyWithNewOpacity(.93f),Graphite.CopyWithNewOpacity(.86f));
-    if (!City)
+    const auto CanalStrip = [&](double Low, double High, bool bVertical)
     {
         const double R = Radius-2.f;
-        const double Left = FMath::Clamp((Here.Y-2300.)*MapScale,-R,R);
-        const double Right = FMath::Clamp((Here.Y+24300.)*MapScale,-R,R);
+        const double Left = FMath::Clamp(Low,-R,R);
+        const double Right = FMath::Clamp(High,-R,R);
         if (Right>Left)
         {
-            // The two riverfront banks are parallel. Cut their water between the corresponding chords.
+            const auto ToScreen = [&](double X,double Y){return Centre+(bVertical ? FVector2D(Y,X) : FVector2D(X,Y));};
             double X = Left, Y = FMath::Sqrt(FMath::Max(0.,R*R-X*X));
             for (int32 I=1; I<=32; ++I)
             {
                 const double NX = FMath::Lerp(Left,Right,I/32.);
                 const double NY = FMath::Sqrt(FMath::Max(0.,R*R-NX*NX));
-                Draw.Quad(Centre+FVector2D(X,-Y),Centre+FVector2D(NX,-NY),
-                    Centre+FVector2D(NX,NY),Centre+FVector2D(X,Y),Water.CopyWithNewOpacity(.84f));
+                Draw.Quad(ToScreen(X,-Y),ToScreen(NX,-NY),ToScreen(NX,NY),ToScreen(X,Y),
+                    Water.CopyWithNewOpacity(.84f));
                 X=NX; Y=NY;
             }
         }
+    };
+    if (!City)
+    {
+        CanalStrip((Here.Y-2300.)*MapScale,(Here.Y+24300.)*MapScale,false);
         for (const double Bank : {2300.,-24300.})
             Segment(Project(FVector(-84000,Bank,0)),Project(FVector(84000,Bank,0)),1.4f,Silver);
         Segment(Project(FVector(-5350,2800,0)),Project(FVector(-5350,-24700,0)),2.f,Ivory);
+    }
+    else if (District.IsGrandCity())
+    {
+        using namespace GrandCityLayout;
+        CanalStrip((Here.X-CanalEast)*MapScale,(Here.X-CanalWest)*MapScale,true);
+        for (const double Bank : {double(CanalWest),double(CanalEast)})
+            Segment(Project(FVector(Bank,0,0)),Project(FVector(Bank,100000,0)),1.4f,Silver);
     }
     District.VisitMapRoads(Here, ViewRange, [&](const FVector& A, const FVector& B, bool bMajor)
     {
@@ -290,7 +302,7 @@ void StreetMap(FInstruments& Draw,const APawn& Pawn,const ARiverfrontPlayerContr
             Metres<15 ? TEXT("Flat 2B") : FString::Printf(TEXT("Flat 2B  ·  %d m"),Metres),false);
     }
     Draw.Label(TEXT("N"),Centre+FVector2D(0,-Radius-11),12,TEXT("Bold"),Ivory,true);
-    Draw.Label(City ? TEXT("Ahmedabad") : TEXT("Sabarmati Riverfront"),
+    Draw.Label(District.IsGrandCity() ? TEXT("Grand City") : City ? TEXT("Ahmedabad") : TEXT("Home Riverfront"),
         FVector2D(Centre.X,Draw.Height-19),12,TEXT("BoldCondensed"),Ivory,true);
 }
 
@@ -470,7 +482,7 @@ void ARiverfrontHUD::DrawHUD()
     }
     if (!Destination.IsEmpty()) Guidance(Draw,*Player,Destination);
     if (Car) DriveCluster(Draw,*Car);
-    if (City)
+    if (City && !Mode->IsGrandCity())
     {
         const FString Credit=TEXT("© OpenStreetMap contributors");
         Draw.Label(Credit,FVector2D(Draw.Width-26-Draw.Measure(Credit,TEXT("Regular"),10),Draw.Height-15),

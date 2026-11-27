@@ -47,11 +47,17 @@ void ARiverfrontGameMode::InitGame(const FString& MapName, const FString& Option
                 *PlayerAvatarClass.ToString(), *GetNameSafe(DefaultPawnClass.Get()));
         }
     }
-    bCityRequested = UGameplayStatics::HasOption(Options, TEXT("SabarmatiCity"));
+    bGrandCityRequested = UGameplayStatics::HasOption(Options,TEXT("GrandCity"));
+    bCityRequested = UGameplayStatics::HasOption(Options,TEXT("SabarmatiCity"));
 #if !UE_BUILD_SHIPPING
-    bCityRequested |= !UGameplayStatics::HasOption(Options, TEXT("SabarmatiRiverfront")) &&
-        FParse::Param(FCommandLine::Get(), TEXT("SabarmatiCity"));
+    if (!UGameplayStatics::HasOption(Options,TEXT("SabarmatiRiverfront")))
+    {
+        bCityRequested |= FParse::Param(FCommandLine::Get(),TEXT("SabarmatiCity"));
+        bGrandCityRequested |= !UGameplayStatics::HasOption(Options,TEXT("SabarmatiCity"))
+            && FParse::Param(FCommandLine::Get(),TEXT("GrandCity"));
+    }
 #endif
+    bCityRequested |= bGrandCityRequested;
 }
 
 void ARiverfrontGameMode::BeginPlay()
@@ -67,7 +73,7 @@ void ARiverfrontGameMode::BeginPlay()
             FVector CityWalk = WalkSpawn;
             FVector CityCar = CarSpawn;
             double CityYaw = SpawnYaw;
-            bCityBuilt = River->BuildCity(CityWalk, CityCar, CityYaw);
+            bCityBuilt = River->BuildCity(CityWalk,CityCar,CityYaw,bGrandCityRequested);
             if (bCityBuilt)
             {
                 WalkSpawn = CityWalk;

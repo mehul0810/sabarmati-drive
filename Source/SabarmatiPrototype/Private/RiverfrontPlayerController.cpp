@@ -229,6 +229,7 @@ public:
         SLATE_ARGUMENT(FString, PlayerName)
         SLATE_ARGUMENT(bool, UnreadableProfile)
         SLATE_ARGUMENT(bool, IsCity)
+        SLATE_ARGUMENT(bool, IsGrandCity)
         SLATE_ARGUMENT(bool, CityAvailable)
         SLATE_ARGUMENT(bool, CityFailed)
         SLATE_EVENT(FSimpleDelegate, OnSwitchMap)
@@ -299,7 +300,8 @@ public:
                             [
                                 SNew(STextBlock)
                                 .Font(PlaceFont).ColorAndOpacity(Accent)
-                                .Text(bIsCity ? LOCTEXT("CityPlace", "AHMEDABAD  /  CITY FREE ROAM")
+                                .Text(Args._IsGrandCity ? LOCTEXT("GrandCityPlace", "CANAL DISTRICT  /  CITY FREE ROAM")
+                                    : bIsCity ? LOCTEXT("CityPlace", "AHMEDABAD  /  CITY FREE ROAM")
                                     : LOCTEXT("Place", "AHMEDABAD  /  SABARMATI RIVERFRONT"))
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
@@ -310,7 +312,7 @@ public:
                                     SNew(STextBlock)
                                     .Font(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 55))
                                     .ColorAndOpacity(Paper)
-                                    .Text(bIsPause ? LOCTEXT("Paused", "Paused") : LOCTEXT("Title", "Sabarmati Drive"))
+                                    .Text(bIsPause ? LOCTEXT("Paused", "Paused") : LOCTEXT("GrandCityTitle", "Grand City"))
                                 ]
                             ]
                             + SVerticalBox::Slot().AutoHeight()
@@ -400,7 +402,7 @@ public:
                             [
                                 SNew(SRiverfrontMenuAction)
                                 .Visibility_Lambda([this]() { return bCityAvailable && !NeedsProfile() ? EVisibility::Visible : EVisibility::Collapsed; })
-                                .Label(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront") : LOCTEXT("SwitchCity", "Explore Ahmedabad"))
+                                .Label(bIsCity ? LOCTEXT("SwitchRiverfront", "Return to Riverfront") : LOCTEXT("ExploreGrandCity", "Explore Grand City"))
                                 .OnClicked_Lambda([this]{ SwitchMap.ExecuteIfBound(); return FReply::Handled(); })
                             ]
                             + SVerticalBox::Slot().AutoHeight()
@@ -604,6 +606,7 @@ void ARiverfrontPlayerController::BeginPlay()
         if (FParse::Param(FCommandLine::Get(), TEXT("SabarmatiImpactReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiRiverReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiArtReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiAwarenessReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiErrandReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiTrafficFlowReview")) || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiNavigationReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiGaitReview"))
+            || FParse::Param(FCommandLine::Get(),TEXT("GrandCityReview"))
             || FParse::Param(FCommandLine::Get(), TEXT("SabarmatiBenchmark")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiDistrictReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")) || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiNeighbourhoodReview")))
         {
             // Protected QA uses a fresh slot; never populate or touch the real player's profile.
@@ -793,6 +796,14 @@ void ARiverfrontPlayerController::ShowTitle()
         if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Street Review")).IsEmpty())
         { FPlatformMisc::RequestExitWithStatus(false,1); return; }
         ResumeDrive(); RunNeighbourhoodReview(); return;
+    }
+    if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("GrandCityReview")))
+    {
+        if (!HasLocalProfile() && !CreateLocalProfile(TEXT("Grand City review")).IsEmpty())
+        { FPlatformMisc::RequestExitWithStatus(false,1); return; }
+        ResumeDrive();
+        RunGrandCityReview();
+        return;
     }
     if (Screen==EScreen::Title && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSystemsReview")))
     {
@@ -1295,7 +1306,8 @@ void ARiverfrontPlayerController::ShowMenu(EScreen Target)
         .HasCheckpoint(Target == EScreen::Title && HasLocalProfile() && HasLifeCheckpoint())
         .PlayerName(LocalDisplayName)
         .IsCity(bCity)
-        .CityAvailable(bCity || (!bCityFailed && ARiverfrontWorld::HasCityData()))
+        .IsGrandCity(Mode && Mode->IsGrandCity())
+        .CityAvailable(bCity || !bCityFailed)
         .CityFailed(bCityFailed)
         .OnSwitchMap(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::SwitchFreeRoamMap))
         .OnReturnHome(FSimpleDelegate::CreateUObject(this, &ARiverfrontPlayerController::ReturnHome))
@@ -1404,12 +1416,15 @@ void ARiverfrontPlayerController::SwitchFreeRoamMap()
     }
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool bCity = Mode && Mode->IsCityMode();
-    if (!bCity && !ARiverfrontWorld::HasCityData())
+    SaveLifeCheckpoint();
+#if !UE_BUILD_SHIPPING
+    if (!bCity && FParse::Param(FCommandLine::Get(),TEXT("SabarmatiCityReview")) && ARiverfrontWorld::HasCityData())
     {
+        LoadFreeRoamMap(TEXT("SabarmatiCity"));
         return;
     }
-    SaveLifeCheckpoint();
-    LoadFreeRoamMap(bCity ? TEXT("SabarmatiRiverfront") : TEXT("SabarmatiCity"));
+#endif
+    LoadFreeRoamMap(bCity ? TEXT("SabarmatiRiverfront") : TEXT("GrandCity"));
 }
 
 void ARiverfrontPlayerController::Drowned()

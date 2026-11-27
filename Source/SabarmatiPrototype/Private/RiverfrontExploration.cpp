@@ -32,7 +32,8 @@ void ARiverfrontPlayerController::LoadSites()
     if (!FFileHelper::LoadFileToString(Contents,*FPaths::Combine(FPaths::ProjectContentDir(),TEXT("CityData/ExplorationSites.json"))) ||
         !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Contents),Doc) || !Doc.IsValid()) return;
     const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;
-    if (!Doc->TryGetArrayField(bCitySites?TEXT("city"):TEXT("riverfront"),Rows)) return;
+    const TCHAR* DistrictKey=District->IsGrandCity() ? TEXT("grand-city") : bCitySites ? TEXT("city") : TEXT("riverfront");
+    if (!Doc->TryGetArrayField(DistrictKey,Rows)) return;
     Sites.Reset();
     for (const auto& Item:*Rows)
     {
@@ -175,8 +176,8 @@ FRiverfrontInteractionPrompt ARiverfrontPlayerController::DescribeInteraction(co
             Prompt.Action=Site->Action;
             if (Site->Kind==ERiverSiteKind::Wardrobe) Prompt.Anchor=FRiverfrontFirstMorningWorld::MirrorCentre();
             if (Site->Kind==ERiverSiteKind::FittingRoom) Prompt.Anchor=FRiverfrontFirstMorningWorld::ShopMirrorCentre();
-            if (bParcelInHand && Site->Kind==ERiverSiteKind::Tea) Prompt.Action=TEXT("Deliver the print order");
-            if (bLifeActive && !bParcelInHand && !bParcelDelivered && Site->Kind==ERiverSiteKind::Print)
+            if (!bCitySites && bParcelInHand && Site->Kind==ERiverSiteKind::Tea) Prompt.Action=TEXT("Deliver the print order");
+            if (!bCitySites && bLifeActive && !bParcelInHand && !bParcelDelivered && Site->Kind==ERiverSiteKind::Print)
                 Prompt.Action=TEXT("Pick up the print order");
             if (const auto* Car=Cast<ARiverfrontCar>(GetPawn()))
             {

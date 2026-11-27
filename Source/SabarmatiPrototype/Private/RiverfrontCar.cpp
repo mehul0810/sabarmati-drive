@@ -629,8 +629,9 @@ bool ARiverfrontCar::Enter(ARiverfrontCharacter& Character)
     UpdateDrivingLights();
     Player->SetControlRotation(FRotator(-13, GetActorRotation().Yaw, 0));
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
-    SetHint(Mode && Mode->IsCityMode() ? TEXT("Explore the mapped Ahmedabad streets.")
-        : TEXT("Cross the bridge, then follow the far bank."));
+    if (Mode && Mode->IsGrandCity()) SetHint(TEXT("Follow the boulevard to Market Bridge."));
+    else if (Mode && Mode->IsCityMode()) SetHint(TEXT("Explore the mapped Ahmedabad streets."));
+    else SetHint(TEXT("Cross the bridge, then follow the far bank."));
     if (FleetBody)
     {
         UE_LOG(LogTemp, Display, TEXT("Sabarmati Drive: took control of traffic %s."), GetVehicleLabel());

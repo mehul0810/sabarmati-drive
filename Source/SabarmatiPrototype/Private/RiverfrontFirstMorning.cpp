@@ -27,6 +27,13 @@ namespace
 {
 const FName Riverfront(TEXT("Riverfront"));
 const FName Ahmedabad(TEXT("Ahmedabad"));
+const FName GrandCity(TEXT("GrandCity"));
+
+FName CheckpointDistrict(const ARiverfrontGameMode* Mode)
+{
+    if (Mode && Mode->IsGrandCity()) return GrandCity;
+    return Mode && Mode->IsCityMode() ? Ahmedabad : Riverfront;
+}
 }
 
 bool ARiverfrontPlayerController::HasLifeCheckpoint() const
@@ -41,21 +48,29 @@ void ARiverfrontPlayerController::BeginLifeSession()
 #if !UE_BUILD_SHIPPING
     // Historical benchmark routes start at Atal; the morning review uses the normal home.
     if (!bReturnHome && ProfileSlot.StartsWith(TEXT("SabarmatiQA-")) &&
-        !FParse::Param(FCommandLine::Get(), TEXT("SabarmatiMorningReview"))) return;
+        !FParse::Param(FCommandLine::Get(),TEXT("SabarmatiMorningReview")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("GrandCityReview"))) return;
 #endif
     auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
     const auto* Profile = RiverfrontLife::Load(ProfileSlot);
     if (!Walker || !Profile) return;
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
     const bool bCity = Mode && Mode->IsCityMode();
-    const FName District = bCity ? Ahmedabad : Riverfront;
-    if (!bCity && Profile->bHasLifeCheckpoint && Profile->CheckpointDistrict == Ahmedabad &&
+    const FName District = CheckpointDistrict(Mode);
+    if (!bCity && Profile->bHasLifeCheckpoint &&
         !GetWorld()->URL.HasOption(TEXT("SabarmatiRiverfront")) &&
-        !(Mode && Mode->CityFailed()) && ARiverfrontWorld::HasCityData())
+        !(Mode && Mode->CityFailed()))
     {
-        bTravelling = true;
-        UGameplayStatics::OpenLevel(this, TEXT("/Engine/Maps/Entry"), true, TEXT("SabarmatiCity?SabarmatiRestore"));
-        return;
+        if (Profile->CheckpointDistrict==GrandCity)
+        {
+            LoadFreeRoamMap(TEXT("GrandCity?SabarmatiRestore"));
+            return;
+        }
+        if (Profile->CheckpointDistrict==Ahmedabad && ARiverfrontWorld::HasCityData())
+        {
+            LoadFreeRoamMap(TEXT("SabarmatiCity?SabarmatiRestore"));
+            return;
+        }
     }
 
     bLifeActive = true;
@@ -123,7 +138,7 @@ void ARiverfrontPlayerController::CommitLifeCheckpoint(const FVector& Location, 
     if (bHaveLastCheckpoint && Location.Equals(LastLifeLocation, 5.f) &&
         FMath::Abs(FMath::FindDeltaAngleDegrees(LastLifeYaw, Yaw)) < 4.f) return;
     const auto* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
-    if (RiverfrontLife::SaveCheckpoint(ProfileSlot, Mode && Mode->IsCityMode() ? Ahmedabad : Riverfront, Location, Yaw, bHasExperiencedWake))
+    if (RiverfrontLife::SaveCheckpoint(ProfileSlot,CheckpointDistrict(Mode),Location,Yaw,bHasExperiencedWake))
     {
         LastLifeLocation = Location;
         LastLifeYaw = Yaw;

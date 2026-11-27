@@ -36,7 +36,7 @@ public:
     const TCHAR* TimeName() const;
     bool IsNight() const { return TimeOfDay == ERiverfrontTime::Night; }
     bool BreakAtImpact(const FHitResult& Hit);
-    bool BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw);
+    bool BuildCity(FVector& OutWalkStart, FVector& OutCarStart, double& OutYaw, bool bGrandCity = false);
     static bool HasCityData();
     const TArray<FVector>& GetShopVisit(bool Tea) const { return Tea?TeaVisit:PrintVisit; }
     const FVector& GetTeaCounter() const { return TeaCounter; }
@@ -47,6 +47,7 @@ public:
     bool FindCityFootway(const FVector& Origin, double Yaw, FVector& Surface) const;
     bool HasStreetDistricts() const { return bStreetDistricts; }
     bool IsCityMode() const { return CityState.IsValid(); }
+    bool IsGrandCity() const;
     virtual void Tick(float DeltaSeconds) override;
 #if !UE_BUILD_SHIPPING
     int32 CityBuildingsNear(const FVector& At, double Radius) const;

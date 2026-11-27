@@ -1,4 +1,5 @@
 #include "RiverfrontTraffic.h"
+#include "GrandCityLayout.h"
 #include "RiverfrontLocalProfile.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SabarmatiDistrict.h"
@@ -421,7 +422,11 @@ FTransform ARiverfrontTraffic::RoadPose(const USplineComponent& Route,double Dis
     const FVector Forward=(At(70.)-At(-70.)).GetSafeNormal2D();
     FVector Centre=At(0.)+FVector(-Forward.Y,Forward.X,0.)*Offset;
     const bool bBridge=!bCity && FMath::Abs(Forward.Y)>.65;
-    const auto ExpectedZ=[&](const FVector& P){return bBridge?RiverfrontCrossings::DeckZ(P.Y):0.;};
+    const auto ExpectedZ=[&](const FVector& P)
+    {
+        if (bGrandCity) return GrandCityLayout::RoadHeight(P.X,P.Y);
+        return bBridge ? RiverfrontCrossings::DeckZ(P.Y) : 0.;
+    };
     const auto Surface=[&](const FVector& P)
     {
         const double Z=ExpectedZ(P);
@@ -529,6 +534,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
 {
     bCity=Mapped;
     if (TActorIterator<ARiverfrontWorld> It(GetWorld()); It) District=*It;
+    bGrandCity=District.IsValid() && District->IsGrandCity();
     if (!bCity)
     {
         const double W=4090., E=-26010.;
@@ -541,6 +547,21 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
             AddDistrictRoute({{CentreX-SabarmatiDistrict::HalfWidth,Bank,1020.},
                 {CentreX+SabarmatiDistrict::HalfWidth,Bank,1020.}},false);
         Junctions={PedestrianCrossing,FVector(3150,W,0),FVector(3150,E,0),FVector(-64400,W,0),FVector(59310,E,0)};
+    }
+    else if (bGrandCity)
+    {
+        using namespace GrandCityLayout;
+        AddDistrictRoute({{WestStreets[1],MarketStreet,BoulevardWidth},
+            {EastStreets[0],MarketStreet,LocalWidth}, {EastStreets[0],FoundryStreet,BoulevardWidth},
+            {WestStreets[1],FoundryStreet,LocalWidth}});
+        AddDistrictRoute({{WestStreets[0],CrossStreets[0],LocalWidth},
+            {WestStreets[1],CrossStreets[0],LocalWidth}, {WestStreets[1],CrossStreets[2],LocalWidth},
+            {WestStreets[0],CrossStreets[2],LocalWidth}});
+        AddDistrictRoute({{EastStreets[1],CrossStreets[2],LocalWidth},
+            {EastStreets[2],CrossStreets[2],LocalWidth}, {EastStreets[2],CrossStreets[4],LocalWidth},
+            {EastStreets[1],CrossStreets[4],LocalWidth}});
+        Junctions={{WestStreets[1],MarketStreet,0}, {EastStreets[0],MarketStreet,0},
+            {WestStreets[1],FoundryStreet,0}, {EastStreets[0],FoundryStreet,0}};
     }
     else
     {
@@ -610,7 +631,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         if (Distance<700. || Distance>NearLane->GetSplineLength()-700.) continue;
         if (SpawnVehicle(Nearest,Distance,KerbFleet[ParkedCount],I+21,true)) ++ParkedCount;
     }
-    if (bCity)
+    if (bCity && !bGrandCity)
     {
         const FVector LocalStops[]={{10237,25487,0},{20998,25504,0},{28570,65572,0}};
         for (int32 I=0;I<UE_ARRAY_COUNT(LocalStops);++I)
@@ -633,7 +654,7 @@ void ARiverfrontTraffic::Start(bool Mapped,const FVector& StreetStart)
         }
     }
     UE_LOG(LogTemp,Display,TEXT("Sabarmati parking: %d curbside vehicles"),ParkedCount);
-    const int32 Population=bCity?30:36;
+    const int32 Population=bGrandCity ? 24 : bCity ? 30 : 36;
     for (int32 I=0;I<Population*2 && Agents.Num()<Population;++I)
     {
         const int32 R=I%Routes.Num();
@@ -693,7 +714,7 @@ void ARiverfrontTraffic::SetUpSignals()
         C->SetRelativeScale3D(Size/100.); C->SetCollisionEnabled(ECollisionEnabled::NoCollision); C->RegisterComponent();
     };
     for (int32 J=0;J<Junctions.Num();++J)
-    for (int32 Axis=0;Axis<(J==0?2:4);++Axis)
+    for (int32 Axis=0;Axis<(!bCity && J==0 ? 2 : 4);++Axis)
     {
         const double Yaw=Axis<2?Axis*180.:90.+(Axis-2)*180.;
         const FRotator R(0,Yaw,0);
@@ -720,8 +741,11 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
         if (!bCity && J == 0) continue;
         const bool Red=Along?H!=0:H!=3;
         const FVector V=Junctions[J]-At;
-        if (Red && Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295. && V.Dot(D)>0 && V.Dot(D)<2350)
-            Restrict(V.Dot(D)-Length-337.,TEXT("red_signal"));
+        if (Drivers[Index].ClearingJunction!=J && FMath::Abs(V.X*D.Y-V.Y*D.X)<295. && V.Dot(D)>0 && V.Dot(D)<2350)
+        {
+            if (Red) Restrict(V.Dot(D)-Length-337.,TEXT("red_signal"));
+            else if (JunctionReserved(J)) Restrict(V.Dot(D)-Length-337.,TEXT("junction_reserved"));
+        }
     }
     auto Ahead=[&](FVector P,double OtherLength,double OtherWidth,const AActor* Other,const TCHAR* Reason)
     {
@@ -779,6 +803,14 @@ float ARiverfrontTraffic::StopDistance(const FVector& At,const FVector& D,double
     }
     return Limit;
 }
+bool ARiverfrontTraffic::JunctionReserved(int32 Junction) const
+{
+    return Drivers.ContainsByPredicate([Junction](const FSabarmatiLane& Lane)
+    {
+        return Lane.ClearingJunction==Junction;
+    });
+}
+
 void ARiverfrontTraffic::UpdateJunctionClearance(FSabarmatiLane& Driver,const ARiverfrontRoadAgent& Agent,
     const FVector& Heading,int32 Signal)
 {
@@ -798,7 +830,7 @@ void ARiverfrontTraffic::UpdateJunctionClearance(FSabarmatiLane& Driver,const AR
         const FVector To=Junctions[J]-Here;
         const double Ahead=To.Dot(Heading);
         if (Ahead>0. && Ahead<Agent.HalfLength+310. &&
-            FMath::Abs(To.X*Heading.Y-To.Y*Heading.X)<295.)
+            FMath::Abs(To.X*Heading.Y-To.Y*Heading.X)<295. && !JunctionReserved(J))
         {
             Driver.ClearingJunction=J;
             return;
