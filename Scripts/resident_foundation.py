@@ -27,7 +27,6 @@ def refine_upper_anatomy(body, preset):
 
     front = np.clip((z-.35)/.45, 0, 1)
     collarbone = np.exp(-((y-(5.27+.21*side))/.13)**2) * np.exp(-((side-.67)/.53)**2)
-    navel = contour(0, 2.37, .12, .17)
     rectus = contour(.38, 2.91, .30, .62)
     lower_ribs = contour(.91, 3.23, .30, .31)
     if preset == "male":
@@ -36,7 +35,8 @@ def refine_upper_anatomy(body, preset):
     else:
         chest = .073*contour(.65, 3.93, .40, .52)-.033*contour(.73, 3.44, .50, .17)
         abdomen = .025*rectus+.030*lower_ribs
-    body[:, 2] += front*(.053*collarbone-.069*navel+chest+abdomen)
+    # The reference mesh's navel already aligns with the painted skin.
+    body[:, 2] += front*(.053*collarbone+chest+abdomen)
 
 
 def refine_leg_anatomy(body, preset):
