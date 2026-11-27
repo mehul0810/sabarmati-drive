@@ -1,6 +1,6 @@
-# Sabarmati Drive | Unreal Engine 5 Mac prototype
+# Grand City | Unreal Engine 5 for Mac
 
-Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a detailed, hand-built riverfront with both banks, Atal pedestrian bridge and separate road crossings, plus a larger offline Ahmedabad mode built from [OpenStreetMap](https://www.openstreetmap.org/copyright). Both share the same offline profile, controls and interface. The city’s road geometry is map-derived; terrain, building heights and façades are approximations, not a survey or a photoreal reconstruction. See [map sources and attribution](SourceAssets/AHMEDABAD-CITY-SOURCES.md) and [art sources](SourceAssets/RIVERFRONT-SOURCES.md).
+Grand City is a native, offline Apple Silicon free-roam game. **Explore Grand City** opens the first layout of its fictional canal district. It has two road crossings, a walkable market arcade, Juniper Park and a service area. The existing home district still provides the apartment, wardrobe and first-morning loop. Both use one offline profile. See [the performance and art plan](Docs/Grand-City.md) and [art sources](SourceAssets/RIVERFRONT-SOURCES.md).
 
 ## Start on an Apple Silicon Mac
 
@@ -20,11 +20,11 @@ Sabarmati Drive is a native Apple Silicon free-roam Unreal prototype. It has a d
 
 Use `bash Scripts/run-mac.sh --editor` for editing and avatar import. The engine Entry map may look empty in the editor; the district appears when you press **Play**. Click the viewport once if needed to capture the pointer, then look around without mouse drag. Click **Stop** (or use the keyboard shortcut shown by Unreal) to release the editor viewport. After a successful build you can launch without compiling again with `bash Scripts/run-mac.sh --no-build`. The first C++ build and shader preparation can take time.
 
-Open **Play Sabarmati Drive.command** for the standard window or **Play Sabarmati Drive 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `~/Applications/Sabarmati Drive.app` directly in Finder. **Finder and both shortcuts use the same offline profile** on your Mac, including your wallet, wardrobe and checkpoint.
+Open **Play Grand City.command** for the standard window or **Play Grand City 4K.command** for a Retina window at 100% render scale, up to 3840×2160 backing pixels. Both shortcuts fit the available desktop and select the packaged game when available. You can also open `~/Applications/Grand City.app` directly in Finder. **Finder and both shortcuts use the same offline profile**, including your wallet, wardrobe and checkpoint.
 
 On your first visit, enter a local display name, choose **Male** or **Female**, create the profile, and choose **Start**. You wake at 07:15 in Flat 2B, Kesar Apartments, with ₹1,00,000 in cash and ₹5,00,000 in the bank. On later visits, **Continue** restores your last saved checkpoint. If you saved while driving, you resume on foot beside the last safe vehicle position. **Quit Game** is on the title screen and the **Esc** menu. [Play through the first morning](Docs/First-morning.md) · [Riverfront gameplay screenshots](Docs/captures/riverfront-district.jpg)
 
-For a development playtest with an optional local avatar, run `bash Scripts/run-mac.sh --game --no-build`. To open the packaged game from Terminal, run `bash Scripts/run-mac.sh --standalone`.
+For a development playtest with an optional local avatar, run `bash Scripts/run-mac.sh --game --no-build --desktop`. To open the packaged game from Terminal, run `bash Scripts/run-mac.sh --standalone`.
 
 ## Riverfront lighting
 
@@ -92,7 +92,7 @@ The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual
 bash Scripts/run-mac.sh --package
 ```
 
-The command cooks and ad-hoc signs a self-contained Apple Silicon Development app. Each successful build replaces the game in your user Applications folder. Double-click `~/Applications/Sabarmati Drive.app` in Finder. It reads its local cooked containers and starts in a window. Distribution signing and notarization are separate.
+The command cooks and ad-hoc signs a self-contained Apple Silicon Development app. Each successful build installs one copy at `~/Applications/Grand City.app`, replacing the identified legacy app if present. The app reads its local cooked containers and starts in a window. Distribution signing and notarization are separate. For an isolated evaluation bundle, pass `-- --export /absolute/test-folder/Grand\ City.app` to the package command and use a separate temporary `-UserDir`.
 
 ## Source checks and limits
 
@@ -114,8 +114,8 @@ During play, **Esc** freezes the simulation and releases the pointer. Click
 **Resume** or press **Esc** again to resume and recapture the pointer. **Quit Game** closes the game from either the title or pause menu. For normal
 keyboard QA use a standalone game window; Unreal Editor can intercept Esc in PIE.
 
-Across the street from the starting cars, a brick-and-plaster block has a shaded colonnade, a public cross-passage and a paved circuit around the back. In **Explore Ahmedabad**, a longer version occupies the mapped plot beside the starting road. Both routes are accessible on foot. The road surface uses scanned asphalt, and the central streets include worn markings, flush drains and kerbs. See [the material sources](SourceAssets/RIVERFRONT-SOURCES.md) and [city map notes](SourceAssets/AHMEDABAD-CITY-SOURCES.md).
+The Canal Market arcade has a shaded colonnade, a public passage and café and print counters. The streets use scanned asphalt, painted lanes, kerbs, drains and graded bridge approaches. Grand City starts at sunset with illuminated district signs. Press **T** to cycle through night, day and sunset. [Material sources](SourceAssets/RIVERFRONT-SOURCES.md)
 
-**Explore Ahmedabad** opens a 1 km × 1 km district around the Atal west approach. Press **N** to select a local destination and **V** to travel. The home riverfront also has a 1 km × 1 km play boundary. Look for streetside tea, vegetable and fabric carts, shade trees and parked vehicles. Approach a stopped vehicle and press **E** to drive. The sport coupe and motorcycle have higher speed limits. A direct impact can wreck the car.
+**Explore Grand City** opens the 1 km × 1 km fictional district. Press **N** to select a destination and **V** to travel. Face a stopped vehicle and press **E** when its prompt appears. **Return Home** brings you back to Flat 2B. The legacy mapped district remains accessible through `-SabarmatiCity` in Development builds and through older checkpoints. [Legacy map attribution](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
 
 Ghat steps lead down to the river. Use the walking controls to swim, hold **Sprint** to dive and release it to surface. Running out of air returns you to Flat 2B with your possessions.

@@ -28,7 +28,7 @@ and [Apple's developer-directory documentation](https://developer.apple.com/docu
 
 ### Unreal and macOS implementation choices
 
-Use the systems shipped with Unreal Engine 5.8.4 for gameplay and interface work. For Mac-specific integration, use Unreal’s platform layer where it covers the operation, then a documented public Apple API where the launcher or platform needs one. The M1 Max and the packaged arm64 build are the reference for feature support and performance.
+Use the systems shipped with Unreal Engine 5.8.4 for gameplay and interface work. For Mac-specific integration, use Unreal’s platform layer where it covers the operation, then a documented public Apple API. The cooked arm64 build on the M2 MacBook Air is the performance reference. [Grand City performance plan](Docs/Grand-City.md)
 
 | Upcoming work | Engine or platform support to use |
 |---|---|
@@ -38,13 +38,13 @@ Use the systems shipped with Unreal Engine 5.8.4 for gameplay and interface work
 | Purchases, wardrobe and offline progress | Use Unreal Data Assets for items and prices and the existing `USaveGame` slot for persistence. Game rules own the rupee balances, purchases, and migration of existing player progress. |
 | Mac rendering, windows and storage | Use Unreal’s Metal renderer and game window settings. The launcher uses AppKit’s `NSScreen` for the usable desktop and Foundation’s `FileManager` for the user’s Application Support directory. |
 
-Check each newly adopted module or plugin in a packaged offline build on the M1 Max, including keyboard focus, window fitting and existing saves where relevant. [Epic’s Mac feature matrix](https://dev.epicgames.com/documentation/en-us/unreal-engine/macos-development-requirements-for-unreal-engine?application_version=5.8) · [Apple’s Application Support directory](https://developer.apple.com/documentation/foundation/filemanager/searchpathdirectory/applicationsupportdirectory)
+Check each newly adopted module or plugin in a packaged offline build on the Air, including keyboard focus, window fitting and existing saves where relevant. [Epic’s Mac feature matrix](https://dev.epicgames.com/documentation/unreal-engine/macos-development-requirements-for-unreal-engine) · [Apple’s Application Support directory](https://developer.apple.com/documentation/foundation/filemanager/searchpathdirectory/applicationsupportdirectory)
 
 ### Local riverfront art verification
 
-Open **Play Sabarmati Drive.command** for a standard window or **Play Sabarmati Drive 4K.command** for a Retina window fitted to the desktop. After packaging, you can also double-click `~/Applications/Sabarmati Drive.app` in Finder. All three open the same offline profile on your Mac.
+Open **Play Grand City.command** for a standard window or **Play Grand City 4K.command** for a Retina window fitted to the desktop. After packaging, you can also double-click `~/Applications/Grand City.app` in Finder. All three open the same offline profile on your Mac.
 
-For a fresh profile, enter a display name and choose **Start**. You wake in Flat 2B at Kesar Apartments with ₹1,00,000 cash and ₹5,00,000 in the bank. Walk down the apartment stairs to **Sutra Cloth House**, then cross the street to the furnished interiors of **Kagaz Print House** and **Nadi Chai**. On a later launch, **Continue** restores your last saved checkpoint and keeps your balances and clothing. **Explore Ahmedabad** in the title or pause menu opens the wider city map. **Quit Game** closes the game from either menu. [First-morning play guide](Docs/First-morning.md) · [City map sources](SourceAssets/AHMEDABAD-CITY-SOURCES.md)
+For a fresh profile, enter a display name and choose **Start**. You wake in Flat 2B at Kesar Apartments with ₹1,00,000 cash and ₹5,00,000 in the bank. Walk down the apartment stairs to **Sutra Cloth House**, then cross the street to the furnished interiors of **Kagaz Print House** and **Nadi Chai**. On a later launch, **Continue** restores your last saved checkpoint and keeps your balances and clothing. **Explore Grand City** opens the fictional canal district from the title or pause menu. **Quit Game** closes the game from either menu. [First-morning play guide](Docs/First-morning.md)
 
 Mouse look starts at 30% of the old sensitivity. Change it in **Start** or **Esc**;
 the chosen value is saved when you enter or resume the game.
