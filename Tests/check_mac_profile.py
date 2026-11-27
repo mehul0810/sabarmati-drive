@@ -18,12 +18,12 @@ class MacGameLauncherTests(unittest.TestCase):
         import subprocess
 
         project = SCRIPT.parents[1]
-        launchers = ("Play Sabarmati Drive.command", "Play Sabarmati Drive 4K.command")
+        launchers = ("Play Grand City.command", "Play Grand City 4K.command")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scripts = root / "Scripts"
             scripts.mkdir()
-            app = root / "Applications/Sabarmati Drive.app"
+            app = root / "Applications/Grand City.app"
             (scripts / "mac-game-path.sh").write_text("sabarmati_app=" + shlex.quote(str(app)) + "\n")
             (scripts / "run-mac.sh").write_text('printf "%s\\n" "$@"\n')
             for name in launchers:
@@ -32,8 +32,8 @@ class MacGameLauncherTests(unittest.TestCase):
             def arguments(name):
                 return subprocess.check_output(["bash", str(root / name)], text=True).splitlines()
 
-            self.assertEqual(arguments(launchers[0]), ["--game", "--no-build", "--", "-SabarmatiPublicAvatar"])
-            self.assertEqual(arguments(launchers[1]), ["--game", "--no-build", "--4k", "--", "-SabarmatiPublicAvatar"])
+            self.assertEqual(arguments(launchers[0]), ["--game", "--no-build", "--desktop", "--", "-SabarmatiPublicAvatar"])
+            self.assertEqual(arguments(launchers[1]), ["--game", "--no-build", "--desktop", "--4k", "--", "-SabarmatiPublicAvatar"])
             binary = app / "Contents/MacOS/SabarmatiPrototype"
             binary.parent.mkdir(parents=True)
             binary.touch(mode=0o755)

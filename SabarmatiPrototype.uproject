@@ -2,7 +2,7 @@
   "FileVersion": 3,
   "EngineAssociation": "5.8",
   "Category": "Games",
-  "Description": "An Apple Silicon Unreal prototype for Sabarmati Drive.",
+  "Description": "Grand City, an offline Unreal game for Apple Silicon.",
   "Modules": [
     {
       "Name": "SabarmatiPrototype",

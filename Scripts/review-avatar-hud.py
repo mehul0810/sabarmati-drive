@@ -11,7 +11,7 @@ import uuid
 
 PROJECT = Path(__file__).resolve().parents[1]
 LEGACY = PROJECT / "Tests/Fixtures/riverfront-profile-before-avatar-selection.sav"
-DEFAULT_GAME = Path.home() / "Applications/Sabarmati Drive.app/Contents/MacOS/SabarmatiPrototype"
+DEFAULT_GAME = Path.home() / "Applications/Grand City.app/Contents/MacOS/SabarmatiPrototype"
 
 
 def png_size(picture):

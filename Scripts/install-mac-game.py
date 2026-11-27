@@ -1,4 +1,4 @@
-"""Install one verified Sabarmati Drive app in the current user's Applications folder."""
+"""Install one verified Grand City app in the current user's Applications folder."""
 import ctypes
 import fcntl
 import os
@@ -19,44 +19,58 @@ def check_identity(bundle):
         raise ValueError(f"Unrecognized game bundle at {bundle}")
 
 
-def publish(staged, destination):
+def publish(staged, destination, previous_name=None):
     # A directory lock also serializes installs from different checkouts.
     parent = os.open(destination.parent, os.O_RDONLY)
     try:
         fcntl.flock(parent, fcntl.LOCK_EX)
-        if not os.path.lexists(destination):
+        legacy = destination.with_name(previous_name) if previous_name else None
+        if legacy is not None and os.path.lexists(legacy):
+            check_identity(legacy)
+        else:
+            legacy = None
+        if not os.path.lexists(destination) and legacy is None:
             os.rename(staged, destination)
             return
-        check_identity(destination)
+        existing = destination if os.path.lexists(destination) else legacy
+        check_identity(existing)
         # macOS swaps two directories on the same volume in one operation. The
         # previous app is then in our private staging directory for cleanup.
         swap = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True).renamex_np
         swap.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
         swap.restype = ctypes.c_int
         rename_swap = 0x00000002  # RENAME_SWAP, <stdio.h>
-        if swap(os.fsencode(staged), os.fsencode(destination), rename_swap):
+        if swap(os.fsencode(staged), os.fsencode(existing), rename_swap):
             number = ctypes.get_errno()
-            raise OSError(number, os.strerror(number), str(destination))
+            raise OSError(number, os.strerror(number), str(existing))
+        try:
+            if existing != destination:
+                os.rename(existing, destination)
+            elif legacy is not None:
+                os.rename(legacy, staged.with_name("retired-app"))
+        except OSError:
+            swap(os.fsencode(staged), os.fsencode(existing), rename_swap)
+            raise
     finally:
         os.close(parent)
 
 
-def install(source, destination):
+def install(source, destination, previous_name=None):
     check_identity(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".sabarmati-update-", suffix=".noindex") as folder:
-        staged = Path(folder) / "Sabarmati Drive.app"
+        staged = Path(folder) / destination.name
         subprocess.run(["/usr/bin/ditto", "--norsrc", "--noextattr", str(source), str(staged)], check=True)
         subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(staged)], check=True)
         paks = staged / "Contents/UE/SabarmatiPrototype/Content/Paks"
         if not all(any(paks.glob(f"*.{extension}")) for extension in ("utoc", "ucas", "pak")):
             raise ValueError(f"Missing cooked game content at {paks}")
-        publish(staged, destination)
+        publish(staged, destination, previous_name)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit("Usage: python3 Scripts/install-mac-game.py COOKED_GAME.app")
-    game = Path.home() / "Applications/Sabarmati Drive.app"
-    install(Path(sys.argv[1]), game)
+    game = Path.home() / "Applications/Grand City.app"
+    install(Path(sys.argv[1]), game, "Sabarmati Drive.app")
     print(f"Local Development app: {game}")

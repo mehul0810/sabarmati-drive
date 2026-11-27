@@ -4,6 +4,16 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 engine="${UE_ROOT:-/Users/Shared/Epic Games/UE_5.8}"
 uat="$engine/Engine/Build/BatchFiles/RunUAT.sh"
+export_app=
+if [[ "${1:-}" == --export ]]; then
+    if [[ $# -lt 2 || "$2" != /*.app || -e "$2" || -L "$2" || ! -d "$(dirname "$2")" ]]; then
+        printf '%s\n' '--export needs a new absolute .app path in an existing directory.' >&2
+        exit 2
+    fi
+    export_app="$2"
+    shift 2
+fi
+
 # Serialize the Unreal build product shared by packaging invocations in this checkout.
 mkdir -p "$root/Saved"
 exec 9>>"$root/Saved/.sabarmati-package.lock"
@@ -62,5 +72,13 @@ if [[ -e "$app/Contents/UE/ue.projectstore" ]]; then
     printf '%s\n' 'A development cook-server marker was staged in the offline package.' >&2
     exit 1
 fi
+/usr/bin/plutil -replace CFBundleName -string 'Grand City' "$app/Contents/Info.plist"
+/usr/bin/plutil -replace CFBundleDisplayName -string 'Grand City' "$app/Contents/Info.plist"
 sign_local_bundle "$app" archive
-python3 "$root/Scripts/install-mac-game.py" "$app"
+if [[ -n "$export_app" ]]; then
+    /usr/bin/ditto --norsrc --noextattr "$app" "$export_app"
+    /usr/bin/codesign --verify --strict "$export_app"
+    printf 'Cooked test app: %s\n' "$export_app"
+else
+    python3 "$root/Scripts/install-mac-game.py" "$app"
+fi

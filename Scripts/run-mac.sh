@@ -3,19 +3,21 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: bash Scripts/run-mac.sh [--editor|--game|--standalone|--package] [--no-build] [--4k] [-- extra UE args]
+Usage: bash Scripts/run-mac.sh [--editor|--game|--standalone|--package] [--no-build] [--desktop] [--4k] [-- extra UE args]
        UE_ROOT="/path/to/UE_5.8" bash Scripts/run-mac.sh
 Both game presets open a resizable window. The default targets 1600x900; --4k
 uses Retina backing pixels up to 3840x2160. Both fit the desktop work area.
 --editor opens the source for Play and import.
+--desktop starts the development game through macOS Launch Services.
 --standalone starts the cooked offline app with the same window fit and local player profile.
---package replaces ~/Applications/Sabarmati Drive.app with the local Development build.
+--package installs one local Development build at ~/Applications/Grand City.app.
 USAGE
 }
 
 mode=game
 skip_build=false
 uhd=false
+desktop=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --editor) mode=editor; shift ;;
@@ -23,12 +25,17 @@ while [[ $# -gt 0 ]]; do
         --package) mode=package; shift ;;
         --standalone) mode=standalone; shift ;;
         --no-build) skip_build=true; shift ;;
+        --desktop) desktop=true; shift ;;
         --4k) uhd=true; shift ;;
         -h|--help) usage; exit 0 ;;
         --) shift; break ;;
         *) printf 'Unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
 done
+if [[ "$desktop" == true && "$mode" != game ]]; then
+    printf '%s\n' '--desktop applies to the development game.' >&2
+    exit 2
+fi
 
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
     printf 'Run this in a native arm64 Terminal on Apple Silicon macOS.\n' >&2
@@ -45,7 +52,8 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]
 fi
 mac_build="$engine/Engine/Build/BatchFiles/Mac/Build.sh"
 uat="$engine/Engine/Build/BatchFiles/RunUAT.sh"
-editor="$engine/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor"
+editor_app="$engine/Engine/Binaries/Mac/UnrealEditor.app"
+editor="$editor_app/Contents/MacOS/UnrealEditor"
 if [[ "$mode" != standalone && ( ! -x "$editor" || ! -f "$mac_build" ) ]]; then
     printf 'Unreal Engine 5.8 not found at "%s". Install it from Epic or set UE_ROOT.\n' "$engine" >&2
     exit 1
@@ -80,6 +88,12 @@ if [[ "$mode" == editor ]]; then
 fi
 
 launcher=("$editor" "$project" -game)
+if [[ "$desktop" == true ]]; then
+    launcher=(/usr/bin/open -n -a "$editor_app")
+    if [[ -n "${DEVELOPER_DIR:-}" ]]; then launcher+=(--env "DEVELOPER_DIR=$DEVELOPER_DIR"); fi
+    if [[ -n "${MTL_HUD_ENABLED:-}" ]]; then launcher+=(--env "MTL_HUD_ENABLED=$MTL_HUD_ENABLED"); fi
+    launcher+=(--args "$project" -game)
+fi
 # Keep normal editor-game and standalone progress together. The packaged app can
 # open its own Application Support folder without asking to read all of Documents.
 explicit_data=false
@@ -87,7 +101,7 @@ review=false
 for argument in "$@"; do
     case "$argument" in
         -[Uu]ser[Dd]ir=*|-USERDIR=*) explicit_data=true ;;
-        -SabarmatiBenchmark|-Sabarmati*Review|-SabarmatiEndurance=*) review=true ;;
+        -GrandCityReview|-SabarmatiBenchmark|-Sabarmati*Review|-SabarmatiEndurance=*) review=true ;;
     esac
 done
 if [[ "$mode" == standalone ]]; then

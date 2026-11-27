@@ -19,7 +19,7 @@ class MacGameInstallTests(unittest.TestCase):
         self.root = Path(directory.name)
         self.applications = self.root / "Applications"
         self.applications.mkdir()
-        self.destination = self.applications / "Sabarmati Drive.app"
+        self.destination = self.applications / "Grand City.app"
 
     def staged(self, version, identifier="com.YourCompany.SabarmatiPrototype"):
         package = self.root / version
@@ -50,3 +50,11 @@ class MacGameInstallTests(unittest.TestCase):
             installer.publish(update, self.destination)
         self.assertEqual(self.version(self.destination), "other")
         self.assertEqual(self.version(update), "2")
+
+    @unittest.skipUnless(sys.platform == "darwin", "Uses the macOS atomic directory exchange")
+    def test_rename_replaces_the_legacy_install(self):
+        legacy = self.applications / "Sabarmati Drive.app"
+        self.staged("1").rename(legacy)
+        installer.publish(self.staged("2"), self.destination, legacy.name)
+        self.assertEqual(list(self.applications.iterdir()), [self.destination])
+        self.assertEqual(self.version(self.destination), "2")
