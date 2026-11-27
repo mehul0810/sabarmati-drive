@@ -32,6 +32,7 @@ struct FGrandCityReviewRun
     double StageStarted=0.;
     int32 Probes=0;
     int32 Stage=0;
+    bool bCapturedMarket=false;
     TArray<double> FrameMs;
 };
 }
@@ -75,7 +76,7 @@ void ARiverfrontPlayerController::RunGrandCityReview()
     Seconds=FMath::Clamp(Seconds,8,1200);
     const FString Evidence=FPaths::ProjectSavedDir()/TEXT("GrandCityReview");
     IFileManager::Get().MakeDirectory(*Evidence,true);
-    SetControlRotation(FRotator(-7,180,0));
+    SetControlRotation(FRotator(-7,164,0));
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
         [this,Run,Evidence,Seconds,Expected=TWeakObjectPtr<ARiverfrontCar>(Car)](float)
         {
@@ -152,13 +153,23 @@ void ARiverfrontPlayerController::RunGrandCityReview()
                 if (!Cast<ARiverfrontCharacter>(GetPawn())) return FailGrandCityReview(TEXT("safe exit from parked car"));
                 ++Run->Stage;
             }
-            if (Age>=5.)
+            if (Age>=5. && !Run->bCapturedMarket)
             {
                 if (Run->LastFrame>0.) Run->FrameMs.Add((Now-Run->LastFrame)*1000.);
                 Run->LastFrame=Now;
             }
             if (Age>Seconds+35.) return FailGrandCityReview(TEXT("timed out at the market or car"));
             if (Age<Seconds || Run->Stage<4 || FScreenshotRequest::IsScreenshotRequested()) return true;
+            if (!Run->bCapturedMarket)
+            {
+                Run->bCapturedMarket=true;
+                if (Person && Person->TeleportTo(FVector(MarketX+600,MarketStreet+1050,106),FRotator(0,69,0)))
+                {
+                    SetControlRotation(FRotator(3,69,0));
+                    FScreenshotRequest::RequestScreenshot(Evidence/TEXT("canal-market-sign.png"),false,false);
+                    return true;
+                }
+            }
             if (Run->FrameMs.IsEmpty() || Run->Stage!=4) return FailGrandCityReview(TEXT("incomplete play sample"));
             Run->FrameMs.Sort();
             const auto Percentile=[&](double Fraction){return Run->FrameMs[int32((Run->FrameMs.Num()-1)*Fraction)];};

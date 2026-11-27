@@ -226,8 +226,11 @@ void ARiverfrontWorld::UpdatePhotoSky()
         Day=FMath::SmoothStep(.1f,.64f,Solar);
         Night=1.f-FMath::SmoothStep(-.09f,.095f,Solar);
     }
-    const FLinearColor Clear=FMath::Lerp(FLinearColor(1.42f,1.32f,1.21f),FLinearColor(1.63f,1.66f,1.69f),Day);
-    const FLinearColor SkyLight=FMath::Lerp(Clear,FLinearColor(.040f,.052f,.090f),Night);
+    const bool bCanal=IsGrandCity();
+    const FLinearColor Sunset=bCanal ? FLinearColor(1.35f,1.15f,1.27f) : FLinearColor(1.42f,1.32f,1.21f);
+    const FLinearColor Twilight=bCanal ? FLinearColor(.046f,.064f,.125f) : FLinearColor(.040f,.052f,.090f);
+    const FLinearColor Clear=FMath::Lerp(Sunset,FLinearColor(1.63f,1.66f,1.69f),Day);
+    const FLinearColor SkyLight=FMath::Lerp(Clear,Twilight,Night);
     PhotoSky->SetScalarParameterValue(TEXT("DayMix"),FMath::Lerp(Day,.92f,RainAmount));
     PhotoSky->SetVectorParameterValue(TEXT("SkyTint"),SkyLight*FMath::Lerp(Weather==1?.88f:1.f,.48f,RainAmount));
 }

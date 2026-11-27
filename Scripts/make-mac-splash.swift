@@ -14,9 +14,9 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
             .font: font, .foregroundColor: color(rgb), .kern: spacing
         ])
     }
-    NSGradient(starting: color(0x101719), ending: color(0x1d292a))?.draw(in: rect, angle: 8)
+    NSGradient(starting: color(0x141a23), ending: color(0x243346))?.draw(in: rect, angle: 8)
 
-    // Abstract map lines suggest the riverfront without implying an exact road map.
+    // Abstract lines suggest the shape of the canal district.
     for i in 0..<13 {
         let n = CGFloat(i) * 20
         let line = NSBezierPath()
@@ -24,22 +24,18 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
         line.curve(to: CGPoint(x: 876 + n / 2, y: 444),
                    controlPoint1: CGPoint(x: 750 + 0.4 * n, y: 91),
                    controlPoint2: CGPoint(x: 424 + n, y: 312))
-        line.lineWidth = i == 5 ? 2.1 : 1
-        color(i == 5 ? 0x946e47 : 0x36464a).setStroke()
+        line.lineWidth = (i == 5 || i == 8) ? 2.1 : 1
+        color(i == 5 ? 0xda786b : i == 8 ? 0x5ba7a3 : 0x3d505b).setStroke()
         line.stroke()
     }
-    color(0xb99361).setFill()
+    color(0xda786b).setFill()
     NSBezierPath(rect: NSRect(x: 55, y: 68, width: 39, height: 3)).fill()
-    label("A H M E D A B A D   /   O F F L I N E", x: 55, y: 88,
-          font: .monospacedSystemFont(ofSize: 13, weight: .medium), rgb: 0xc9ab82)
-    label("Sabarmati", x: 51, y: 114, font: .systemFont(ofSize: 68, weight: .heavy), rgb: 0xf4ecdf)
-    label("Drive", x: 52, y: 186, font: .systemFont(ofSize: 68, weight: .heavy), rgb: 0xf4ecdf)
+    label("Grand City", x: 51, y: 114, font: .systemFont(ofSize: 73, weight: .heavy), rgb: 0xf4ecdf)
 
-    color(0xb99361).setFill()
+    color(0x5ba7a3).setFill()
     NSBezierPath(ovalIn: NSRect(x: 56, y: 327, width: 7, height: 7)).fill()
-    label("Loading game…", x: 73, y: 319, font: .systemFont(ofSize: 20, weight: .semibold), rgb: 0xf4ecdf)
-    label("Preparing the city and your local profile", x: 73, y: 352,
-          font: .systemFont(ofSize: 15, weight: .regular), rgb: 0xbdc6c4)
+    label("Loading the city and your local profile…", x: 73, y: 319,
+          font: .systemFont(ofSize: 19, weight: .semibold), rgb: 0xf4ecdf)
     return true
 }
 guard CommandLine.arguments.count == 2, let tiff = image.tiffRepresentation,

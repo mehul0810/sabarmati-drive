@@ -30,6 +30,8 @@ const FDistrictSky GoldenLighting = {FRotator(-18, 112, 0), 3.95f, 4670.f, .76f,
 // A restrained cool fill keeps pedestrians and building silhouettes readable
 // between lamps without adding more dynamic lights to the Air's scene.
 const FDistrictSky NightLighting = {FRotator(-31, -61, 0), .34f, 7350.f, .62f, .0038f, FLinearColor(.009,.015,.033)};
+const FDistrictSky CanalSunset = {FRotator(-20, 6, 0), 3.85f, 4380.f, .91f, .0065f, FLinearColor(.43,.27,.30)};
+const FDistrictSky CanalBlueHour = {FRotator(-30, -56, 0), .31f, 7800.f, .67f, .0038f, FLinearColor(.013,.022,.056)};
 }
 
 const TCHAR* ARiverfrontWorld::TimeName() const
@@ -146,7 +148,7 @@ void ARiverfrontWorld::BuildLighting()
     }
     FString Requested;
     FParse::Value(FCommandLine::Get(), TEXT("SabarmatiTime="), Requested);
-    ApplyTimeOfDay(Requested == TEXT("day") || (Requested.IsEmpty() && IsCityMode()) ? ERiverfrontTime::Day
+    ApplyTimeOfDay(Requested == TEXT("day") || (Requested.IsEmpty() && IsCityMode() && !IsGrandCity()) ? ERiverfrontTime::Day
         : Requested == TEXT("night") ? ERiverfrontTime::Night : ERiverfrontTime::Golden);
 }
 
@@ -161,12 +163,19 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
 {
     TimeOfDay = Time;
     const bool AtNight = Time == ERiverfrontTime::Night;
-    const FDistrictSky& Lighting = AtNight ? NightLighting : Time == ERiverfrontTime::Day ? DayLighting : GoldenLighting;
+    const bool bCanal=IsGrandCity();
+    const bool bCanalDusk=bCanal && Time!=ERiverfrontTime::Day;
+    const FDistrictSky& Lighting = AtNight ? (bCanal ? CanalBlueHour : NightLighting)
+        : Time==ERiverfrontTime::Day ? DayLighting : (bCanal ? CanalSunset : GoldenLighting);
     if (DistrictPostProcess)
     {
         // Lift deep shadows at night without washing out headlamps and shop lights.
-        DistrictPostProcess->Settings.bOverride_ColorGammaShadows = AtNight;
-        DistrictPostProcess->Settings.ColorGammaShadows = FVector4(1., 1., 1., 1.28);
+        auto& Settings=DistrictPostProcess->Settings;
+        Settings.bOverride_ColorGammaShadows=AtNight || bCanalDusk;
+        Settings.ColorGammaShadows=bCanalDusk ? FVector4(.99,1.03,1.08,AtNight ? 1.25 : 1.16)
+            : FVector4(1.,1.,1.,1.28);
+        Settings.ColorSaturation=bCanalDusk ? FVector4(1.05,1.02,1.06,1.) : FVector4(.98,1.,.97,1.);
+        Settings.BloomIntensity=bCanalDusk ? .27f : .18f;
     }
     if (Sun)
     {
@@ -184,7 +193,8 @@ void ARiverfrontWorld::ApplyTimeOfDay(ERiverfrontTime Time)
     if (Sky)
     {
         Sky->SetIntensity(Lighting.SkyIntensity);
-        Sky->SetLowerHemisphereColor(AtNight ? FLinearColor(.014,.017,.023) : FLinearColor(.085,.067,.047));
+        const FLinearColor Fill=AtNight ? FLinearColor(.014,.017,.023) : FLinearColor(.085,.067,.047);
+        Sky->SetLowerHemisphereColor(bCanalDusk && !AtNight ? FLinearColor(.072,.093,.119) : Fill);
         Sky->SetCaptureIsDirty();
     }
     if (LampMaterial)

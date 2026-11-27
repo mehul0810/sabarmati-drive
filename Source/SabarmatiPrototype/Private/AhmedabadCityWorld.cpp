@@ -6,6 +6,7 @@
 #include "RiverfrontPedestrian.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
@@ -71,7 +72,7 @@ void AppendBox(TArray<FTransform>& Batch, const FVector& Center, const FVector& 
 }
 
 void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& RoadStrip,
-    const TArray<FCityRoad>& Network, UStaticMesh* Canopy)
+    const TArray<FCityRoad>& Network, UStaticMesh* Canopy, bool bGrandCity)
 {
     const FVector A(RoadStrip.Ax, RoadStrip.Ay, 0), B(RoadStrip.Bx, RoadStrip.By, 0);
     const double Length = FVector::Distance(A, B);
@@ -137,7 +138,9 @@ void AddFootpaths(TArray<FTransform> (&Batch)[BatchCount], const FCityRoad& Road
                 }
                 AppendBox(Batch[Kerb], Edge + Out * 11 + FVector(0,0,1.5),
                     FVector(Panel - 1, 22, 19), Facing);
-                if (Canopy && Width>26.)
+                const bool bMarketLanding=bGrandCity &&
+                    FMath::Abs(Edge.X-GrandCityLayout::StartX)<1050. && FMath::Abs(Edge.Y-GrandCityLayout::WalkY)<280.;
+                if (Canopy && Width>26. && !bMarketLanding)
                 {
                     // The street survey supplies the free verge, junctions exclude both lamps and pits.
                     const int32 Seed=HashCombine(GetTypeHash(RoadStrip.Ax/23),GetTypeHash(RoadStrip.Ay/37))&0x3fffffff;
@@ -610,6 +613,51 @@ bool ARiverfrontWorld::BuildCity(FVector& OutWalkStart, FVector& OutCarStart, do
         }
         AddMarketCart(FVector(MarketX-1500,MarketStreet+1320,-6.),0.,ECartStock::Produce);
         AddMarketCart(FVector(MarketX+1500,MarketStreet+1330,-6.),0.,ECartStock::Chai);
+        const auto AccentSign=[this](const FVector& Centre,const TCHAR* Name,const FLinearColor& Colour)
+        {
+            constexpr double Width=445., Height=77., Depth=14.;
+            Box(ETint::Rail,Centre,FVector(Width,Depth,Height));
+            for (const double Side : {-1.,1.})
+            {
+                Box(ETint::Rail,FVector(Centre.X+Side*(Width*.5-18.),Centre.Y,Centre.Z*.5),
+                    FVector(12,12,Centre.Z));
+                auto* Text=NewObject<UTextRenderComponent>(this);
+                AddInstanceComponent(Text);
+                Text->SetupAttachment(GetRootComponent());
+                Text->SetMobility(EComponentMobility::Static);
+                Text->SetCastShadow(false);
+                Text->SetText(FText::FromString(Name));
+                Text->SetTextRenderColor(FColor(255,242,223));
+                Text->SetHorizontalAlignment(EHTA_Center);
+                Text->SetVerticalAlignment(EVRTA_TextCenter);
+                Text->SetWorldSize(34.);
+                Text->SetRelativeLocation(Centre+FVector(0,Side*(Depth*.5+1.),0));
+                Text->SetRelativeRotation(FRotator(0,Side*90.,0));
+                Text->RegisterComponent();
+            }
+            if (auto* Lens=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Sabarmati/Riverfront/M_PracticalLens.M_PracticalLens")))
+            {
+                auto* Tube=NewObject<UInstancedStaticMeshComponent>(this);
+                AddInstanceComponent(Tube);
+                Tube->SetupAttachment(GetRootComponent());
+                Tube->SetMobility(EComponentMobility::Static);
+                Tube->SetStaticMesh(BoxMesh);
+                Tube->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Tube->SetCanEverAffectNavigation(false);
+                Tube->SetCastShadow(false);
+                auto* Material=UMaterialInstanceDynamic::Create(Lens,Tube);
+                Material->SetVectorParameterValue(TEXT("LensTint"),Colour);
+                Material->SetScalarParameterValue(TEXT("Glow"),2.1f);
+                Tube->SetMaterial(0,Material);
+                Tube->AddInstance(FTransform(FRotator::ZeroRotator,Centre+FVector(0,0,Height*.5),
+                    FVector(Width,Depth,5.)*.01));
+                Tube->SetCullDistances(16000,22800);
+                Tube->RegisterComponent();
+            }
+        };
+        AccentSign(FVector(MarketX+820,MarketStreet+1630,198),TEXT("CANAL MARKET"),FLinearColor(1.,.12,.27));
+        AccentSign(FVector(ParkX+475,MarketStreet+1680,190),TEXT("JUNIPER PARK"),FLinearColor(.13,.8,.53));
+        AccentSign(FVector(QuayX,MarketStreet+1340,198),TEXT("EAST QUAY"),FLinearColor(.10,.58,1.));
         for (const int32 X : {WestStreets[1],EastStreets[0]})
             for (const int32 Y : {MarketStreet,FoundryStreet})
                 for (double Across=-470.;Across<=470.;Across+=104.)
@@ -874,7 +922,7 @@ void ARiverfrontWorld::UpdateCityTiles(const FVector& Focus, bool Immediate)
                 if (Item.Major && !Item.Bridge && (Tile->HasStreetPlots || FVector::DistSquared2D(Middle, State->Walk) < FMath::Square(53000.)))
                 {
                     AddFootpaths(Batch,Item,Tile->HasStreetPlots?StreetRoads:State->ApproachRoads,
-                        MatureTree.Get());
+                        MatureTree.Get(),State->bGrandCity);
                 }
                 if (Item.Major && Length > 1200)
                 {
