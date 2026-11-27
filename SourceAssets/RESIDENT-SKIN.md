@@ -10,7 +10,7 @@ Both fictional residents use hm08 UVs. Each complexion combines two generic Make
 | `eyebrows/eyebrow009/eyebrow009.obj` and `eyebrow009.png` | Individual brow hairs projected onto the skin atlas |
 | hm08 `base.obj` | Coordinates for the brows, shaved shadow and facial roughness |
 
-The complexion combines the two skins in a 57:43 blend. The baker adds subtle shaved shadow and regional pigmentation and roughness. Separate seeded relief for each torso varies pore size, depth and orientation. The relief is projected in body space across the chest, abdomen and back and baked into the tangent-space normal map. The body and face come from the fictional resident.
+The complexion combines the two skins in a 57:43 blend. The baker adds the male resident's short beard and regional pigmentation and roughness. Separate seeded relief for each torso varies pore size, depth and orientation. The relief is projected in body space across the chest, abdomen and back and baked into the tangent-space normal map. The body and face come from the fictional resident.
 
 ## Rebuilding the maps
 
@@ -26,7 +26,7 @@ To rebuild the female maps, add `--preset female` and choose a separate output d
 
 The optional 16384 × 16384 torso height PNG stores 16-bit relief as an authoring file. The game uses a 4096 × 4096 tangent-space DirectX normal, a 2048 × 2048 sRGB colour texture and a 1024 × 1024 linear roughness texture. All three use the resident’s native UV0 and Unreal’s character texture groups. The Unreal material and imported textures live under `Content/Sabarmati/Riverfront/People/Hero`.
 
-## Shared facial sculpt
+## Base facial sculpt
 
 Both playable outfits use the same authored adult face. The standard hm08 target in `SourceAssets/river-resident-adult.target` contains vertex offsets in the MakeHuman base model's native units. The shape broadens the mandibular angle, gives the chin slightly more projection and adds volume over the cheekbones. A separate local adjustment brings the upper and lower lip into contact at rest. It moves each lip by at most 0.77 mm.
 
@@ -47,3 +47,7 @@ Apply the committed sculpt after generating the original everyday and fitted-kur
 python3 Scripts/sculpt-resident-face.py /path/to/base.obj neutral/SK_RiverEveryday.glb finished/SK_RiverEveryday.glb
 python3 Scripts/sculpt-resident-face.py /path/to/base.obj neutral/SK_RiverTailoredKurta.glb finished/SK_RiverTailoredKurta.glb
 ```
+
+## Playable face and torso sculpts
+
+After importing fresh fitted outfits, run `Sabarmati.BuildResidentSculpts` in the Unreal Editor console. The editor command shapes the jaw, cheeks, chin, nose, shoulders and rib cage for each resident on all sixteen fitted upper-body meshes. It writes the positions and shading frames into each mesh's native source geometry and rebuilds its render data. The package metadata records the applied sculpt so rerunning the command can also process newly imported outfits.

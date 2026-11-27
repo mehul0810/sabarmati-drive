@@ -191,7 +191,7 @@ def bake_torso_normal(positions_uv, base_normal, seed, master_path):
     return quantize(127.5*(normal+1))
 
 
-def face_detail(system, base, colour, roughness, shaved_shadow):
+def face_detail(system, base, colour, roughness, short_beard):
     card, brow_origin, scale = brow_card(system)
     height, width = roughness.shape
     positions, uvs, triangles = mesh(base, 'body')
@@ -207,12 +207,17 @@ def face_detail(system, base, colour, roughness, shaved_shadow):
         if not len(x) or not facing.any():
             continue
         rgb = colour[rows, cols].astype(np.float32)
-        if shaved_shadow:
-            chin = oval(x/.36, (y-6.29)/.15)
-            jaw = oval((abs(x)-.42)/.23, (y-6.45)/.24)
-            upper_lip = oval(x/.25, (y-6.76)/.060)
-            shaved = np.minimum(1, chin+.63*jaw+.82*upper_lip)*facing
-            rgb -= shaved[:, None]*[9., 7., 5.]
+        if short_beard:
+            side = np.abs(x)
+            chin = oval(x/.47, (y-6.28)/.23)
+            jaw = oval((side-.50)/.23, (y-6.37-.33*side)/.21)
+            sideburn = oval((side-.71)/.13, (y-6.78)/.26)
+            moustache = oval((side-.14)/.16, (y-6.76+.07*side)/.065)
+            lip = oval(x/.28, (y-6.61)/.095)
+            beard = np.minimum(1, chin+.89*jaw+.72*sideburn+.85*moustache)*(1-.97*lip)*facing
+            # Preserve fine variation in the skin source beneath the short facial hair.
+            rgb = rgb*(1-.60*beard[:, None])+beard[:, None]*[9., 7., 5.]
+            roughness[rows, cols] += .06*beard
         # Select the front facial surface only where the brow cards overlap it.
         sx, sy = (x-brow_origin[0])*scale, (y-brow_origin[1])*scale
         within = (sx >= 0) & (sy >= 0) & (sx < card.shape[1]) & (sy < card.shape[0]) & (z > .88)
@@ -293,7 +298,7 @@ def bake(system, base, output, preset='male', save_torso_master=False):
     normal = np.stack((-dx*inv_length, -dy*inv_length, inv_length), axis=-1)
     roughness = .565 + np.clip(fine*.004, -.044, .044) + .012*pore
 
-    face_detail(system, base, colour, roughness, shaved_shadow=(preset == 'male'))
+    face_detail(system, base, colour, roughness, short_beard=(preset == 'male'))
     output.mkdir(parents=True, exist_ok=True)
     positions_uv = mesh(base, 'body')
     regional_skin(base, colour, None, positions_uv)

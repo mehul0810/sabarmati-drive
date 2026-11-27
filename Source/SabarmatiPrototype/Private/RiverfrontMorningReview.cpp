@@ -1467,7 +1467,10 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const bool Cropped=State->Step==EMorningStep::Cropped;
                 const auto* Saved=RiverfrontLife::Load(ProfileSlot);
                 const auto* Hair=Cast<UStaticMeshComponent>(Walker->GetDefaultSubobjectByName(TEXT("SweptHair")));
-                const FName ExpectedCut(Cropped ? TEXT("SM_ResidentCrop") : TEXT("SM_ResidentSweep"));
+                const bool Female = Walker->GetAvatarGender() == ERiverfrontGender::Female;
+                const FName ExpectedCut(Female
+                    ? (Cropped ? TEXT("SM_ResidentBob") : TEXT("SM_ResidentPonytail"))
+                    : (Cropped ? TEXT("SM_ResidentCrop") : TEXT("SM_ResidentSweep")));
                 if (!Saved || Saved->bCroppedHair!=Cropped || !Hair || !Hair->GetStaticMesh()
                     || !Hair->IsVisible() || Hair->GetAttachSocketName()!=TEXT("Head")
                     || Hair->GetStaticMesh()->GetFName()!=ExpectedCut)

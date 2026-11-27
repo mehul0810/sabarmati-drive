@@ -101,5 +101,5 @@ def import_cut(style):
 
 
 assets.make_directory(folder)
-for hairstyle in ["Sweep", "Crop"]:
+for hairstyle in ("Sweep", "Crop", "Ponytail", "Bob"):
     import_cut(hairstyle)

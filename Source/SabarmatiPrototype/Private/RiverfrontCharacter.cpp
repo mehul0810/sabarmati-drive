@@ -210,6 +210,10 @@ void ARiverfrontCharacter::BeginPlay()
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentSweep.SM_ResidentSweep"));
             CroppedHaircut = LoadObject<UStaticMesh>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentCrop.SM_ResidentCrop"));
+            TiedBackHaircut = LoadObject<UStaticMesh>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentPonytail.SM_ResidentPonytail"));
+            BobHaircut = LoadObject<UStaticMesh>(nullptr,
+                TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/Hair/SM_ResidentBob.SM_ResidentBob"));
             EyeMaterial = LoadObject<UMaterialInterface>(nullptr,
                 TEXT("/Game/Sabarmati/Riverfront/People/Wardrobe/M_RiverEyes.M_RiverEyes"));
             TailoredCloth = LoadObject<UMaterialInterface>(nullptr,
@@ -426,7 +430,13 @@ void ARiverfrontCharacter::UpdateHair()
         const FTransform MeshAxesAtHead(FQuat::Identity, Head.GetLocation());
         Hair->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Head"));
         Hair->SetRelativeTransform(MeshAxesAtHead.GetRelativeTransform(Head));
-        Hair->SetStaticMesh(bCroppedHair ? CroppedHaircut.Get() : SweptHaircut.Get());
+        auto* Cut = bCroppedHair ? CroppedHaircut.Get() : SweptHaircut.Get();
+        if (AvatarGender == ERiverfrontGender::Female)
+        {
+            if (auto* FittedCut = bCroppedHair ? BobHaircut.Get() : TiedBackHaircut.Get())
+                Cut = FittedCut;
+        }
+        Hair->SetStaticMesh(Cut);
         const int32 SkinSlot = GetMesh()->GetMaterialIndex(TEXT("skin"));
         if (SkinSlot != INDEX_NONE)
             Hair->SetMaterialByName(TEXT("scalp"), GetMesh()->GetMaterial(SkinSlot));

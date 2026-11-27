@@ -1,8 +1,8 @@
-"""Fit two MakeHuman CC0 system hairstyles to the playable hm08 head.
+"""Fit the MakeHuman CC0 system hairstyles to the playable hm08 head.
 
 Usage: python make-resident-hair.py BASE_OBJ SYSTEM_PACK_DIRECTORY OUTPUT_DIRECTORY
-Keep the official short01/short04 OBJ UVs and use their mhclo barycentric
-bindings: the source OBJs were sculpted on differently proportioned heads.
+Keep the official OBJ UVs and use the mhclo barycentric bindings. The
+source OBJs were sculpted on differently proportioned heads.
 """
 import argparse
 from collections import defaultdict
@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 
 SCRIPTS = Path(__file__).resolve().parent
-STYLES = {"Sweep": "short01", "Crop": "short04"}
+STYLES = {"Sweep": "short01", "Crop": "short04", "Ponytail": "ponytail01", "Bob": "bob02"}
 
 
 def read_obj(path):
@@ -101,6 +101,9 @@ def prepare(base, pack, out):
         rest, coordinates, groups = read_obj(folder / (name + ".obj"))
         faces = [face for group in groups.values() for face in group]
         wrapped = wrap_hair(folder / (name + ".mhclo"), head, len(rest))
+        if style == "Ponytail":
+            # Keep the tied-back tail above the collar as the head turns.
+            wrapped[:, 1] += .68 * np.maximum(pivot[1] - .55 - wrapped[:, 1], 0)
         card_normals = normals(wrapped, faces)
         if style == "Sweep":
             # Overlapping sheets belong to one volume. Their raw face normals

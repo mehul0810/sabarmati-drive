@@ -575,7 +575,12 @@ private:
             .OnClicked_Lambda([this,bCropped]{
                 if (bCroppedHair == bCropped) return FReply::Handled();
                 return Complete(RiverfrontLife::SetCroppedHair(Slot,bCropped),TEXT("Hairstyle saved."));
-            })[Label(Copy(bCropped ? TEXT("Cropped") : TEXT("Swept")),13,Paper)];
+            })[Label(TAttribute<FText>::CreateLambda([this,bCropped]
+                {
+                    if (Gender == ERiverfrontGender::Female)
+                        return Copy(bCropped ? TEXT("Bob") : TEXT("Tied back"));
+                    return Copy(bCropped ? TEXT("Cropped") : TEXT("Swept"));
+                }),13,Paper)];
     }
 
     ARiverfrontCharacter* Resident() const

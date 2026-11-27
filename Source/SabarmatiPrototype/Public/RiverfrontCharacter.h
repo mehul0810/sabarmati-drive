@@ -193,6 +193,8 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInterface> EyeMaterial;
     UPROPERTY() TObjectPtr<UStaticMesh> SweptHaircut;
     UPROPERTY() TObjectPtr<UStaticMesh> CroppedHaircut;
+    UPROPERTY() TObjectPtr<UStaticMesh> TiedBackHaircut;
+    UPROPERTY() TObjectPtr<UStaticMesh> BobHaircut;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Hair;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Wristwatch;
     FName WardrobeOutfit = TEXT("cotton-sand");
