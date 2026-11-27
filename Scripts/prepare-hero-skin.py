@@ -21,6 +21,8 @@ SOURCE_HASHES = {
     BROW + '.obj': '037a2edb3252e1fe4a57e63dcb1598916609fd0339f2b453b2f71e9c4cbd481c',
 }
 BASE_HASH = '8e761e6624b8f54536409135d1636da63b32486a90d4897f84e121d144f6fb4c'
+TORSO_MASTER_SIZE = 16384
+GAME_NORMAL_SIZE = 4096
 
 
 def verify(path, expected):
@@ -109,6 +111,86 @@ def oval(x, y):
     return np.exp(-np.minimum(x*x+y*y, 64))
 
 
+def smoothstep(start, end, value):
+    fraction = np.clip((value-start)/(end-start), 0, 1)
+    return fraction*fraction*(3-2*fraction)
+
+
+def torso_weight(x, y):
+    return (smoothstep(.65, 1.35, y) * (1-smoothstep(5.65, 6.15, y))
+            * (1-smoothstep(1.52, 2.05, np.abs(x))))
+
+
+def skin_relief_tile(seed):
+    """Author shallow pits with different sizes, orientations, and depths."""
+    rng = np.random.default_rng(seed)
+    cells, cell_size = 48, 16
+    size = cells*cell_size
+    grain = Image.fromarray(rng.normal(0, .03, (96, 96)).astype(np.float32))
+    relief = np.array(grain.resize((size, size), Image.Resampling.BICUBIC))
+    y, x = np.mgrid[-8:9, -8:9]
+    for row, column in np.ndindex(cells, cells):
+        center_y, center_x = (np.array([row, column])*cell_size
+                              + rng.integers(2, cell_size-2, size=2))
+        angle = rng.uniform(0, np.pi)
+        across = np.cos(angle)*x + np.sin(angle)*y
+        along = -np.sin(angle)*x + np.cos(angle)*y
+        radius = rng.uniform(1.3, 3.2)
+        distance = (across/radius)**2 + (along/(radius*rng.uniform(.58, .9)))**2
+        relief[(center_y+y) % size, (center_x+x) % size] += (
+            rng.uniform(.15, .48)*(.18*np.exp(-.42*distance)-np.exp(-distance)))
+    return relief
+
+
+def bake_torso_normal(positions_uv, base_normal, seed, master_path):
+    positions, uv, triangles = positions_uv
+    corners = positions[triangles[:, :, 0]]
+    heights, widths = corners[:, :, 1], corners[:, :, 0]
+    body_faces = ((heights.max(axis=1) > .65) & (heights.min(axis=1) < 6.15)
+                  & (widths.max(axis=1) > -2.05) & (widths.min(axis=1) < 2.05))
+    tile = skin_relief_tile(seed)
+    tile_size = tile.shape[0]
+    tile = np.pad(tile[:, :, None], ((1, 1), (1, 1), (0, 0)), mode='wrap')
+    # Position-based projection keeps the pattern aligned across the UV seams.
+    # The hm08 reference coordinates use decimetres. Each tile spans about 9 cm.
+    scale = tile_size/.9
+    master = np.full((TORSO_MASTER_SIZE, TORSO_MASTER_SIZE), 32768, dtype=np.uint16)
+    for triangle in triangles[body_faces]:
+        covered = pixels(uv[triangle[:, 1]]*TORSO_MASTER_SIZE, TORSO_MASTER_SIZE, TORSO_MASTER_SIZE)
+        if covered is None:
+            continue
+        rows, columns, weights = covered
+        x, y, z = (weights@positions[triangle[:, 0]]).astype(np.float32).T
+        strength = torso_weight(x, y)
+        if not strength.any():
+            continue
+        # The side projection avoids stretching the pores around the rib cage.
+        flank = smoothstep(.95, 1.72, np.abs(x))
+        v = ((y+.09*z)*scale) % tile_size + 1
+        front_u = ((x+.28*z)*scale) % tile_size + 1
+        side_u = ((z+.28*x)*scale) % tile_size + 1
+        frontal = bilinear(tile, front_u, v)[:, 0]
+        lateral = bilinear(tile, side_u, v)[:, 0]
+        relief = strength*((1-flank)*frontal+flank*lateral)
+        master[rows, columns] = np.rint(32768 + 32767*np.clip(relief, -1, 1)).astype(np.uint16)
+
+    if master_path is not None:
+        Image.fromarray(master).save(master_path, compress_level=3)
+    sample_width = TORSO_MASTER_SIZE//GAME_NORMAL_SIZE
+    detail = master.reshape(GAME_NORMAL_SIZE, sample_width, GAME_NORMAL_SIZE, sample_width)
+    detail = (detail.mean(axis=(1, 3), dtype=np.float32)-32768)/32767
+    del master
+    dy, dx = np.gradient(detail)
+    existing = Image.fromarray(quantize(127.5*(base_normal+1)))
+    existing = existing.resize((GAME_NORMAL_SIZE, GAME_NORMAL_SIZE), Image.Resampling.BILINEAR)
+    normal = np.asarray(existing, dtype=np.float32)*(2/255)-1
+    normal[:, :, 0] -= .72*dx
+    normal[:, :, 1] -= .72*dy
+    length = np.sqrt(np.sum(normal*normal, axis=2))
+    normal /= length[:, :, None]
+    return quantize(127.5*(normal+1))
+
+
 def face_detail(system, base, colour, roughness, shaved_shadow):
     card, brow_origin, scale = brow_card(system)
     height, width = roughness.shape
@@ -166,15 +248,21 @@ def regional_skin(base, rgb, rough, positions_uv=None):
         elbows = oval((side-3.33)/.53, (y-2.40)/.53)
         knees = oval((side-.94)/.65, (y+4.54)/.57)*np.clip((z+.42)/.9, 0., 1.)
         fingers = np.clip((side-4.05)/.65, 0., 1.)*oval((side-4.86)/.8, (y-.44)/1.05)
+        torso = torso_weight(x, y)
+        torso_front = smoothstep(-.15, .40, z)
+        chest = torso*torso_front*oval((side-.73)/.83, (y-4.64)/.86)
+        flank = torso*oval((side-1.43)/.37, (y-3.36)/1.65)
+        upper_back = torso*(1-torso_front)*oval(side/1.18, (y-4.68)/.98)
         if rgb is not None:
             original = rgb[rows, cols].astype(np.float32)
-            warm = cheek*.68 + ears*.95 + lips*.95 + elbows*.35 + knees*.29 + fingers*.40
+            warm = (cheek*.68 + ears*.95 + lips*.95 + elbows*.35 + knees*.29
+                    + fingers*.40 + .45*chest + .28*upper_back)
             # Add local capillary warmth while retaining each resident's albedo and complexion.
             gain = 1 + warm[:, None]*[.047,-.026,-.036] - under_eye[:, None]*[.038,.048,.017]
             rgb[rows, cols] = np.clip(np.rint(original*gain), 0, 255).astype(np.uint8)
         else:
-            dry = .055*cheek + .105*elbows + .096*knees + .065*fingers
-            wet = .058*lips + .045*under_eye + .035*ears
+            dry = .055*cheek + .105*elbows + .096*knees + .065*fingers + .050*flank
+            wet = .058*lips + .045*under_eye + .035*ears + .045*chest + .025*upper_back
             rough[rows, cols] = np.clip(np.rint(rough[rows, cols] + 255*(dry-wet)), 0, 255).astype(np.uint8)
 
 
@@ -182,7 +270,7 @@ def quantize(array):
     return np.clip(np.rint(array), 0, 255).astype(np.uint8)
 
 
-def bake(system, base, output, preset='male'):
+def bake(system, base, output, preset='male', save_torso_master=False):
     light_asset, dark_asset = (FEMALE_LIGHT, FEMALE_DARK) if preset == 'female' else (LIGHT, DARK)
     prefix = 'T_FemaleSkin' if preset == 'female' else 'T_HeroSkin'
     verify(base, BASE_HASH)
@@ -210,7 +298,9 @@ def bake(system, base, output, preset='male'):
     positions_uv = mesh(base, 'body')
     regional_skin(base, colour, None, positions_uv)
     Image.fromarray(colour).save(output/f'{prefix}_Color.png')
-    Image.fromarray(quantize(127.5*(normal+1))).save(output/f'{prefix}_Normal.png')
+    master_path = output/f'{prefix}_TorsoHeight16K.png' if save_torso_master else None
+    body_normal = bake_torso_normal(positions_uv, normal, 9183 if preset == 'female' else 5347, master_path)
+    Image.fromarray(body_normal).save(output/f'{prefix}_Normal.png')
     rough = Image.fromarray(quantize(roughness*255))
     spec = np.array(rough.resize((1024, 1024), Image.Resampling.BOX))
     regional_skin(base, None, spec, positions_uv)
@@ -223,5 +313,7 @@ if __name__ == '__main__':
     parser.add_argument('hm08_base', type=Path, help='The same MakeHuman base.obj used to build the resident')
     parser.add_argument('output', type=Path)
     parser.add_argument('--preset', choices=('male','female'), default='male')
+    parser.add_argument('--save-torso-master', action='store_true',
+                        help='Also save the 16K, 16-bit torso relief used to bake the game normal')
     args = parser.parse_args()
-    bake(args.system_assets, args.hm08_base, args.output, args.preset)
+    bake(args.system_assets, args.hm08_base, args.output, args.preset, args.save_torso_master)

@@ -10,7 +10,7 @@ Both fictional residents use hm08 UVs. Each complexion combines two generic Make
 | `eyebrows/eyebrow009/eyebrow009.obj` and `eyebrow009.png` | Individual brow hairs projected onto the skin atlas |
 | hm08 `base.obj` | Coordinates for the brows, shaved shadow and facial roughness |
 
-The complexion combines the two skins in a 57:43 blend. The baker adds subtle shaved shadow, a seeded pore normal and regional roughness for the forehead, nose and lips. These last two maps approximate surface response from fine source variation. The face shape comes from the fictional resident. No person-specific portrait, scan or biometric reference was supplied to the baker.
+The complexion combines the two skins in a 57:43 blend. The baker adds subtle shaved shadow and regional pigmentation and roughness. Separate seeded relief for each torso varies pore size, depth and orientation. The relief is projected in body space across the chest, abdomen and back and baked into the tangent-space normal map. The body and face come from the fictional resident.
 
 ## Rebuilding the maps
 
@@ -19,12 +19,12 @@ Extract the official CC0 system pack and use the same base OBJ used by the distr
 Run this command from the repository with NumPy and Pillow available. The reference bake used NumPy 2.4.6 and Pillow 13.0.
 
 ```sh
-python3 Scripts/prepare-hero-skin.py /path/to/unpacked/system-assets /path/to/base.obj /tmp/sabarmati-hero-skin-source
+python3 Scripts/prepare-hero-skin.py /path/to/unpacked/system-assets /path/to/base.obj /tmp/sabarmati-hero-skin-source --save-torso-master
 ```
 
 To rebuild the female maps, add `--preset female` and choose a separate output directory. For the Unreal import, point `SABARMATI_HERO_SKIN_SOURCE` to that directory and set `SABARMATI_SKIN_PRESET=female` when running `Scripts/import-hero-skin.py`. Both skin materials use the shared Unreal subsurface profile. The female material lives at `Hero/Female/M_FemaleSkin`. The shader applies the player's saved complexion to the face, lips and hands.
 
-The 2048 × 2048 colour texture uses sRGB. The 2048 × 2048 normal texture is tangent-space DirectX, and the 1024 × 1024 roughness texture is linear grayscale. All three use the resident's native UV0 and the same mapping across the face, lips and hands. The Unreal material and imported textures live under `Content/Sabarmati/Riverfront/People/Hero`.
+The optional 16384 × 16384 torso height PNG stores 16-bit relief as an authoring file. The game uses a 4096 × 4096 tangent-space DirectX normal, a 2048 × 2048 sRGB colour texture and a 1024 × 1024 linear roughness texture. All three use the resident’s native UV0 and Unreal’s character texture groups. The Unreal material and imported textures live under `Content/Sabarmati/Riverfront/People/Hero`.
 
 ## Shared facial sculpt
 
