@@ -25,6 +25,7 @@ public:
     void SetManualDriver(const ARiverfrontCharacter* Driver);
     void SetDriverVisible(bool bVisible);
     bool IsNearAccess(const ARiverfrontCharacter& Character) const;
+    FVector AccessPoint(const FVector& From) const;
     const TCHAR* GetVehicleLabel() const;
     FVector GetDriveHull() const { return FVector(HalfLength, HalfWidth, (RoofHeight - 12.) * .5); }
     double GetRideHeight() const { return GetDriveHull().Z + 12.; }
@@ -81,11 +82,11 @@ public:
     int32 GetTurns() const { return Turns; }
     double GetTravelMetres() const { return TravelCm/100.; }
     FVector GetCrossing() const { return PedestrianCrossing; }
-    ARiverfrontCar* FindParkedCar(const ARiverfrontCharacter& Character) const;
-    const ARiverfrontRoadAgent* FindEnterableVehicle(const ARiverfrontCharacter& Character) const;
+    void ForEachParkedCar(const ARiverfrontCharacter& Character, TFunctionRef<void(ARiverfrontCar&)> Visit) const;
+    void ForEachEnterableVehicle(const ARiverfrontCharacter& Character, TFunctionRef<void(ARiverfrontRoadAgent&)> Visit) const;
     FVector RoadVelocity(const ARiverfrontRoadAgent* Agent) const;
     bool RemoveCrashedAgent(ARiverfrontRoadAgent* Agent);
-    bool EnterVehicle(ARiverfrontCharacter& Character);
+    bool EnterVehicle(ARiverfrontCharacter& Character, ARiverfrontRoadAgent& Target);
 #if !UE_BUILD_SHIPPING
     bool CheckPlayerPathPrediction(ARiverfrontCar& Car, FString& Details) const;
 #endif

@@ -111,5 +111,5 @@ void ARiverfrontPlayerController::FinishWakeup()
     if (LifeCamera.IsValid()) LifeCamera->SetLifeSpan(.6f);
     LifeCamera.Reset();
     SaveLifeCheckpoint();
-    Notice(TEXT("Kesar Apartments · Flat 2B    E  wardrobe    I  wallet"));
+    Notice(TEXT("Kesar Apartments · Flat 2B"));
 }

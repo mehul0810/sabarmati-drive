@@ -45,6 +45,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     FString GetWaterHint() const;
+    bool CanUseWorldInteraction() const;
     void BeginSeatExit(const FVector& Seat,const FVector& Landing,const FVector& Out);
     void SetInCar(bool bInCar);
     void AdvanceFittingIdle(float DeltaSeconds);
@@ -231,7 +232,7 @@ private:
     void MoveSide(float Amount);
     void Sprint();
     void StopSprint();
-    void EnterCar();
+    void Interact();
     void OpenCarDoor();
     void ResetWalk();
     void ToggleStats();

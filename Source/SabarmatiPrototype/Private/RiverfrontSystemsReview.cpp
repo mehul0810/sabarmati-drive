@@ -102,6 +102,7 @@ public:
         case 0:
             if (!Walker->TeleportTo(Car->GetActorTransform().TransformPosition(FVector(12,-174,37)),Car->GetActorRotation()) || !Car->IsNearDoor(*Walker.Get()))
                 return Fail(TEXT("reach hatchback door"));
+            FaceDoor();
             Tap(EKeys::O); break;
         case 1:
             if (!Car->IsDoorOpen()) return Fail(TEXT("front door did not articulate"));
@@ -203,6 +204,7 @@ public:
         {
             const FVector Door=Car->GetActorTransform().TransformPosition(FVector(12,-174,37));
             if (!Walker->TeleportTo(Door,Car->GetActorRotation())) return Fail(TEXT("return to parked hatch"));
+            FaceDoor();
             Tap(EKeys::E); break;
         }
         case 21:
@@ -338,6 +340,11 @@ public:
         ++Stage; StageTime=Now;return true;
     }
 private:
+    void FaceDoor()
+    {
+        const FVector From=Walker->GetActorLocation();
+        PC.SetControlRotation((Car->DoorInteractionPoint(From)-From).GetSafeNormal2D().Rotation());
+    }
     void TrialSteer(int32 Direction)
     {
         if (Direction==TrialDirection) return;

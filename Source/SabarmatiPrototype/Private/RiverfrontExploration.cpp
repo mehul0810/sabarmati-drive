@@ -3,6 +3,9 @@
 #include "RiverfrontCar.h"
 #include "RiverfrontLifeMenu.h"
 #include "RiverfrontFirstMorningWorld.h"
+#include "RiverfrontGameMode.h"
+#include "RiverfrontPedestrian.h"
+#include "RiverfrontTraffic.h"
 #include "RiverfrontCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -74,37 +77,169 @@ void ARiverfrontPlayerController::LoadSites()
         Sites.Add({FName(*Id),Name,Action,Discovery,Point,Kind,float(FMath::Clamp(Reach,50.,1100.)),Travel});
     }
 }
-int32 ARiverfrontPlayerController::NearbySite() const
-{
-    const APawn* Pawn=GetPawn();
-    if (!Pawn) return INDEX_NONE;
-    const bool Seated=Cast<ARiverfrontCar>(Pawn)!=nullptr;
-    double Nearest=TNumericLimits<double>::Max();
-    int32 Found=INDEX_NONE;
-    for (int32 I=0;I<Sites.Num();++I)
-    {
-        const auto& Site=Sites[I];
-        if ((Site.Kind==ERiverSiteKind::Service)!=Seated) continue;
-        const double D=FVector::DistSquared(Pawn->GetActorLocation(),Site.Point);
-        if (D<Nearest && D<FMath::Square(Site.Reach)) { Nearest=D; Found=I; }
-    }
-    return Found;
-}
 bool ARiverfrontPlayerController::CanRestAtBed() const
 {
     return bLifeActive && !bWaking && !bCitySites && Cast<ARiverfrontCharacter>(GetPawn())
         && FVector::DistSquared(GetPawn()->GetActorLocation(),FRiverfrontFirstMorningWorld::Bedside())<FMath::Square(105.);
 }
 
+ARiverfrontPlayerController::FInteractionTarget ARiverfrontPlayerController::FindInteraction() const
+{
+    const APawn* Pawn=GetPawn();
+    if (!Pawn || IsShowingMenu() || bWaking) return {};
+    const auto* Walker=Cast<ARiverfrontCharacter>(Pawn);
+    const bool bDriving=Pawn->IsA<ARiverfrontCar>();
+    if (!bDriving && (!Walker || !Walker->CanUseWorldInteraction())) return {};
+
+    const FVector Origin=Pawn->GetActorLocation();
+    const FVector Eye=Origin+FVector(0,0,55.);
+    const FVector Facing=FRotator(0,GetControlRotation().Yaw,0).Vector();
+    const bool bRecent=ShownInteractionPawn.Get()==Pawn && GFrameCounter-ShownInteractionFrame<=2
+        && FVector::DistSquared(Origin,ShownInteractionLocation)<FMath::Square(60.);
+    FInteractionTarget Best;
+    double BestScore=-1.;
+    const auto Consider=[&](FInteractionTarget Candidate,double Reach,bool bPlace)
+    {
+        const FVector Delta=Candidate.Anchor-Origin;
+        const double Range=Delta.Size2D();
+        // At the marker itself there is no useful direction to face.
+        const bool bAtPlace=bPlace && Range<=38.;
+        const double Alignment=FVector::DotProduct(Facing,Delta.GetSafeNormal2D());
+        if (!bAtPlace && !bDriving && Alignment<.29) return;
+        const double Score=(bAtPlace || bDriving ? .87 : Alignment)-.42*FMath::Min(Range/Reach,1.)
+            +(bRecent && ShownInteraction.Matches(Candidate) ? .08 : 0.);
+        if (Score<=BestScore) return;
+        FCollisionQueryParams Sight(SCENE_QUERY_STAT(RiverfrontInteractionSight),false,Pawn);
+        if (const auto* Actor=Candidate.Actor.Get()) Sight.AddIgnoredActor(Actor);
+        if (GetWorld()->LineTraceTestByChannel(Eye,Candidate.Anchor,ECC_Visibility,Sight)) return;
+        BestScore=Score;
+        Best=MoveTemp(Candidate);
+    };
+    if (CanRestAtBed()) Consider({EInteraction::Bed,nullptr,INDEX_NONE,FRiverfrontFirstMorningWorld::Bedside()+FVector(0,0,36)},105.,true);
+    for (int32 Index=0;Index<Sites.Num();++Index)
+    {
+        const auto& Site=Sites[Index];
+        if ((Site.Kind==ERiverSiteKind::Service)!=bDriving || FVector::DistSquared(Origin,Site.Point)>FMath::Square(Site.Reach)) continue;
+        Consider({EInteraction::Place,nullptr,Index,Site.Point+FVector(0,0,42)},Site.Reach,true);
+    }
+    if (Walker)
+    {
+        for (const auto& Neighbour : Neighbours)
+            if (auto* Person=Neighbour.Get(); Person && !Person->IsHidden()
+                && FVector::DistSquared(Origin,Person->GetActorLocation()+FVector(0,0,90))<FMath::Square(170.))
+                Consider({EInteraction::Pedestrian,Person,INDEX_NONE,Person->GetActorLocation()+FVector(0,0,136)},170.,false);
+        if (const auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>())
+        {
+            Mode->ForEachEnterableCar(*Walker,[&](ARiverfrontCar& Car)
+            {
+                Consider({EInteraction::ParkedCar,&Car,INDEX_NONE,Car.DoorInteractionPoint(Origin)+FVector(0,0,44)},148.,false);
+            });
+            if (const auto* Traffic=Mode->GetTraffic())
+                Traffic->ForEachEnterableVehicle(*Walker,[&](ARiverfrontRoadAgent& Agent)
+                {
+                    Consider({EInteraction::Traffic,&Agent,INDEX_NONE,Agent.AccessPoint(Origin)+FVector(0,0,46)},152.,false);
+                });
+        }
+    }
+    return Best;
+}
+
+ARiverfrontPlayerController::FInteractionTarget ARiverfrontPlayerController::ConfirmInteraction() const
+{
+    const FInteractionTarget Current=FindInteraction();
+    // A change between drawing a prompt and pressing the key must not trigger a different action.
+    if (const APawn* Pawn=GetPawn(); Pawn && ShownInteractionPawn.Get()==Pawn && GFrameCounter-ShownInteractionFrame<=2
+        && FVector::DistSquared(Pawn->GetActorLocation(),ShownInteractionLocation)<FMath::Square(60.)
+        && !ShownInteraction.Matches(Current)) return {};
+    return Current;
+}
+
+FRiverfrontInteractionPrompt ARiverfrontPlayerController::DescribeInteraction(const FInteractionTarget& Target) const
+{
+    FRiverfrontInteractionPrompt Prompt;
+    if (Target.Kind==EInteraction::None) return Prompt;
+    Prompt.Binding=TEXT("Interact");
+    Prompt.Anchor=Target.Anchor;
+    switch (Target.Kind)
+    {
+    case EInteraction::Bed:
+        Prompt.Action=TEXT("Sleep until morning");
+        Prompt.Subject=TEXT("Flat 2B");
+        // Place the marker above the middle of the quilt.
+        Prompt.Anchor=FRiverfrontFirstMorningWorld::Pillow()+FVector(-38,-58,16);
+        break;
+    case EInteraction::Place:
+        if (const auto* Site=Sites.IsValidIndex(Target.Site) ? &Sites[Target.Site] : nullptr)
+        {
+            Prompt.Subject=Site->Name;
+            Prompt.Action=Site->Action;
+            if (Site->Kind==ERiverSiteKind::Wardrobe) Prompt.Anchor=FRiverfrontFirstMorningWorld::MirrorCentre();
+            if (Site->Kind==ERiverSiteKind::FittingRoom) Prompt.Anchor=FRiverfrontFirstMorningWorld::ShopMirrorCentre();
+            if (bParcelInHand && Site->Kind==ERiverSiteKind::Tea) Prompt.Action=TEXT("Deliver the print order");
+            if (bLifeActive && !bParcelInHand && !bParcelDelivered && Site->Kind==ERiverSiteKind::Print)
+                Prompt.Action=TEXT("Pick up the print order");
+            if (const auto* Car=Cast<ARiverfrontCar>(GetPawn()))
+            {
+                Prompt.Binding=TEXT("UsePlace");
+                Prompt.Anchor.Reset();
+                if (Car->GetSpeedKph()>1.f)
+                {
+                    Prompt.Action=TEXT("Park to refuel and repair");
+                    Prompt.Binding=NAME_None;
+                }
+            }
+        }
+        break;
+    case EInteraction::Pedestrian:
+        Prompt.Action=TEXT("Say hello");
+        if (const auto* Person=Cast<ARiverfrontPedestrian>(Target.Actor.Get()))
+        {
+            if (Person->IsVisitingPrintmaker()) Prompt.Subject=TEXT("Amina");
+            else if (Person->IsInternationalVisitor()) Prompt.Subject=TEXT("Inês");
+        }
+        break;
+    case EInteraction::ParkedCar:
+        if (const auto* Car=Cast<ARiverfrontCar>(Target.Actor.Get()))
+            Prompt.Action=FString::Printf(TEXT("Enter %s"),Car->GetVehicleLabel());
+        break;
+    case EInteraction::Traffic:
+        if (const auto* Agent=Cast<ARiverfrontRoadAgent>(Target.Actor.Get()))
+            Prompt.Action=FString::Printf(TEXT("Drive %s"),Agent->GetVehicleLabel());
+        break;
+    default: break;
+    }
+    return Prompt;
+}
+
+FRiverfrontInteractionPrompt ARiverfrontPlayerController::UpdateInteractionPrompt()
+{
+    ShownInteraction=FindInteraction();
+    ShownInteractionPawn=GetPawn();
+    if (const APawn* Pawn=GetPawn()) ShownInteractionLocation=Pawn->GetActorLocation();
+    ShownInteractionFrame=GFrameCounter;
+    auto Prompt=DescribeInteraction(ShownInteraction);
+    if (Prompt.Action.IsEmpty())
+        if (const auto* Car=Cast<ARiverfrontCar>(GetPawn()); Car && Car->IsStoppedForExit() && Car->IsOccupied())
+            Prompt={TEXT("Exit vehicle"),Car->GetVehicleLabel(),TEXT("Interact"),{}};
+    return Prompt;
+}
+
 FString ARiverfrontPlayerController::PlacePrompt() const
 {
-    if (CanRestAtBed()) return TEXT("E   Sleep until morning");
-    const int32 I=NearbySite();
-    if (I==INDEX_NONE) return NearbyCompanion() ? FString(TEXT("E   Say hello")) : FString();
-    if (bParcelInHand && Sites[I].Kind==ERiverSiteKind::Tea) return TEXT("E   Deliver the print order");
-    if (bLifeActive && !bParcelInHand && !bParcelDelivered && Sites[I].Kind==ERiverSiteKind::Print) return TEXT("E   Pick up the print order");
-    return FString(Cast<ARiverfrontCar>(GetPawn())?TEXT("F   "):TEXT("E   "))+Sites[I].Action;
+    return DescribeInteraction(FindInteraction()).Action;
 }
+
+void ARiverfrontPlayerController::Interact()
+{
+    UseInteraction(ConfirmInteraction(),false);
+}
+
+void ARiverfrontPlayerController::OpenFocusedVehicleDoor()
+{
+    const FInteractionTarget Target=ConfirmInteraction();
+    if (auto* Car=Cast<ARiverfrontCar>(Target.Actor.Get())) Car->OperateDoor(GetPawn()->GetActorLocation());
+}
+
 void ARiverfrontPlayerController::Notice(const FString& Text)
 {
     InteractionMessage=Text;MessageUntil=GetWorld()->GetTimeSeconds()+5.;
@@ -116,15 +251,29 @@ bool ARiverfrontPlayerController::SaveExploration()
 }
 void ARiverfrontPlayerController::InteractWithPlace()
 {
-    if (IsShowingMenu() || bWaking) return;
-    if (CanRestAtBed()) { PlayWakeup(); return; }
-    const int32 I=NearbySite();
-    if (I==INDEX_NONE)
+    UseInteraction(ConfirmInteraction(),true);
+}
+
+void ARiverfrontPlayerController::UseInteraction(const FInteractionTarget& Target,bool bPlaceOnly)
+{
+    if (Target.Kind==EInteraction::ParkedCar || Target.Kind==EInteraction::Traffic)
     {
-        if (auto* Person=NearbyCompanion()) GreetCompanion(*Person);
+        auto* Walker=Cast<ARiverfrontCharacter>(GetPawn());
+        if (bPlaceOnly || !Walker) return;
+        if (auto* Car=Cast<ARiverfrontCar>(Target.Actor.Get())) Car->Enter(*Walker);
+        else if (auto* Agent=Cast<ARiverfrontRoadAgent>(Target.Actor.Get()))
+            if (const auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>(); Mode && Mode->GetTraffic())
+                Mode->GetTraffic()->EnterVehicle(*Walker,*Agent);
         return;
     }
-    const FRiverSite& Site=Sites[I];
+    if (Target.Kind==EInteraction::Bed) { PlayWakeup(); return; }
+    if (Target.Kind==EInteraction::Pedestrian)
+    {
+        if (auto* Person=Cast<ARiverfrontPedestrian>(Target.Actor.Get())) GreetCompanion(*Person);
+        return;
+    }
+    if (Target.Kind!=EInteraction::Place || !Sites.IsValidIndex(Target.Site)) return;
+    const FRiverSite& Site=Sites[Target.Site];
     if (Site.Kind==ERiverSiteKind::Wardrobe) { OpenLifeMenu(ERiverfrontLifeMenu::Wardrobe); return; }
     if (Site.Kind==ERiverSiteKind::FittingRoom) { OpenLifeMenu(ERiverfrontLifeMenu::FittingRoom); return; }
     if (Site.Kind==ERiverSiteKind::ClothesShop) { OpenLifeMenu(ERiverfrontLifeMenu::Shop); return; }

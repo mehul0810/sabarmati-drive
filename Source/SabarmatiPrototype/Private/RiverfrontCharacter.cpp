@@ -1085,7 +1085,7 @@ void ARiverfrontCharacter::SetupPlayerInputComponent(UInputComponent* Input)
     Input->BindAction(TEXT("BrakeOrJump"), IE_Released, this, &ACharacter::StopJumping);
     Input->BindAction(TEXT("Sprint"), IE_Pressed, this, &ARiverfrontCharacter::Sprint);
     Input->BindAction(TEXT("Sprint"), IE_Released, this, &ARiverfrontCharacter::StopSprint);
-    Input->BindAction(TEXT("Interact"), IE_Pressed, this, &ARiverfrontCharacter::EnterCar);
+    Input->BindAction(TEXT("Interact"), IE_Pressed, this, &ARiverfrontCharacter::Interact);
     Input->BindAction(TEXT("VehicleDoor"),IE_Pressed,this,&ARiverfrontCharacter::OpenCarDoor);
     Input->BindAction(TEXT("Reset"), IE_Pressed, this, &ARiverfrontCharacter::ResetWalk);
     Input->BindAction(TEXT("DebugStats"), IE_Pressed, this, &ARiverfrontCharacter::ToggleStats);
@@ -1136,21 +1136,17 @@ void ARiverfrontCharacter::StopSprint()
 
 void ARiverfrontCharacter::OpenCarDoor()
 {
-    if (auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>())
-        if (auto* Car=Mode->FindEnterableCar(*this)) Car->OperateDoor(GetActorLocation());
+    if (auto* Player=Cast<ARiverfrontPlayerController>(GetController())) Player->OpenFocusedVehicleDoor();
 }
 
-void ARiverfrontCharacter::EnterCar()
+bool ARiverfrontCharacter::CanUseWorldInteraction() const
 {
-    if (TraversalSource) return;
-    const ARiverfrontGameMode* Mode = GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
-    if (ARiverfrontCar* Available = Mode ? Mode->FindEnterableCar(*this) : nullptr)
-    {
-        if (Available->Enter(*this)) return;
-    }
-    if (ARiverfrontTraffic* Traffic = Mode ? Mode->GetTraffic() : nullptr)
-        if (Traffic->EnterVehicle(*this)) return;
-    if (auto* Driver=Cast<ARiverfrontPlayerController>(GetController())) Driver->InteractWithPlace();
+    return !TraversalSource && !bDrowned && !GetCharacterMovement()->IsSwimming();
+}
+
+void ARiverfrontCharacter::Interact()
+{
+    if (auto* Player=Cast<ARiverfrontPlayerController>(GetController())) Player->Interact();
 }
 
 void ARiverfrontCharacter::SetInCar(bool bInCar)

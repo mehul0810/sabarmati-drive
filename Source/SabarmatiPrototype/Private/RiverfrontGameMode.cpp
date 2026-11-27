@@ -159,26 +159,13 @@ ARiverfrontCar* ARiverfrontGameMode::SpawnCrossover(ARiverfrontWorld& WorldActor
     return Result;
 }
 
-ARiverfrontCar* ARiverfrontGameMode::FindEnterableCar(const ARiverfrontCharacter& Character) const
+void ARiverfrontGameMode::ForEachEnterableCar(const ARiverfrontCharacter& Character, TFunctionRef<void(ARiverfrontCar&)> Visit) const
 {
-    if (Traffic)
-        if (ARiverfrontCar* Available = Traffic->FindParkedCar(Character)) return Available;
-    ARiverfrontCar* Result = nullptr;
-    double Nearest = TNumericLimits<double>::Max();
     for (ARiverfrontCar* Candidate : {Car.Get(), Crossover.Get()})
     {
-        if (!IsValid(Candidate) || !Candidate->IsNearDoor(Character))
-        {
-            continue;
-        }
-        const double Distance = FVector::DistSquared2D(Candidate->GetActorLocation(), Character.GetActorLocation());
-        if (Distance < Nearest)
-        {
-            Nearest = Distance;
-            Result = Candidate;
-        }
+        if (IsValid(Candidate) && Candidate->IsNearDoor(Character)) Visit(*Candidate);
     }
-    return Result;
+    if (Traffic) Traffic->ForEachParkedCar(Character,Visit);
 }
 
 AActor* ARiverfrontGameMode::ChoosePlayerStart_Implementation(AController* Player)

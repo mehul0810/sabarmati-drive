@@ -507,16 +507,22 @@ bool ARiverfrontCar::IsNearDoor(const ARiverfrontCharacter& Character) const
     {
         return false;
     }
-    const FTransform CarTransform = GetActorTransform();
-    for (const double Side : {-1.0, 1.0})
-    {
-        if (FVector::Dist2D(Character.GetActorLocation(),
-            CarTransform.TransformPosition(FVector(10, Side * 101, 0))) <= DoorReach)
-        {
-            return true;
-        }
-    }
-    return false;
+    const FVector From=Character.GetActorLocation();
+    return FVector::DistSquared2D(From,DoorInteractionPoint(From))<=FMath::Square(DoorReach);
+}
+
+FVector ARiverfrontCar::DoorInteractionPoint(const FVector& From) const
+{
+    if (FleetBody) return FleetBody->AccessPoint(From);
+    const FTransform Transform=GetActorTransform();
+    const FVector Left=Transform.TransformPosition(FVector(10.,-101.,0.));
+    const FVector Right=Transform.TransformPosition(FVector(10.,101.,0.));
+    return FVector::DistSquared2D(From,Left)<=FVector::DistSquared2D(From,Right) ? Left : Right;
+}
+
+bool ARiverfrontCar::IsStoppedForExit() const
+{
+    return FMath::Abs(Speed)<=ParkThreshold;
 }
 
 void ARiverfrontCar::ClearSeat()
@@ -680,7 +686,7 @@ void ARiverfrontCar::Exit()
     {
         return;
     }
-    if (FMath::Abs(Speed) > ParkThreshold)
+    if (!IsStoppedForExit())
     {
         SetHint(TEXT("Brake to a stop before getting out."));
         return;

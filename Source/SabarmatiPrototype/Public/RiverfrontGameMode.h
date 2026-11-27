@@ -21,7 +21,7 @@ public:
     virtual void BeginPlay() override;
     virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
     ARiverfrontCar* GetCar() const { return Car; }
-    ARiverfrontCar* FindEnterableCar(const ARiverfrontCharacter& Character) const;
+    void ForEachEnterableCar(const ARiverfrontCharacter& Character, TFunctionRef<void(ARiverfrontCar&)> Visit) const;
     ARiverfrontTraffic* GetTraffic() const;
     const ARiverfrontWorld* GetDistrict() const { return District.Get(); }
     bool IsCityMode() const { return bCityBuilt; }

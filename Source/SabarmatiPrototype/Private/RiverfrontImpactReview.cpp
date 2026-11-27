@@ -55,8 +55,12 @@ void ARiverfrontPlayerController::RunImpactReview()
             {
                 if (It->Tags.Contains(TEXT("Kerbside")) || It->IsHidden()) continue;
                 const FVector Door=It->GetActorTransform().TransformPosition(FVector(It->GetAccessX(),It->HalfWidth+78.,90.-It->TyreRadius));
-                if (Walker->TeleportTo(Door,It->GetActorRotation()) && Mode->GetTraffic()->FindEnterableVehicle(*Walker)==*It)
-                { Key(EKeys::E,IE_Pressed); Next();break; }
+                if (!Walker->TeleportTo(Door,It->GetActorRotation())) continue;
+                const FVector From=Walker->GetActorLocation();
+                SetControlRotation((It->AccessPoint(From)-From).GetSafeNormal2D().Rotation());
+                UpdateInteractionPrompt();
+                if (ShownInteraction.Actor.Get()!=*It) continue;
+                Key(EKeys::E,IE_Pressed); Next();break;
             }
         }
         else if (Run->Step==1 && Age>.15)
@@ -112,6 +116,9 @@ void ARiverfrontPlayerController::RunImpactReview()
                         Door=Agent->GetActorTransform().TransformPosition(FVector(Agent->GetAccessX(),Agent->HalfWidth+74.,90.-Agent->TyreRadius));
                     }
                     if (!Walker->TeleportTo(Door,Heading)) continue;
+                    const FVector From=Walker->GetActorLocation();
+                    const FVector Access=Chaos ? Mode->GetCar()->DoorInteractionPoint(From) : Run->Sport->AccessPoint(From);
+                    SetControlRotation((Access-From).GetSafeNormal2D().Rotation());
                     Run->Tree=P;Run->Trees=Trees;Run->Count=Trees->GetInstanceCount();
                     Key(EKeys::E,IE_Pressed);Next();return true;
                 }

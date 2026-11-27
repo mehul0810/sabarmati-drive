@@ -57,6 +57,8 @@ public:
     bool FindDriverExit(FVector& Point, int32& Side) const;
     bool FindDoorLanding(const ARiverfrontCharacter& Walker,FVector& Point,int32& Side) const;
     bool IsNearDoor(const ARiverfrontCharacter& Character) const;
+    FVector DoorInteractionPoint(const FVector& From) const;
+    bool IsStoppedForExit() const;
     bool Enter(ARiverfrontCharacter& Character);
     float GetSpeedKph() const { return FMath::Abs(Speed) * 0.036f; }
     FString GetHint() const;

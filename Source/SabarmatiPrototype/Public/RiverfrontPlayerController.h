@@ -25,6 +25,13 @@ struct FRiverSite
     TOptional<double> StreetHeading;
 };
 
+struct FRiverfrontInteractionPrompt
+{
+    FString Action, Subject;
+    FName Binding;
+    TOptional<FVector> Anchor;
+};
+
 UCLASS()
 class SABARMATIPROTOTYPE_API ARiverfrontPlayerController : public APlayerController
 {
@@ -36,9 +43,12 @@ public:
     bool SetFittingView(EFittingView Mode);
 
     void InteractWithPlace();
+    void Interact();
+    void OpenFocusedVehicleDoor();
     void Drowned();
     void NotifyResidentReaction(const ARiverfrontPedestrian& Person, int32 Count);
     FString PlacePrompt() const;
+    FRiverfrontInteractionPrompt UpdateInteractionPrompt();
     const TArray<FRiverSite>& GetPlaces() const { return Sites; }
     const FRiverSite* Destination() const;
     FVector NextWaypoint() const;
@@ -86,6 +96,27 @@ private:
     float BestTrial=0.f;
     double TrialStart=0., MessageUntil=0.;
     FString InteractionMessage;
+    enum class EInteraction : uint8 { None, Bed, Place, Pedestrian, ParkedCar, Traffic };
+    struct FInteractionTarget
+    {
+        EInteraction Kind = EInteraction::None;
+        TWeakObjectPtr<AActor> Actor;
+        int32 Site = INDEX_NONE;
+        FVector Anchor = FVector::ZeroVector;
+
+        bool Matches(const FInteractionTarget& Other) const
+        {
+            return Kind==Other.Kind && Actor==Other.Actor && Site==Other.Site;
+        }
+    };
+    FInteractionTarget FindInteraction() const;
+    FInteractionTarget ConfirmInteraction() const;
+    FRiverfrontInteractionPrompt DescribeInteraction(const FInteractionTarget& Target) const;
+    void UseInteraction(const FInteractionTarget& Target, bool bPlaceOnly);
+    FInteractionTarget ShownInteraction;
+    TWeakObjectPtr<APawn> ShownInteractionPawn;
+    FVector ShownInteractionLocation=FVector::ZeroVector;
+    uint64 ShownInteractionFrame=0;
     void BeginLifeSession();
     void FinishWakeup();
     void PlayWakeup();
@@ -105,7 +136,6 @@ private:
     uint64 LastMirrorFrame = MAX_uint64;
     bool UpdatePrintDelivery(ERiverSiteKind Kind);
     void PointToChai();
-    ARiverfrontPedestrian* NearbyCompanion() const;
     void GreetCompanion(ARiverfrontPedestrian& Person);
     TArray<TWeakObjectPtr<ARiverfrontPedestrian>> Neighbours;
     bool HasLifeCheckpoint() const;
@@ -129,7 +159,6 @@ private:
     void ToggleControls() { bControls=!bControls; }
     void ToggleChallenge();
     bool SaveExploration();
-    int32 NearbySite() const;
     void Notice(const FString& Text);
     void SetMouseSensitivity(float Value);
     void LoadLocalProfile();

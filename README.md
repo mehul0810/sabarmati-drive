@@ -37,11 +37,11 @@ Run `bash Scripts/benchmark-riverfront.sh all` for the fixed-camera comparison a
 | Action | Control |
 |---|---|
 | Walk, look, run, jump, vault or climb | WASD, mouse, left Shift, Space |
-| Enter the nearest available car or leave a stopped car | E |
+| Enter an available car or leave a stopped car | Face the door and press E when shown. Press E to exit at a stop. |
 | Drive, steer, brake or reverse | W, A/D, S. Space applies the handbrake. |
 | Change chase, cockpit and bonnet views | C |
-| Open the hatch's front doors, signal, use hazards, sound the horn | O, Z/X, B, H |
-| Use the wardrobe, browse Sutra Cloth House, greet a pedestrian or interact at a shop | E when the prompt appears |
+| Open a highlighted hatch door, signal, use hazards, sound the horn | O, Z/X, B, H |
+| Use the wardrobe, browse Sutra Cloth House, greet a pedestrian or interact at a shop | Face the target and press the interaction key shown in the HUD. |
 | Open your wallet and most recent receipt | I |
 | Refuel and repair the stopped vehicle at River Motor Works | F |
 | Select a waypoint, toggle the map, start a driving challenge | N, M, G |
@@ -53,7 +53,7 @@ You can walk from the wardrobe in Flat 2B down the apartment stairs to street le
 
 Tap **Space** in the open to jump. From the street, face the low iron fence or the raised stone platform beside Kesar and tap **Space** within a step. The avatar vaults the fence with one hand or climbs onto the platform with both hands.
 
-The circular street map sits at the lower left. Use **N** to cycle destinations and **M** to hide or show navigation. Enter a vehicle to see speed, gear, engine speed, fuel and indicators. Press **F1** for the controls. Pause with **Esc** to return to the title and settings controls over the live scene.
+The circular street map sits at the lower left. Use **N** to cycle destinations and **M** to hide or show navigation. Available interactions are marked next to their target when it fits on screen. Enter a vehicle to see speed, gear, engine speed, fuel and indicators. Press **F1** for the controls. Pause with **Esc** to return to the title and settings controls over the live scene.
 
 ## Optional local avatar import
 

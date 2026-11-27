@@ -192,6 +192,13 @@ double ARiverfrontRoadAgent::GetAccessX() const
     return WheelCount == 3 ? 41. : 10.;
 }
 
+FVector ARiverfrontRoadAgent::AccessPoint(const FVector& From) const
+{
+    const FTransform Transform=GetActorTransform();
+    const double Side=Transform.InverseTransformPosition(From).Y<0. ? -1. : 1.;
+    return Transform.TransformPosition(FVector(GetAccessX(),Side*(HalfWidth+9.),0.));
+}
+
 bool ARiverfrontRoadAgent::IsNearAccess(const ARiverfrontCharacter& Character) const
 {
     const FVector Local = GetActorTransform().InverseTransformPosition(Character.GetActorLocation());
@@ -202,8 +209,7 @@ bool ARiverfrontRoadAgent::IsNearAccess(const ARiverfrontCharacter& Character) c
     {
         return false;
     }
-    const FVector Anchor = GetActorTransform().TransformPosition(
-        FVector(GetAccessX(), FMath::Sign(Local.Y) * (HalfWidth + 9.), Local.Z));
+    const FVector Anchor = AccessPoint(Character.GetActorLocation())+GetActorTransform().TransformVector(FVector(0.,0.,Local.Z));
     FHitResult Hit;
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(RiverfrontBoarding), false, &Character);
     return !GetWorld()->LineTraceSingleByChannel(Hit, Character.GetActorLocation(), Anchor, ECC_Visibility, Query)
@@ -258,40 +264,21 @@ ARiverfrontTraffic::ARiverfrontTraffic()
     PrimaryActorTick.bCanEverTick=true; PrimaryActorTick.TickInterval=.05f;
 }
 
-ARiverfrontCar* ARiverfrontTraffic::FindParkedCar(const ARiverfrontCharacter& Character) const
+void ARiverfrontTraffic::ForEachParkedCar(const ARiverfrontCharacter& Character,TFunctionRef<void(ARiverfrontCar&)> Visit) const
 {
-    ARiverfrontCar* Closest = nullptr;
-    double Best = TNumericLimits<double>::Max();
     for (const auto& WeakCar : Parked)
     {
-        auto* Car = WeakCar.Get();
-        if (!Car || !Car->IsNearDoor(Character)) continue;
-        const double Distance = FVector::DistSquared2D(Car->GetActorLocation(), Character.GetActorLocation());
-        if (Distance < Best)
-        {
-            Best = Distance;
-            Closest = Car;
-        }
+        if (auto* Car=WeakCar.Get(); Car && Car->IsNearDoor(Character)) Visit(*Car);
     }
-    return Closest;
 }
 
-const ARiverfrontRoadAgent* ARiverfrontTraffic::FindEnterableVehicle(const ARiverfrontCharacter& Character) const
+void ARiverfrontTraffic::ForEachEnterableVehicle(const ARiverfrontCharacter& Character,TFunctionRef<void(ARiverfrontRoadAgent&)> Visit) const
 {
-    const ARiverfrontRoadAgent* Closest = nullptr;
-    double Best = TNumericLimits<double>::Max();
-    for (int32 I = 0; I < Agents.Num(); ++I)
+    for (int32 I=0;I<Agents.Num();++I)
     {
-        const auto* Agent = Agents[I].Get();
-        if (!IsValid(Agent) || Drivers[I].Speed > BoardingSpeed) continue;
-        const double Distance = FVector::DistSquared2D(Agent->GetActorLocation(), Character.GetActorLocation());
-        if (Distance < Best && Agent->IsNearAccess(Character))
-        {
-            Best = Distance;
-            Closest = Agent;
-        }
+        auto* Agent=Agents[I].Get();
+        if (IsValid(Agent) && Drivers[I].Speed<=BoardingSpeed && Agent->IsNearAccess(Character)) Visit(*Agent);
     }
-    return Closest;
 }
 
 FVector ARiverfrontTraffic::RoadVelocity(const ARiverfrontRoadAgent* Agent) const
@@ -311,16 +298,12 @@ bool ARiverfrontTraffic::RemoveCrashedAgent(ARiverfrontRoadAgent* Agent)
     return true;
 }
 
-bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character)
+bool ARiverfrontTraffic::EnterVehicle(ARiverfrontCharacter& Character, ARiverfrontRoadAgent& Target)
 {
-    const auto* Target = FindEnterableVehicle(Character);
-    const int32 Index = Target ? Agents.IndexOfByPredicate([Target](const auto& Agent)
-    {
-        return Agent.Get() == Target;
-    }) : INDEX_NONE;
-    if (Index == INDEX_NONE) return false;
+    const int32 Index=Agents.IndexOfByKey(&Target);
+    if (Index==INDEX_NONE || Drivers[Index].Speed>BoardingSpeed || !Target.IsNearAccess(Character)) return false;
 
-    ARiverfrontRoadAgent* Agent = Agents[Index];
+    ARiverfrontRoadAgent* Agent=&Target;
     FTransform Placement = Agent->GetActorTransform();
     Placement.AddToTranslation(Placement.TransformVectorNoScale(FVector(0, 0,
         Agent->GetRideHeight() - Agent->TyreRadius - 6.)));

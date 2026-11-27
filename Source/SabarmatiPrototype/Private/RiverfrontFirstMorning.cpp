@@ -280,24 +280,6 @@ void ARiverfrontPlayerController::CloseLifeMenu()
     ResumeDrive();
 }
 
-ARiverfrontPedestrian* ARiverfrontPlayerController::NearbyCompanion() const
-{
-    if (!GetPawn() || !GetPawn()->IsA<ARiverfrontCharacter>()) return nullptr;
-    double RangeSquared = FMath::Square(170.);
-    ARiverfrontPedestrian* Nearest = nullptr;
-    for (const auto& Candidate : Neighbours)
-    {
-        if (!Candidate.IsValid()) continue;
-        const double Distance = FVector::DistSquared(GetPawn()->GetActorLocation(), Candidate->GetActorLocation());
-        if (Distance < RangeSquared)
-        {
-            RangeSquared = Distance;
-            Nearest = Candidate.Get();
-        }
-    }
-    return Nearest;
-}
-
 void ARiverfrontPlayerController::GreetCompanion(ARiverfrontPedestrian& Person)
 {
     if (Person.ActorHasTag(TEXT("VisitingPrintmaker")))
