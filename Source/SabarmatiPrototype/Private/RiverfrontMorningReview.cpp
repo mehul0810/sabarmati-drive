@@ -1,7 +1,10 @@
 #include "RiverfrontPlayerController.h"
 
 #if !UE_BUILD_SHIPPING
+#include "RiverfrontCar.h"
 #include "RiverfrontCharacter.h"
+#include "RiverfrontGameMode.h"
+#include "Components/BoxComponent.h"
 #include "Components/PoseableMeshComponent.h"
 #include "RiverfrontFirstMorningWorld.h"
 #include "RiverfrontLifeProfile.h"
@@ -46,7 +49,7 @@ namespace
 enum class EMorningStep : uint8
 {
     Title, Start, Home, Walk, Wardrobe, HairChoice, Cropped, Swept, Tone, Store, Preview, Purchase, CloseStore,
-    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, CheckCover, InnerLayers, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain, FittingWalk, FittingSelect, FittingTake, FittingPutOn, FittingWear, FittingPortrait, FittingCheckout, FittingChinos, FittingTakeChinos, FittingWearChinos, FittingCheckChinos, FittingWornOut, FittingFootwear
+    Wallet, ObserveStreet, Checkpoint, Quit, Continue, PickUp, Paid, ReturnToStore, Watch, PayWatch, Kurta, PayKurta, FinishedFitting, Portrait, RestoreOutfit, BodyFront, BodyQuarter, BodyBackground, WardrobeMale, WardrobeFemale, HudControls, Removed, HeldItem, PutOnItem, EquipShopWatch, PressWear, CancelWhileDressing, ChangingBase, ChangingPreview, ConfirmOwned, MirrorIdlePerf, MirrorActivePerf, CancelBottom, RemoveBottom, CheckBottom, CheckCover, InnerLayers, WearBottom, WearPullover, FinishPullover, FitBodyKurta, BedsideInput, RestAgain, FittingWalk, FittingSelect, FittingTake, FittingPutOn, FittingWear, FittingPortrait, FittingCheckout, FittingChinos, FittingTakeChinos, FittingWearChinos, FittingCheckChinos, FittingWornOut, FittingFootwear, FocusWardrobe, FocusPause, FocusGreeting, FocusConflict, FocusShop, FocusDrive
 };
 
 struct FMorningEvidence
@@ -253,6 +256,7 @@ void ARiverfrontPlayerController::RunMorningReview()
         return;
     }
 
+    const bool bInteractionReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiInteractionReview"));
     const bool bWesternReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiWesternReview"));
     const bool bSutraReview=bWesternReview || FParse::Param(FCommandLine::Get(),TEXT("SabarmatiSutraReview"));
     const bool bClosetReview=FParse::Param(FCommandLine::Get(),TEXT("SabarmatiWardrobeReview"));
@@ -267,7 +271,7 @@ void ARiverfrontPlayerController::RunMorningReview()
     State->Route = FRiverfrontFirstMorningWorld::ExitRoute();
     UE_LOG(LogTemp,Display,TEXT("Sabarmati morning review started: %s, continue=%d"), *Folder, bContinue);
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,bClosetReview,bSutraReview,bWesternReview,ExpectedGender,ReviewTop,ReviewBottom,ReviewShoe](float)
+        [this,State,Folder,Id,bColdRun,bContinue,bBodyReview,bGenderReview,bClosetReview,bSutraReview,bWesternReview,bInteractionReview,ExpectedGender,ReviewTop,ReviewBottom,ReviewShoe](float)
         {
             auto* Walker = Cast<ARiverfrontCharacter>(GetPawn());
             const double Now = FPlatformTime::Seconds(), Age = Now - State->Since;
@@ -291,7 +295,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 State->Pictures.Add(File);
                 FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder,File), bWithSlate, false, false, FIntRect(), true);
             };
-            if (!Walker || State->Route.Num() < 3 || !GetWorld()->GetGameViewport()) return Fail(TEXT("world, route or pawn unavailable"));
+            if ((!Walker && State->Step!=EMorningStep::FocusDrive) || State->Route.Num() < 3 || !GetWorld()->GetGameViewport()) return Fail(TEXT("world, route or pawn unavailable"));
             if (Age > (State->Step == EMorningStep::ObserveStreet ? 180. : 65.)) return Fail(TEXT("timed out"));
             if (Age < 0.15 && State->Step != EMorningStep::Walk) return true;
 
@@ -300,6 +304,7 @@ void ARiverfrontPlayerController::RunMorningReview()
                 auto* View = GetWorld()->GetGameViewport()->Viewport;
                 for (const auto Event : { IE_Pressed, IE_Released })
                     InputKey(FInputKeyEventArgs(View,FInputDeviceId::CreateFromInternalId(0),Key,Event,FPlatformTime::Cycles64()));
+                if (bInteractionReview) ProcessPlayerInput(0.f,IsPaused());
             };
             const auto DressButtonLabel=[&]()
             {
@@ -427,6 +432,11 @@ void ARiverfrontPlayerController::RunMorningReview()
                 const auto Size = GetWorld()->GetGameViewport()->Viewport->GetSizeXY();
                 State->Results = FString::Printf(TEXT("viewport=%dx%d\nwake_camera_displacement_cm=%.2f\nstart_to_control_ms=%.1f\nstarting_cash=100000\nstarting_bank=500000\n"),
                     Size.X, Size.Y, State->WakeTravel, State->StartToControlMs);
+                if (bInteractionReview)
+                {
+                    Next(EMorningStep::FocusWardrobe);
+                    break;
+                }
                 if (bSutraReview)
                 {
                     const FVector Entrance=FRiverfrontFirstMorningWorld::FittingRoomPoint()+FVector(-15,-170,0);
@@ -451,6 +461,167 @@ void ARiverfrontPlayerController::RunMorningReview()
                 }
                 WalkAgain();
                 break;
+            }
+            case EMorningStep::FocusWardrobe:
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!State->bInnerSelected)
+                {
+                    if (!Walker->TeleportTo(FRiverfrontFirstMorningWorld::WardrobePoint(),FRotator(0,90,0)))
+                        return Fail(TEXT("walk-up wardrobe position"));
+                    State->bInnerSelected=true;
+                    return true;
+                }
+                if (!IsShowingMenu())
+                {
+                    if (!UpdateInteractionPrompt().Action.Contains(TEXT("wardrobe"))) return Fail(TEXT("real wardrobe cue"));
+                    GameKey(EKeys::E);
+                    if (!FindMorningControl(Overlay,TEXT("LifePanel"))) return Fail(TEXT("interact opens the wardrobe shown"));
+                    State->LastFrame=Now;
+                    return true;
+                }
+                if (!State->Pictures.Contains(TEXT("02-wardrobe.png")))
+                {
+                    if (Now-State->LastFrame<.65) return true;
+#if WITH_EDITOR
+                    if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling()) return true;
+#endif
+                    Shot(TEXT("02-wardrobe"),true);
+                    return true;
+                }
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close wardrobe"));
+                GameKey(EKeys::Escape);
+                if (!IsShowingMenu()) return Fail(TEXT("open pause"));
+                Shot(TEXT("03-pause"),true);
+                Next(EMorningStep::FocusPause);
+                break;
+            case EMorningStep::FocusPause:
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!PressMorningButton(Overlay,TEXT("MorningStart"))) return Fail(TEXT("resume from pause"));
+                Next(EMorningStep::FocusGreeting);
+                break;
+            case EMorningStep::FocusGreeting:
+            {
+                auto* Visitor=Neighbours.FindByPredicate([](const auto& Person)
+                {
+                    return Person.IsValid() && Person->IsInternationalVisitor() && !Person->IsVisitingPrintmaker();
+                });
+                if (!Visitor) return Fail(TEXT("find a real resident to greet"));
+                const FVector Person=(*Visitor)->GetActorLocation();
+                bool bReady=false;
+                for (const FVector& Offset : {FVector(122,0,0),FVector(-122,0,0),FVector(0,122,0),FVector(0,-122,0)})
+                {
+                    FVector Approach=Person+Offset;
+                    FHitResult Floor;
+                    if (!GetWorld()->LineTraceSingleByChannel(Floor,Approach+FVector(0,0,240),
+                        Approach-FVector(0,0,45),ECC_Visibility) || FMath::Abs(Floor.ImpactPoint.Z-Person.Z)>40.) continue;
+                    Approach.Z=Floor.ImpactPoint.Z+96.;
+                    if (!Walker->TeleportTo(Approach,(-Offset).Rotation())) continue;
+                    SetControlRotation((Person-Walker->GetActorLocation()).Rotation());
+                    UpdateInteractionPrompt();
+                    if (ShownInteraction.Actor.Get()==Visitor->Get()) { bReady=true; break; }
+                }
+                if (!bReady) return Fail(TEXT("face the resident from a nearby reachable spot"));
+                GameKey(EKeys::E);
+                if (!ActivityText().Contains(TEXT("visiting from Lisbon"))) return Fail(TEXT("interact greets the selected resident"));
+                Shot(TEXT("04-greeting"));
+                Next(EMorningStep::FocusConflict);
+                break;
+            }
+            case EMorningStep::FocusConflict:
+            {
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                auto* Mode=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>();
+                auto* Car=Mode ? Mode->GetCar() : nullptr;
+                const auto* Shop=Sites.FindByPredicate([](const auto& Site){return Site.Kind==ERiverSiteKind::ClothesShop;});
+                if (!Car || !Shop) return Fail(TEXT("parked hatchback and shop action"));
+                FRiverSite Fixture=*Shop;
+                Fixture.Id=TEXT("qa-shop-next-to-car");
+                // Reproduce the conflicting reach volumes at the parked car in this isolated session.
+                for (double Side : {-1.,1.})
+                {
+                    FVector From=Car->GetActorTransform().TransformPosition(FVector(10.,Side*211.,33.));
+                    FHitResult Floor;
+                    if (!GetWorld()->LineTraceSingleByChannel(Floor,From+FVector(0,0,125),From-FVector(0,0,177),ECC_Visibility)) continue;
+                    From.Z=Floor.ImpactPoint.Z+96.;
+                    if (!Walker->TeleportTo(From,Car->GetActorRotation()) || !Car->IsNearDoor(*Walker)) continue;
+                    const FVector Origin=Walker->GetActorLocation();
+                    const FVector Door=(Car->DoorInteractionPoint(Origin)-Origin).GetSafeNormal2D();
+                    Fixture.Point=Origin-Door*96.;
+                    Sites.Add(Fixture);
+                    SetControlRotation((-Door).Rotation());
+                    const auto ShopPrompt=UpdateInteractionPrompt();
+                    if (ShownInteraction.Site==Sites.Num()-1 && ShopPrompt.Subject==Fixture.Name) break;
+                    Sites.Pop(EAllowShrinking::No);
+                }
+                if (Sites.Last().Id!=Fixture.Id) return Fail(TEXT("overlapping shop and car can focus the facing shop"));
+                const FVector Origin=Walker->GetActorLocation();
+                const FRotator ToCar=(Car->DoorInteractionPoint(Origin)-Origin).GetSafeNormal2D().Rotation();
+                const FRotator ToShop=(Fixture.Point-Origin).Rotation();
+                SetControlRotation(ToCar);
+                GameKey(EKeys::E);
+                if (GetPawn()!=Walker || IsShowingMenu()) return Fail(TEXT("a changed target received the stale prompt action"));
+
+                SetControlRotation(ToShop);
+                auto* Obstacle=GetWorld()->SpawnActor<AActor>();
+                if (!Obstacle) return Fail(TEXT("occlusion fixture actor"));
+                auto* Block=NewObject<UBoxComponent>(Obstacle);
+                Obstacle->SetRootComponent(Block);
+                Block->InitBoxExtent(FVector(16,16,100));
+                Block->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                Block->SetCollisionResponseToAllChannels(ECR_Ignore);
+                Block->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
+                Block->RegisterComponent();
+                Obstacle->SetActorLocation((Origin+Fixture.Point)*.5+FVector(0,0,48));
+                if (!UpdateInteractionPrompt().Action.IsEmpty()) return Fail(TEXT("blocked counter or rear vehicle displayed a cue"));
+                GameKey(EKeys::E);
+                if (IsShowingMenu() || GetPawn()!=Walker) return Fail(TEXT("interacted through a wall"));
+                Block->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Obstacle->Destroy();
+
+                if (UpdateInteractionPrompt().Subject!=Fixture.Name) return Fail(TEXT("shop reacquired when clear"));
+                GameKey(EKeys::E);
+                if (!FindMorningControl(Overlay,TEXT("LifePanel"))) return Fail(TEXT("car nearby redirected the shop action"));
+                Shot(TEXT("05-shop"),true);
+                Next(EMorningStep::FocusShop);
+                break;
+            }
+            case EMorningStep::FocusShop:
+            {
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                if (!PressMorningButton(Overlay,TEXT("LifeClose"))) return Fail(TEXT("close shop"));
+                auto* Car=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>()->GetCar();
+                SetControlRotation((Car->DoorInteractionPoint(Walker->GetActorLocation())-Walker->GetActorLocation()).GetSafeNormal2D().Rotation());
+                if (!UpdateInteractionPrompt().Action.StartsWith(TEXT("Enter")) || ShownInteraction.Actor.Get()!=Car)
+                    return Fail(TEXT("looking at the parked hatch selects its door"));
+                Next(EMorningStep::FocusDrive);
+                break;
+            }
+            case EMorningStep::FocusDrive:
+            {
+                if (FScreenshotRequest::IsScreenshotRequested()) return true;
+                auto* Expected=GetWorld()->GetAuthGameMode<ARiverfrontGameMode>()->GetCar();
+                if (Walker)
+                {
+                    if (!State->Pictures.Contains(TEXT("06-parked-car.png")))
+                    {
+                        Shot(TEXT("06-parked-car"));
+                        return true;
+                    }
+                    SetControlRotation((Expected->DoorInteractionPoint(Walker->GetActorLocation())-Walker->GetActorLocation()).GetSafeNormal2D().Rotation());
+                    if (UpdateInteractionPrompt().Action.IsEmpty()) return Fail(TEXT("active parked car before entry"));
+                    GameKey(EKeys::E);
+                    if (GetPawn()!=Expected || !Expected->IsOccupied()) return Fail(TEXT("interact entered a different car"));
+                    State->LastFrame=Now;
+                    return true;
+                }
+                if (Now-State->LastFrame<1.3) return true;
+                if (GetPawn()!=Expected) return Fail(TEXT("driving possession changed unexpectedly"));
+                if (!State->Pictures.Contains(TEXT("07-driving.png"))) { Shot(TEXT("07-driving")); return true; }
+                GameKey(EKeys::E);
+                if (!Cast<ARiverfrontCharacter>(GetPawn())) return Fail(TEXT("parked exit works with the same binding"));
+                UE_LOG(LogTemp,Display,TEXT("Sabarmati interaction review passed: wardrobe, pause, resident greeting, overlapping shop and car, stale cue rejection, occlusion, exact car and exit. Evidence %s"),*Folder);
+                FPlatformMisc::RequestExitWithStatus(false,0);
+                return false;
             }
             case EMorningStep::FittingWalk:
             {

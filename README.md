@@ -72,6 +72,8 @@ For a local rig comparison, the editor supports a separately supplied and approp
 
 For a repeatable player check in a Development build, pass `-SabarmatiGaitReview` to exercise walking and Shift-running on level paving. Add `-SabarmatiJumpReview -SabarmatiTraversalReview` to test the open jump, fence and stone platform. Use `-SabarmatiGaitFrames` to record a side view or `-SabarmatiGaitKurta` to test the fitted kurta. `-SabarmatiMorningReview -SabarmatiBodyReview` photographs both fitted tops using a disposable shop profile. The wardrobe review adds the remove, take, put-back and put-on checks at the apartment mirror. These checks create temporary QA profiles. An explicit `-UserDir=/path/to/qa` keeps captures under that directory’s `Saved` folder.
 
+Use `-SabarmatiMorningReview -SabarmatiInteractionReview -SabarmatiGenderReview` to check the wardrobe, pause menu, greeting, overlapping shop and car prompts, and parked-car entry and exit. The review also captures the HUD and menus at each stop.
+
 The default is Metal SM5 and conventional dynamic lighting, with Nanite, Virtual Shadow Maps, hardware ray tracing and Lumen disabled. This configuration aims to run on an M1 Max while leaving room to tune the M2 Air. It is not a measured performance claim.
 
 - Build/launch on the **M1 Max** first. Check the first wake-up or saved checkpoint, then walk to the promenade and inspect lighting, river/banks, street silhouettes and HUD at 1600×900. Walk, orbit without drag, jog, jump, and reset. Cross the bridge on foot; check the sidewalks are continuous. If using the imported avatar, inspect the idle/walk/jog changes, shoe/foot alignment and foot contact from the side, not just standing still.
